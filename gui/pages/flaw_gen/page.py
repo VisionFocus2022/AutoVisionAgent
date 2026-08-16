@@ -1,7 +1,7 @@
 """缺陷生成页（P3-12）— GAN 缺陷合成独立工作流。
 
 对标 SKolpha createFlawconfigFile.json，配置 OK 模板目录 + 缺陷数据库 +
-输出目录，调用 SganMmeditEngine 批量生成合成缺陷图像。
+输出目录，经注册表调用 SGAN 引擎（W2: SganBlendEngine）批量生成合成缺陷图像。
 """
 from __future__ import annotations
 
@@ -161,69 +161,49 @@ class FlawGenPage(QWidget):
             try:
                 os.makedirs(out_dir, exist_ok=True)
 
-                # 尝试调用 SganMmeditEngine
-                try:
-                    from models.supervised.engines.sgan_mmedit import SganMmeditEngine
-                    from core.interfaces_supervised import TaskType
-                    engine = SganMmeditEngine(TaskType.SGAN)
-                    # 加载 OK 模板和缺陷数据
-                    ok_imgs = [
-                        os.path.join(r, f)
-                        for r, _, fs in os.walk(ok_dir)
-                        for f in fs if f.lower().endswith((".jpg", ".png", ".bmp"))
-                    ]
-                    flaw_imgs = [
-                        os.path.join(r, f)
-                        for r, _, fs in os.walk(flaw_dir)
-                        for f in fs if f.lower().endswith((".jpg", ".png", ".bmp"))
-                    ]
+                # W2: 经注册表取真化后的 SGAN 引擎（SganBlendEngine，seamlessClone 融合）。
+                # 修复 P1-2：不再直接 SganMmeditEngine(TaskType.SGAN)（构造 TypeError 必崩），
+                # 也不再复制占位图冒充生成结果——缺缺陷库由引擎诚实 raise。
+                from core.exceptions import SupervisedEngineError
+                from core.image_io import imwrite_unicode
+                from core.interfaces_supervised import TaskType
+                from models.supervised.engines import register_all_engines
+                from models.supervised.registry import get_engine
 
-                    generated = 0
-                    for i in range(min(count, len(ok_imgs))):
-                        engine.load_template(ok_imgs[i % len(ok_imgs)])
-                        if flaw_imgs:
-                            engine.load_defect(flaw_imgs[i % len(flaw_imgs)])
-                        result = engine.infer(None)
-                        if hasattr(result, "extra") and isinstance(result.extra, dict):
-                            for k, v in result.extra.items():
-                                if k == "image":
-                                    import torch
-                                    out_path = os.path.join(out_dir, f"synthetic_{i:04d}.png")
-                                    if hasattr(v, "save"):
-                                        v.save(out_path)
-                                    elif hasattr(v, "cpu"):
-                                        from torchvision.utils import save_image
-                                        save_image(v.cpu(), out_path)
-                                    generated += 1
-                        # 更新进度
-                        pct = int((i + 1) / count * 100)
-                        invoke_main(self, "_progress_slot", pct)
+                register_all_engines()
+                engine = get_engine(TaskType.SGAN)
 
-                    self._on_done(generated)
-                    return
-                except (ImportError, RuntimeError, OSError):
-                    import logging
-                    logging.getLogger(__name__).exception("GAN 引擎不可用，回退到模拟生成")
+                # 缺陷库 = 真实缺陷图目录；目录无效 → SupervisedEngineError → 失败提示
+                engine.load(flaw_database=flaw_dir, device="cpu")
 
-                # 回退：模拟生成（复制 OK 图像作为占位）
-                import shutil
-                img_exts = (".jpg", ".png", ".bmp")
                 ok_imgs = [
                     os.path.join(r, f)
                     for r, _, fs in os.walk(ok_dir)
-                    for f in fs if f.lower().endswith(img_exts)
+                    for f in fs if f.lower().endswith((".jpg", ".png", ".bmp"))
                 ]
+                if not ok_imgs:
+                    invoke_main(self, "_failed_slot", tr("OK 模板目录为空"))
+                    return
+
                 generated = 0
                 for i in range(min(count, len(ok_imgs))):
-                    src = ok_imgs[i % len(ok_imgs)]
-                    dst = os.path.join(out_dir, f"synthetic_{i:04d}.png")
-                    shutil.copy2(src, dst)
-                    generated += 1
+                    result = engine.infer(ok_imgs[i % len(ok_imgs)])
+                    syn = (result.extra or {}).get("synthesized_image")
+                    if syn is not None:
+                        out_path = os.path.join(out_dir, f"synthetic_{i:04d}.png")
+                        if imwrite_unicode(out_path, syn):  # 中文路径安全写图
+                            generated += 1
+                    # 更新进度
                     pct = int((i + 1) / count * 100)
                     invoke_main(self, "_progress_slot", pct)
 
                 self._on_done(generated)
 
+            except SupervisedEngineError as exc:
+                # 诚实失败：引擎/缺陷库问题 → 明确报错（W2 删除"复制占位图"假回退）
+                import logging
+                logging.getLogger(__name__).warning("缺陷生成失败: %s", exc)
+                invoke_main(self, "_failed_slot", str(exc))
             except (ImportError, RuntimeError, OSError, ValueError) as exc:
                 invoke_main(self, "_failed_slot", str(exc))
 

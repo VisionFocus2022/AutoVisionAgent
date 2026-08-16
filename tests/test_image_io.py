@@ -33,11 +33,36 @@ def cn_dir(tmp_path):
 
 @pytest.mark.unit
 def test_cv2_imread_fails_on_chinese_path_control(cn_dir):
-    """对照实验：裸 cv2.imread 在本机中文路径下返回 None（缺陷前提，zh-CN Windows 实测）。"""
+    """对照实验（子进程隔离）：无 ultralytics 的纯 cv2 进程对中文路径返回 None。
+
+    W2 发现：`import ultralytics` 会改变 cv2 全局 I/O 行为（本会话实测：
+    裸进程/仅 anomalib → None；import ultralytics 后 → 可读）。因此对照必须
+    在子进程里跑，避免同会话中引擎测试先导入 ultralytics 而污染对照。
+    imread_unicode 在两种状态下都正确，生产修复不依赖本对照。
+    """
+    import json
+    import os
+    import subprocess
+    import sys
+
     p = cn_dir / "图像文件.png"
     _write_png(p)
-    assert p.exists() and p.stat().st_size > 0
-    assert cv2.imread(str(p)) is None, "若本断言失败说明该环境 imread 已支持中文路径，P2-5 前提需复核"
+
+    code = (
+        "import json; import cv2; "
+        f"print(json.dumps(cv2.imread(r'{p}') is None))"
+    )
+    env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True, encoding="utf-8", env=env,
+    )
+    assert proc.returncode == 0, proc.stderr
+    imread_is_none = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert imread_is_none is True, (
+        "纯 cv2 子进程读中文路径成功——该环境 imread 已原生支持 Unicode，"
+        "P2-5 前提需复核（注意：本断言在无 ultralytics 的子进程内执行）"
+    )
 
 
 @pytest.mark.unit

@@ -72,7 +72,11 @@ def test_train_page_combo_all_9_det_first(qapp):
     combo = page.cmb_task
     assert combo.count() == 9
     assert combo.itemData(0) is TaskType.DET
-    assert "模拟" in combo.itemText(0)  # det 引擎缺失 → 标注
+    # W2 移植引擎后 det 已可用 → 无"模拟"标注；缺引擎时须有标注（两种状态都正确）
+    if _registry().has(TaskType.DET):
+        assert "模拟" not in combo.itemText(0)
+    else:
+        assert "模拟" in combo.itemText(0)
 
 
 @pytest.mark.unit

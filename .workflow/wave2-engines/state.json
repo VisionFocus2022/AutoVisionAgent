@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "change_id": "wave2-engines",
+  "title": "第二波：移植3引擎+sgan/super真化+flaw_gen修复",
+  "created_at": "2026-08-16T11:43:47.965019+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'根据你建议，实施第二波从兄弟树移植 det_yolo/seg_yolo/abdet_anomalib（10 红变绿）+ sgan_blend/super_cv2 真化 + flaw_gen TypeError 修复'；PRD=docs/prd-wave2-engines.md"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'根据你建议，实施第二波从兄弟树移植 det_yolo/seg_yolo/abdet_anomalib（10 红变绿）+ sgan_blend/super_cv2 真化 + flaw_gen TypeError 修复'；'实施'即执行授权；任务表=docs/tasks-wave2-engines.md"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave2-engines.md",
+    "design": "",
+    "tasks": "docs/tasks-wave2-engines.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005",
+      "FR-006"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-001",
+          "FR-003",
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004",
+          "FR-005",
+          "FR-006"
+        ]
+      },
+      {
+        "id": "AC-004",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-005",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-006",
+        "requirements": [
+          "FR-006"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-002"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-002"
+        ],
+        "acceptance": [
+          "AC-001"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-002"
+        ]
+      },
+      {
+        "id": "TASK-004",
+        "requirements": [
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-002",
+          "AC-003",
+          "AC-004"
+        ]
+      },
+      {
+        "id": "TASK-005",
+        "requirements": [
+          "FR-005"
+        ],
+        "acceptance": [
+          "AC-003",
+          "AC-005"
+        ]
+      },
+      {
+        "id": "TASK-006",
+        "requirements": [
+          "FR-006"
+        ],
+        "acceptance": [
+          "AC-003",
+          "AC-006"
+        ]
+      },
+      {
+        "id": "TASK-007",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004",
+          "FR-005",
+          "FR-006"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-002",
+          "AC-003",
+          "AC-004",
+          "AC-005",
+          "AC-006"
+        ]
+      }
+    ]
+  },
+  "verification": [],
+  "risks_open": [],
+  "deviations": [],
+  "request_evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'根据你建议，实施第二波从兄弟树移植 det_yolo/seg_yolo/abdet_anomalib（10 红变绿）+ sgan_blend/super_cv2 真化 + flaw_gen TypeError 修复'",
+  "final_summary": "",
+  "status": "in_progress"
+}

@@ -26,13 +26,16 @@ a = Analysis(
         "PySide6.QtCore",
         "PySide6.QtGui",
         "PySide6.QtWidgets",
-        # 引擎惰性加载（仅注册已实现的引擎模块）
+        # 引擎惰性加载（W2: 9 引擎全实装——det/seg/abdet 移植 + sgan/super 真化）
+        "models.supervised.engines.abdet_anomalib",
         "models.supervised.engines.cls_torchvision",
+        "models.supervised.engines.det_yolo",
         "models.supervised.engines.pose_yolo",
         "models.supervised.engines.pseg_yolo",
+        "models.supervised.engines.seg_yolo",
+        "models.supervised.engines.sgan_blend",
         "models.supervised.engines.sseg_mmseg",
-        "models.supervised.engines.sgan_mmedit",
-        "models.supervised.engines.super_mmedit",
+        "models.supervised.engines.super_cv2",
         # 标注子系统（仅注册已实现的模块）
         "labeling.sam_adapter",
         "labeling.batch_tools",

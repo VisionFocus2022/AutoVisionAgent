@@ -17,9 +17,9 @@ from core.interfaces_supervised import TaskType
 from models.supervised.engines.cls_torchvision import ClsTorchvisionEngine
 from models.supervised.engines.pose_yolo import PoseYoloEngine
 from models.supervised.engines.pseg_yolo import PsegYoloEngine
-from models.supervised.engines.sgan_mmedit import SganMmeditEngine
+from models.supervised.engines.sgan_blend import SganBlendEngine
 from models.supervised.engines.sseg_mmseg import SsegMmsegEngine
-from models.supervised.engines.super_mmedit import SuperMmeditEngine
+from models.supervised.engines.super_cv2 import SuperCv2Engine
 
 _DUMMY_IMG = "dummy_input_placeholder"
 
@@ -29,8 +29,8 @@ _M2_ENGINES = [
     (PoseYoloEngine, TaskType.POSE),
     (PsegYoloEngine, TaskType.PSEG),
     (SsegMmsegEngine, TaskType.SSEG),
-    (SganMmeditEngine, TaskType.SGAN),
-    (SuperMmeditEngine, TaskType.SUPER),
+    (SganBlendEngine, TaskType.SGAN),
+    (SuperCv2Engine, TaskType.SUPER),
 ]
 
 
@@ -79,13 +79,19 @@ class TestM2EngineContracts:
 
 # ---- sgan 额外方法 ---- #
 class TestSganFlawDatabase:
-    """SganMmeditEngine 特有的缺陷库设置方法。"""
+    """SganBlendEngine 特有的缺陷库设置（W2 翻转：路径不存在诚实 raise）。"""
 
-    def test_set_flaw_database(self):
-        eng = SganMmeditEngine()
-        eng.set_flaw_database("/path/to/flaws")
-        assert eng._flaw_database == "/path/to/flaws"
+    def test_set_flaw_database_real_dir(self, tmp_path):
+        eng = SganBlendEngine()
+        eng.set_flaw_database(str(tmp_path))
+        assert eng._flaw_database == str(tmp_path)
+
+    def test_set_flaw_database_missing_raises(self):
+        """W2 行为翻转：不存在的缺陷库路径不再静默存储，而是 raise。"""
+        eng = SganBlendEngine()
+        with pytest.raises(SupervisedEngineError):
+            eng.set_flaw_database("/path/to/does_not_exist")
 
     def test_flaw_database_default_none(self):
-        eng = SganMmeditEngine()
+        eng = SganBlendEngine()
         assert eng._flaw_database is None

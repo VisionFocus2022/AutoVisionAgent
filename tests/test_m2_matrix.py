@@ -18,7 +18,7 @@ from models.supervised.engines import register_all_engines
 # 全部 9 种 TaskType
 _ALL_9_TASKS = list(TaskType)
 
-# 预期引擎类名（register_all_engines 后）
+# 预期引擎类名（register_all_engines 后；W2: sgan/super 真化换名）
 _EXPECTED_ENGINE_NAMES = {
     TaskType.CLS: "ClsTorchvisionEngine",
     TaskType.DET: "DetYoloEngine",
@@ -27,8 +27,8 @@ _EXPECTED_ENGINE_NAMES = {
     TaskType.POSE: "PoseYoloEngine",
     TaskType.SSEG: "SsegMmsegEngine",
     TaskType.ABDET: "AbdetAnomalibEngine",
-    TaskType.SGAN: "SganMmeditEngine",
-    TaskType.SUPER: "SuperMmeditEngine",
+    TaskType.SGAN: "SganBlendEngine",
+    TaskType.SUPER: "SuperCv2Engine",
 }
 
 

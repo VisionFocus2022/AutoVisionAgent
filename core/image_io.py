@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Optional
 
 
@@ -48,4 +49,31 @@ def imread_unicode(path: "str | Any", flags: "int | None" = None) -> Optional[An
         return None
 
 
-__all__ = ["imread_unicode"]
+def imwrite_unicode(path: "str | Any", img: Any, ext: str = ".png") -> bool:
+    """中文路径安全写图（与 cv2.imwrite 契约对齐：成功返回 bool）。
+
+    Args:
+        path: 目标路径（str / Path）。扩展名缺失时追加 ``ext``。
+        img: numpy 数组（BGR 语义，与 cv2.imwrite 一致）。
+        ext: path 无扩展名时使用的默认扩展名。
+
+    Returns:
+        是否写入成功。
+    """
+    p = str(path)
+    if not os.path.splitext(p)[1]:
+        p += ext
+    try:
+        import cv2
+        import numpy as np
+
+        ok, buf = cv2.imencode(os.path.splitext(p)[1] or ".png", np.asarray(img))
+        if not ok:
+            return False
+        buf.tofile(p)
+        return True
+    except Exception:  # noqa: BLE001 —— 与 cv2.imwrite 契约对齐：失败返回 False
+        return False
+
+
+__all__ = ["imread_unicode", "imwrite_unicode"]

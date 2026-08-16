@@ -39,7 +39,8 @@ class TestEngineRegistration:
             "cls", "det", "seg", "pseg", "pose",
             "sseg", "abdet", "sgan", "super",
         }
-        registered = set(reg.list())
+        # reg.list() 返回 TaskType 枚举成员，取 .value 后再与字符串集合比较
+        registered = {t.value for t in reg.list()}
         missing = expected - registered
         assert not missing, f"缺失引擎: {missing}"
 
