@@ -234,11 +234,12 @@ class ProjectPage(QWidget):
             if pid.to_dirname() not in shown:
                 self._add_project_item(pid)
 
-        # 更新计数器
+        # 更新计数器（snapshot 键是任务值字符串如 "det"，非枚举——W9 修复
+        # 此前用枚举查询恒得 0，面板从未显示过真实计数）
         if self._store._counter:
             snapshot = self._store._counter.snapshot()
             for task, lbl in self._counter_labels.items():
-                lbl.setText(str(snapshot.get(task, 0)))
+                lbl.setText(str(snapshot.get(task.value, 0)))
 
         self.status_changed.emit(tr("就绪"), f"{len(projects)} {tr('个项目')}")
 

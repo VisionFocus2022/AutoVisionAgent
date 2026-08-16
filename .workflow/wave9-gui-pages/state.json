@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "change_id": "wave9-gui-pages",
+  "title": "第九波：label/main/data_manage/train/project 页覆盖填洼 + 棘轮推进",
+  "created_at": "2026-08-16T23:05:15.751598+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "测试补齐 + 4 处小修复（numpy 真值/异常收编/计数器键型/QImage 线程安全）：全部可逆、失败测试即可见；组合覆盖率不得低于旧地板 76（棘轮只升不降）。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：实施下一波候选。候选清单为 W8 终态在 pytest.ini 注释与交付总结中明示：label 页 55%（最大绝对洼地）、gui/main 48%、data_manage/train/project 65-66%。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（'实施下一波候选'即对已明示清单的执行授权）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave9-gui-pages.md",
+    "design": "",
+    "tasks": "docs/tasks-wave9-gui-pages.md"
+  },
+  "traceability": {
+    "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006"],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-002"]},
+      {"id": "AC-003", "requirements": ["FR-003"]},
+      {"id": "AC-004", "requirements": ["FR-004"]},
+      {"id": "AC-005", "requirements": ["FR-005"]},
+      {"id": "AC-006", "requirements": ["FR-006"]}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-002", "requirements": ["FR-002"], "acceptance": ["AC-002"]},
+      {"id": "TASK-003", "requirements": ["FR-003"], "acceptance": ["AC-003"]},
+      {"id": "TASK-004", "requirements": ["FR-004", "FR-005"], "acceptance": ["AC-004", "AC-005"]},
+      {"id": "TASK-005", "requirements": ["FR-006"], "acceptance": ["AC-006"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001 label 页（AC-001）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_label_page.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "19 passed。覆盖 55%→89%：文件夹递归加载/>500 上限/空目录/坏图、单图与取消、导航边界、五模式+dragMode+SAM 无权重警告、标签同步、撤销重做/删除/复制粘贴偏移、保存三态+600ms 自动切图（QTest 真实定时器）、run_ai_prelabel DET 引擎与零样本双路径。顺带修 2 个真 bug：① run_ai_prelabel `if result.boxes` numpy 真值崩溃——有监督引擎路径的 AI 预标注从未工作过（ValueError 被吞后总掉零样本回退，RED 复现锚定）；② 保存 IO 失败时 save_labelme 包装的 AnnotationIOError(AppError) 不在 except 元组内、裸穿 Qt 槽——已收编。"
+    },
+    {
+      "name": "TASK-002 data_manage 页（AC-002）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_datamanage_page.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "19 passed。覆盖 65%→95%：目录定位与回退、刷新统计（含 >200 分页）、_run_worker 成败两路、划分三闸门+确认框 No/Yes（copy 模式 T2/V0/T0 落盘）、导入复制、标注统计（有数据/空目录）、替换/删除标签（QInputDialog 注入+取消）、翻转（数值断言）/切割（含格式错误）、YOLO/COCO 导出真实落盘、缩略图回调。"
+    },
+    {
+      "name": "TASK-003 train 页+worker（AC-003）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_train_page.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "13 passed。train/page 65%→94%、train/worker 62%→100%：四预设字段、_build_config 全 12 字段、运行中拒绝重启、训练器构建失败显式报错、FakeWorker 信号注入驱动的进度→图表/进度条/完成/失败三回调、_make_trainer 三分支（EngineTrainStrategy/无 train_epoch 警告/未注册警告，GenericTrainer 打桩捕获策略）、EngineTrainStrategy dict/float/save/get_optimizer 三分支（含真 SGD 构建）、TrainWorker 真实 Qt 信号直调 run（进度/产物/异常/stop 置位）。"
+    },
+    {
+      "name": "TASK-004 project/home/settings/main/thumbnail（AC-004/005）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_misc_pages.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "16 passed。project 66%→93%（创建→列表(★)→打开信号→删除 No/Yes；计数器面板、存储根切换）、home 72%→92%（卡片/最近项目空与有/检测历史三态/快捷导航）、settings 73%→90%（全键恢复/坏 JSON/路径选择/全字段保存）、gui/main 48%→83%（build_window 离屏 11 页组装+项目打开→仪表盘联动+setup_logging 落盘并清理 root handlers）、ThumbnailTask QImage 成功/失败信号。修复 2 处：① 计数器面板 snapshot 键为字符串而页面用枚举查询——面板自实装以来恒显 0（RED 锚定后修 task.value）；② ThumbnailTask.run 在 QThreadPool 工作线程构造 QPixmap（Qt 契约仅主线程）——改 QImage 线程内解码+主线程转 QIcon，信号类型同步（label/data_manage 两页回调跟随）。"
+    },
+    {
+      "name": "TASK-005 门禁全量 + 棘轮（AC-006）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "507 passed / 0 failed / 2 skipped，rc=0；覆盖率 82.95%（8038 语句/1371 未覆盖）≥ fail-under=82（自 W8 的 76 升门；gui 各页全部 ≥85%：label 89/data_manage 95/train 94/project 93/settings 90/login 92/eval 98/deploy 99/flaw_gen 90/home 92/main 83/predict 85）。"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "真 bug 修复超出纯覆盖范围（TDD RED 优先原则）：本波共修 4 处——run_ai_prelabel numpy 真值（AI 预标注引擎路径从未工作）、label 页保存 AnnotationIOError 裸穿 Qt 槽、project 页计数器枚举/字符串键型错配（面板恒 0）、ThumbnailTask QPixmap 跨线程违例（P1-3 家族镜像问题，改 QImage）。均为 RED 测试先证明后修复。",
+    "SAM 已加载权重路径（_ensure_sam 选真 ckpt → adapter.load → _warm_sam → attach_interactive）未覆盖：需真 SAM 权重文件，保留给 UIA 真窗/带权重环境；本波覆盖依赖缺失与无权重两条诚实警告路径。",
+    "openpyxl 仍缺装（同 W8）：predict 页真 xlsx 分支测试持续 skip，CSV 回退已测。"
+  ],
+  "request_evidence": "用户原话（2026-08-17）：'实施下一波候选'（候选=W8 交付总结与 pytest.ini 注释明示的 label 55%/main 48%/data_manage·train·project 65-66%）",
+  "final_summary": "第九波完成：候选五页+组件全部填平——label 55→89%、data_manage 65→95%、train 页 65→94%（worker 62→100%）、project 66→93%、home 72→92%、settings 73→90%、gui/main 48→83%（67 个新测试）。TDD RED 揪出并修复 4 个真 bug：AI 预标注引擎路径 numpy 真值崩溃（该路径从未工作）、label 页保存 IO 失败 AnnotationIOError 裸穿 Qt 槽、project 页任务计数器面板枚举/字符串键型错配（恒显 0）、ThumbnailTask 在工作线程构造 QPixmap（Qt 线程契约违例，改 QImage+主线程转 QIcon）。门禁：507 passed / 0 failed / 2 skipped，rc=0；组合覆盖 82.95%，棘轮 76→82。剩余尾巴：shell 83%、tasks_ui 82%、predict 85%（openpyxl 分支）、SAM 带权重路径（需真 ckpt，留 UIA/真机）。",
+  "status": "complete"
+}

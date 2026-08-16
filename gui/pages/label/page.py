@@ -9,7 +9,7 @@ import threading
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, QTimer, Slot
-from PySide6.QtGui import QKeySequence, QShortcut, QPixmap, QIcon
+from PySide6.QtGui import QKeySequence, QShortcut, QPixmap, QIcon, QImage
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsView,
@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from labeling import AnnotationMode, Shape, save_labelme
+from core.exceptions import AnnotationIOError
 from labeling.canvas import AnnotationCanvas
 from labeling.controller import AnnotationController
 from gui.core.i18n import tr
@@ -61,7 +62,8 @@ def run_ai_prelabel(image_path: str) -> List:
             img = imread_unicode(image_path)
             if img is not None:
                 result = engine.infer(img)
-                if result.boxes:
+                # 真引擎 boxes 是 numpy 数组——不得做真值判断（歧义异常，W9 修复）
+                if result.boxes is not None and len(result.boxes) > 0:
                     label = result.labels[0] if result.labels else "defect"
                     return [
                         Shape(
@@ -466,11 +468,11 @@ class LabelPage(QWidget):
             tr("已加载"), f"{len(images)} {tr('张')}"
         )
 
-    def _on_thumbnail_loaded(self, path: str, icon: QIcon) -> None:
-        """R5-5: 缩略图异步加载回调。"""
+    def _on_thumbnail_loaded(self, path: str, image: QImage) -> None:
+        """R5-5: 缩略图异步加载回调（W9: QImage 主线程转 QIcon）。"""
         item = self._thumb_items.get(path)
         if item is not None:
-            item.setIcon(icon)
+            item.setIcon(QIcon(QPixmap.fromImage(image)))
 
     def open_image(self) -> None:
         """打开单张图像（原有功能保留）。"""
@@ -717,7 +719,9 @@ class LabelPage(QWidget):
         w, h = self.canvas.image_size
         try:
             save_labelme(path, shapes, self._image_path or "", h, w)
-        except (OSError, ValueError, TypeError) as exc:
+        except (OSError, ValueError, TypeError, AnnotationIOError) as exc:
+            # AnnotationIOError 必收：save_labelme 把 IO/解析错误包成
+            # AppError 子类（非 OSError）——漏收则裸穿 Qt 槽（W9 实测）
             self.status_changed.emit(str(exc), "ERROR")
             return
         self.status_changed.emit(tr("已保存"), f"{len(shapes)} {tr('标注数')}")

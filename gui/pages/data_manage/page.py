@@ -10,7 +10,7 @@ import threading
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, Slot
-from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtGui import QPixmap, QIcon, QImage
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -427,11 +427,11 @@ class DataManagePage(QWidget):
         self._update_stats(len(images), ann_count, {})
         self.status_changed.emit(tr("就绪"), f"{len(images)} {tr('张')}")
 
-    def _on_thumbnail_loaded(self, path: str, icon: QIcon) -> None:
-        """R5-5: 缩略图异步加载回调。"""
+    def _on_thumbnail_loaded(self, path: str, image: QImage) -> None:
+        """R5-5: 缩略图异步加载回调（W9: QImage 主线程转 QIcon）。"""
         item = self._thumb_items.get(path)
         if item is not None:
-            item.setIcon(icon)
+            item.setIcon(QIcon(QPixmap.fromImage(image)))
 
     def _update_stats(
         self, total: int, annotated: int, classes: Dict[str, int]
