@@ -63,3 +63,7 @@ htmlcov/
 
 # CodeGraph 索引（可重建）
 .codegraph/
+
+# .NET 构建产物
+serving/dotnet_client/obj/
+serving/dotnet_client/bin/

@@ -1,2 +1,0 @@
-obj\Debug\net8.0/Autovisionagent.cs \
-obj\Debug\net8.0/AutovisionagentGrpc.cs: ../../serving/proto/autovisionagent.proto
