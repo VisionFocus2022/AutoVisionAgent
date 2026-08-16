@@ -146,8 +146,12 @@ class SharedMemoryManager:
         name = f"ava_{uuid.uuid4().hex}.bin"
         path = str(self._base_dir / name)
 
-        # 创建文件并预占空间
-        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o600)
+        # 创建文件并预占空间（Windows 必须显式 O_BINARY：缺省文本模式会把
+        # 二进制流中的 0x0A 翻译成 0x0D 0x0A，静默破坏数组数据——W3-T4 测试实测）
+        flags = os.O_RDWR | os.O_CREAT | os.O_TRUNC
+        if hasattr(os, "O_BINARY"):
+            flags |= os.O_BINARY
+        fd = os.open(path, flags, 0o600)
         try:
             os.write(fd, raw)
             os.fsync(fd)

@@ -22,18 +22,4 @@ warn_unused_configs = true
 ignore_missing_imports = true
 exclude = ["tests/", "build/", "dist/"]
 
-[tool.pytest.ini_options]
-minversion = "7.0"
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short"
-markers = [
-    "unit: 单元测试（快速、无外部依赖）",
-    "e2e: 端到端测试（可能需要 GPU / 模型权重）",
-]
-filterwarnings = [
-    "ignore::DeprecationWarning",
-    "ignore::PendingDeprecationWarning",
-]
+# pytest 配置已收敛至 pytest.ini（W3-T4 单一真源：覆盖率门禁 + uia 排除 + 标记注册）
