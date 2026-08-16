@@ -1,7 +1,13 @@
-"""线程桥接公共辅助（R4-14）。
+"""线程桥接公共辅助（R4-14；W3-T3 修复 PySide6 类型映射）。
 
 统一封装 QMetaObject.invokeMethod 调用，
 消除 13+ 处重复的 import + Q_ARG + invokeMethod 模式。
+
+W3-T3 修复：旧版用 ``eval(类型名字符串)`` 解析 Qt 元类型——str 载荷映射到
+"QString"（PySide6 已移除）→ NameError，回退导入 QVariant 亦不存在 →
+ImportError，即带 str 的跨线程调用在 PySide6 下必崩（T3 测试实测复现）。
+现改为显式映射表直传 Python 原生类型；dict/list 走 QVariantMap/QVariantList
+（实验实测经 @Slot(dict)/@Slot(list) 槽可靠回传）。
 """
 from __future__ import annotations
 
@@ -10,12 +16,12 @@ from typing import Any
 from PySide6.QtCore import QMetaObject, Qt as _Qt, Q_ARG, QObject
 
 
-# Python 类型 → Qt 元类型名称映射
+# Python 类型 → Q_ARG 类型（原生类型直传；容器走 Qt 元类型名）
 _TYPE_MAP = {
-    int: "int",
-    float: "double",
-    str: "QString",
-    bool: "bool",
+    int: int,
+    float: float,
+    str: str,
+    bool: bool,
     dict: "QVariantMap",
     list: "QVariantList",
 }
@@ -23,13 +29,13 @@ _TYPE_MAP = {
 
 def _to_qarg(value: Any) -> Any:
     """将 Python 值转换为 Q_ARG 参数。"""
-    type_name = _TYPE_MAP.get(type(value), "QVariant")
-    try:
-        return Q_ARG(type_name if isinstance(type_name, type) else eval(type_name), value)  # type: ignore[arg-type]
-    except Exception:
-        # 回退：使用 QVariant
-        from PySide6.QtCore import QVariant
-        return Q_ARG(QVariant, QVariant(value))
+    qtype = _TYPE_MAP.get(type(value))
+    if qtype is None:
+        raise TypeError(
+            f"invoke_main 不支持 {type(value).__name__} 载荷；"
+            "重对象请改用页面暂存属性 + 原语唤起模式"
+        )
+    return Q_ARG(qtype, value)
 
 
 def invoke_main(widget: QObject, slot_name: str, *args: Any) -> None:

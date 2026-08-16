@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import threading
 import time
 from typing import Any, List, Optional
 
@@ -253,7 +254,7 @@ class PredictPage(QWidget):
             self.status_changed.emit(tr("模型加载失败"), str(exc)[:40])
 
     def _single_infer(self) -> None:
-        """单张推理。"""
+        """单张推理（W3-T3: 推理移出 UI 线程，结果经 invoke_main 回主线程）。"""
         if not self._engine:
             self.status_changed.emit(tr("请先加载模型"), "!")
             return
@@ -264,42 +265,67 @@ class PredictPage(QWidget):
         if not path:
             return
 
-        try:
-            from core.image_io import imread_unicode
-            img = imread_unicode(path)
-            if img is None:
-                self.status_changed.emit(tr("图像读取失败"), "!")
-                return
-            result: DetectionResult = self._engine.infer(img)
+        self.btn_single.setEnabled(False)
+        self.btn_single.setText(tr("推理中..."))
+        self._pending_single = None
 
-            # 在预览区显示原图 + 叠加检测框
-            self._show_result(path, result)
-            self._add_result_row(path, result)
-            self.status_changed.emit(
-                os.path.basename(path),
-                f"{tr('分数')}: {result.score or 0:.3f}",
-            )
-
-            # R4-6: 记录审计日志 + 检测历史
+        def _work():
             try:
-                from core.audit_logger import log_detection_complete
-                from core.detection_history import get_history
-                _task = self.cmb_task.currentData() or "det"
-                _count = len(result.boxes) if result.boxes else 0
-                _score = result.score if result.score else 0.0
-                log_detection_complete(
-                    task=_task, image=path, result_count=_count,
-                )
-                get_history().add_record(
-                    task=_task,
-                    image_path=path,
-                    result_count=_count,
-                    score_avg=_score,
-                )
-            except Exception:
-                pass  # 审计日志失败不影响推理
-        except (RuntimeError, OSError, ValueError) as exc:
-            self.status_changed.emit(tr("推理失败"), str(exc)[:40])
+                from core.exceptions import SupervisedEngineError
+                from core.image_io import imread_unicode
+                img = imread_unicode(path)
+                if img is None:
+                    invoke_main(self, "_single_failed", tr("图像读取失败"))
+                    return
+                result: DetectionResult = self._engine.infer(img)
+                score = float(result.score) if result.score else 0.0
+                self._pending_single = (path, result)
+                invoke_main(self, "_single_done", os.path.basename(path), score)
+            except (RuntimeError, OSError, ValueError,
+                    SupervisedEngineError) as exc:
+                invoke_main(self, "_single_failed", str(exc)[:40])
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    @Slot(str, float)
+    def _single_done(self, basename: str, score: float) -> None:
+        """槽：单张推理完成（主线程）——显示结果/记录行/审计。"""
+        self.btn_single.setEnabled(True)
+        self.btn_single.setText(tr("单张推理"))
+        if self._pending_single is None:
+            return
+        path, result = self._pending_single
+        self._pending_single = None
+
+        # 在预览区显示原图 + 叠加检测框
+        self._show_result(path, result)
+        self._add_result_row(path, result)
+        self.status_changed.emit(basename, f"{tr('分数')}: {score:.3f}")
+
+        # R4-6: 记录审计日志 + 检测历史
+        try:
+            from core.audit_logger import log_detection_complete
+            from core.detection_history import get_history
+            _task = self.cmb_task.currentData() or "det"
+            _count = len(result.boxes) if result.boxes else 0
+            log_detection_complete(
+                task=_task, image=path, result_count=_count,
+            )
+            get_history().add_record(
+                task=_task,
+                image_path=path,
+                result_count=_count,
+                score_avg=score,
+            )
+        except Exception:
+            pass  # 审计日志失败不影响推理
+
+    @Slot(str)
+    def _single_failed(self, err: str) -> None:
+        """槽：单张推理失败（主线程）。"""
+        self.btn_single.setEnabled(True)
+        self.btn_single.setText(tr("单张推理"))
+        self.status_changed.emit(tr("推理失败"), err)
 
     def _batch_infer(self) -> None:
         """批量推理（后台线程执行，避免 UI 冻结）。"""

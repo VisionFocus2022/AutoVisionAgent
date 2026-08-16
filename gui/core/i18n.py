@@ -413,6 +413,9 @@ _EN_US: Dict[str, str] = {
     "张更多（仅加载前500张缩略图）": " more (only first 500 thumbnails loaded)",
     "路径不安全，拒绝删除": "Unsafe path; deletion refused",
     "OK 模板目录为空": "OK template directory is empty",
+
+    # ---- W3 新增（主线程迁移：worker 失败提示） ----
+    "操作失败": "Operation Failed",
 }
 
 

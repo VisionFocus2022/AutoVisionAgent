@@ -5,9 +5,10 @@
 from __future__ import annotations
 
 import os
+import threading
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, QTimer
+from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, QTimer, Slot
 from PySide6.QtGui import QKeySequence, QShortcut, QPixmap, QIcon
 from PySide6.QtWidgets import (
     QFrame,
@@ -23,10 +24,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from labeling import AnnotationMode, save_labelme
+from labeling import AnnotationMode, Shape, save_labelme
 from labeling.canvas import AnnotationCanvas
 from labeling.controller import AnnotationController
 from gui.core.i18n import tr
+from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
 
@@ -40,6 +42,90 @@ _MODES = [
     (AnnotationMode.KEYPOINT, "关键点", "K"),
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
 ]
+
+
+def run_ai_prelabel(image_path: str) -> List:
+    """AI 预标注纯工作函数（W3-T3 自 _ai_prelabel 抽出，无 Qt 依赖）。
+
+    优先用已注册的 DET 引擎推理；否则走零样本 dispatcher 桥。
+    返回 Shape 列表（可能为空）。
+    """
+    # 尝试获取已注册的检测引擎
+    try:
+        from models.supervised.registry import get_default_registry
+        from core.interfaces_supervised import TaskType
+        reg = get_default_registry()
+        if reg.has(TaskType.DET):
+            engine = reg.get(TaskType.DET)
+            from core.image_io import imread_unicode
+            img = imread_unicode(image_path)
+            if img is not None:
+                result = engine.infer(img)
+                if result.boxes:
+                    label = result.labels[0] if result.labels else "defect"
+                    return [
+                        Shape(
+                            AnnotationMode.RECTANGLE,
+                            ((float(box[0]), float(box[1])),
+                             (float(box[2]), float(box[3]))),
+                            label=label,
+                        )
+                        for box in result.boxes
+                    ]
+    except (ImportError, RuntimeError, OSError, ValueError):
+        import logging
+        logging.getLogger(__name__).exception("引擎 AI 预标注失败")
+
+    # 零样本回退：dispatcher 桥 + AutoLabeler
+    try:
+        from labeling.modes.auto import AutoLabeler
+
+        def _zero_shot_callback(image_ndarray):
+            try:
+                from industrial_vision_platform.vision_dispatcher import get_dispatcher
+                dispatcher = get_dispatcher()
+                result = dispatcher.infer("abdet", image_ndarray)
+                shapes = []
+                if result and result.boxes is not None:
+                    import numpy as _np
+                    boxes = _np.asarray(result.boxes)
+                    for i, box in enumerate(boxes):
+                        x1, y1, x2, y2 = box[:4]
+                        s = result.scores[i] if i < len(result.scores) else result.score
+                        shapes.append(
+                            Shape(
+                                AnnotationMode.RECTANGLE,
+                                ((float(x1), float(y1)), (float(x2), float(y2))),
+                                label=result.labels[i] if i < len(result.labels) else "defect",
+                            )
+                        )
+                return shapes
+            except (ImportError, RuntimeError, OSError, ValueError):
+                import logging
+                logging.getLogger(__name__).exception("零样本检测回调失败")
+                return []
+
+        from core.image_io import imread_unicode
+        img = imread_unicode(image_path)
+        if img is None:
+            return []
+
+        labeler = AutoLabeler(
+            label="defect",
+            detector=_zero_shot_callback,
+            image=img,
+        )
+        count = labeler.run()
+        shapes = []
+        for _ in range(count):
+            s = labeler.commit()
+            if s is not None:
+                shapes.append(s)
+        return shapes
+    except (ImportError, RuntimeError, OSError, ValueError):
+        import logging
+        logging.getLogger(__name__).exception("零样本 AI 预标注失败")
+        return []
 
 
 class _ZoomableView(QGraphicsView):
@@ -450,95 +536,35 @@ class LabelPage(QWidget):
         """AI 自动预标注（快捷键 W）。
 
         对标 SKolpha：加载预训练模型推理 -> 自动生成标注 -> 人工修正。
-        若有已加载的有监督引擎则调用；否则提示用户先加载模型。
+        W3-T3: 推理移出 UI 线程，完成后经 invoke_main 回主线程落形状。
         """
         if not self._image_path:
             self.status_changed.emit(tr("请先打开图像"), "!")
             return
+        self.btn_ai_prelabel.setEnabled(False)
+        self._pending_prelabel = []
 
-        # 尝试获取已注册的检测引擎
-        try:
-            from models.supervised.registry import get_default_registry
-            from core.interfaces_supervised import TaskType
-            reg = get_default_registry()
-            if reg.has(TaskType.DET):
-                engine = reg.get(TaskType.DET)
-                from core.image_io import imread_unicode
-                img = imread_unicode(self._image_path)
-                if img is not None:
-                    result = engine.infer(img)
-                    if result.boxes:
-                        from labeling import AnnotationMode
-                        for box in result.boxes:
-                            x1, y1, x2, y2 = box[:4]
-                            points = [(x1, y1), (x2, y2)]
-                            self.canvas.add_shape(
-                                mode=AnnotationMode.RECTANGLE,
-                                label=result.labels[0] if result.labels else "defect",
-                                points=points,
-                            )
-                        self.status_changed.emit(
-                            tr("AI预标注完成"), f"{len(result.boxes)} {tr('框')}"
-                        )
-                        return
-        except (ImportError, RuntimeError, OSError, ValueError):
-            import logging
-            logging.getLogger(__name__).exception("引擎 AI 预标注失败")
-        try:
-            from labeling.modes.auto import AutoLabeler
-            from labeling.base import AnnotationMode as _AM
+        def _work():
+            try:
+                shapes = run_ai_prelabel(self._image_path)
+            except (ImportError, RuntimeError, OSError, ValueError):
+                import logging
+                logging.getLogger(__name__).exception("AI 预标注失败")
+                shapes = []
+            self._pending_prelabel = shapes
+            invoke_main(self, "_prelabel_done", len(shapes))
 
-            # 构造零样本检测回调：封装零样本检测器 → Shape 列表
-            def _zero_shot_callback(image_ndarray):
-                try:
-                    from industrial_vision_platform.vision_dispatcher import get_dispatcher
-                    dispatcher = get_dispatcher()
-                    result = dispatcher.infer("abdet", image_ndarray)
-                    shapes = []
-                    if result and result.boxes is not None:
-                        import numpy as _np
-                        boxes = _np.asarray(result.boxes)
-                        for i, box in enumerate(boxes):
-                            x1, y1, x2, y2 = box[:4]
-                            s = result.scores[i] if i < len(result.scores) else result.score
-                            shapes.append(
-                                __import__("labeling.base", fromlist=["Shape"]).Shape(
-                                    mode=_AM.RECTANGLE,
-                                    label=result.labels[i] if i < len(result.labels) else "defect",
-                                    points=((float(x1), float(y1)), (float(x2), float(y2))),
-                                )
-                            )
-                    return shapes
-                except (ImportError, RuntimeError, OSError, ValueError):
-                    import logging
-                    logging.getLogger(__name__).exception("零样本检测回调失败")
-                    return []
+        threading.Thread(target=_work, daemon=True).start()
 
-            # 读取图像为 ndarray（W1: 中文路径安全）
-            from core.image_io import imread_unicode
-            img = imread_unicode(self._image_path)
-            if img is None:
-                self.status_changed.emit(tr("图像读取失败"), self._image_path)
-                return
-
-            labeler = AutoLabeler(
-                label="defect",
-                detector=_zero_shot_callback,
-                image=img,
-            )
-            count = labeler.run()
-            if count > 0:
-                for _ in range(count):
-                    s = labeler.commit()
-                    if s is not None:
-                        self.canvas.add_shape(mode=s.mode, label=s.label, points=list(s.points))
-                self.status_changed.emit(
-                    tr("AI预标注完成"), f"{count} {tr('标注数')}"
-                )
-                return
-        except (ImportError, RuntimeError, OSError, ValueError):
-            import logging
-            logging.getLogger(__name__).exception("零样本 AI 预标注失败")
+    @Slot(int)
+    def _prelabel_done(self, count: int) -> None:
+        """槽：预标注完成（主线程）——落形状并恢复按钮。"""
+        self.btn_ai_prelabel.setEnabled(True)
+        for s in self._pending_prelabel or []:
+            self.canvas.add_shape(mode=s.mode, label=s.label, points=list(s.points))
+        self._pending_prelabel = []
+        if count > 0:
+            self.status_changed.emit(tr("AI预标注完成"), f"{count} {tr('标注数')}")
 
     def _toggle_shapes_visible(self) -> None:
         """显隐标注层（快捷键 Space）。"""

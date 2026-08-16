@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 import os
+import threading
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt, Signal, QSize, QThreadPool
+from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, Slot
 from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtWidgets import (
     QComboBox,
@@ -24,11 +25,22 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.i18n import tr
+from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
 
 # 支持的图像扩展名
 from core.constants import IMG_EXTS as _IMG_EXTS
+
+# 操作标识 → 完成消息标题（emit 时经 tr() 翻译，语言切换后仍正确）
+_OP_TITLES = {
+    "import": "导入完成",
+    "split": "划分完成",
+    "replace": "替换完成",
+    "delete": "删除完成",
+    "flip": "翻转完成",
+    "cut": "切割完成",
+}
 
 
 class DataManagePage(QWidget):
@@ -51,6 +63,16 @@ class DataManagePage(QWidget):
 
         self._build_ui()
         self._wire()
+
+        # W3-T3: 重活操作 → 触发按钮（worker 执行期间禁用）
+        self._op_buttons: Dict[str, QPushButton] = {
+            "import": self.btn_import,
+            "split": self.btn_split,
+            "replace": self.btn_replace,
+            "delete": self.btn_delete_lbl,
+            "flip": self.btn_flip,
+            "cut": self.btn_cut,
+        }
 
     # ============================== UI ============================== #
     def _build_ui(self) -> None:
@@ -247,7 +269,7 @@ class DataManagePage(QWidget):
         )
 
     def _import_images(self) -> None:
-        """从外部目录导入图像到当前数据目录。"""
+        """从外部目录导入图像到当前数据目录（W3-T3: worker 线程执行复制）。"""
         if not self._image_dir:
             self.status_changed.emit(tr("请先选择目录"), "!")
             return
@@ -256,23 +278,16 @@ class DataManagePage(QWidget):
         )
         if not src:
             return
-        imported = 0
-        for root, _dirs, files in os.walk(src):
-            for f in files:
-                if f.lower().endswith(_IMG_EXTS):
-                    import shutil
-                    src_f = os.path.join(root, f)
-                    dst_f = os.path.join(self._image_dir, f)
-                    if not os.path.exists(dst_f):
-                        shutil.copy2(src_f, dst_f)
-                        imported += 1
-        self._refresh()
-        self.status_changed.emit(
-            tr("导入完成"), f"{imported} {tr('张')}"
+        from gui.pages.data_manage import workers
+
+        self._run_worker(
+            "import",
+            lambda: workers.import_images(src, self._image_dir),
+            lambda n: f"{n} {tr('张')}",
         )
 
     def _split_dataset(self) -> None:
-        """在数据目录下创建 train/val/test 子目录结构（符号划分）。"""
+        """在数据目录下创建 train/val/test 子目录结构（W3-T3: worker 线程执行）。"""
         if not self._image_dir:
             self.status_changed.emit(tr("请先选择目录"), "!")
             return
@@ -286,27 +301,15 @@ class DataManagePage(QWidget):
             )
             return
 
-        import random
         base = self._image_dir
         images = [
-            os.path.join(base, f)
-            for f in os.listdir(base)
+            f for f in os.listdir(base)
             if f.lower().endswith(_IMG_EXTS)
         ]
         if not images:
             self.status_changed.emit(tr("无图像可划分"), "!")
             return
 
-        random.shuffle(images)
-        n = len(images)
-        n_train = int(n * r_train)
-        n_val = int(n * r_val)
-
-        splits = {
-            "train": images[:n_train],
-            "val": images[n_train : n_train + n_val],
-            "test": images[n_train + n_val :],
-        }
         mode = self.cmb_split_mode.currentData() or "copy"
         from PySide6.QtWidgets import QMessageBox
         _mode_desc = {
@@ -322,34 +325,53 @@ class DataManagePage(QWidget):
         )
         if reply != QMessageBox.Yes:
             return
-        import shutil
-        for split, imgs in splits.items():
-            split_dir = os.path.join(base, split)
-            os.makedirs(split_dir, exist_ok=True)
-            for img in imgs:
-                dst = os.path.join(split_dir, os.path.basename(img))
-                if os.path.exists(dst):
-                    continue
-                if mode == "copy":
-                    shutil.copy2(img, dst)
-                elif mode == "move":
-                    shutil.move(img, dst)
-                elif mode == "symlink":
-                    try:
-                        os.symlink(os.path.abspath(img), dst)
-                    except (OSError, NotImplementedError):
-                        shutil.copy2(img, dst)
-                elif mode == "list":
-                    # 仅写入文件列表，不复制
-                    list_path = os.path.join(split_dir, "file_list.txt")
-                    with open(list_path, "a", encoding="utf-8") as fh:
-                        fh.write(img + "\n")
+        from gui.pages.data_manage import workers
 
-        self._refresh()
-        self.status_changed.emit(
-            tr("划分完成"),
-            f"T{n_train}/V{n_val}/T{len(splits['test'])}",
+        self._run_worker(
+            "split",
+            lambda: workers.split_dataset(base, r_train, r_val, r_test, mode),
+            lambda t: f"T{t[0]}/V{t[1]}/T{t[2]}",
         )
+
+    # ============================== worker 基础设施（W3-T3） ============================== #
+    def _run_worker(self, op: str, work, fmt) -> None:
+        """在 worker 线程执行 work()，完成后经 invoke_main 回主线程。
+
+        Args:
+            op: 操作标识（用于恢复对应按钮与完成标题）。
+            work: 无参重活函数（worker 线程执行）。
+            fmt: 结果 → 状态栏消息的格式化函数。
+        """
+        btn = self._op_buttons.get(op)
+        if btn is not None:
+            btn.setEnabled(False)
+
+        def _wrapper():
+            try:
+                result = work()
+            except (OSError, ValueError, RuntimeError) as exc:
+                invoke_main(self, "_op_failed", op, str(exc))
+                return
+            invoke_main(self, "_op_done", op, fmt(result))
+
+        threading.Thread(target=_wrapper, daemon=True).start()
+
+    @Slot(str, str)
+    def _op_done(self, op: str, msg: str) -> None:
+        """槽：worker 完成（主线程）——恢复按钮并刷新。"""
+        btn = self._op_buttons.get(op)
+        if btn is not None:
+            btn.setEnabled(True)
+        self._refresh()
+        self.status_changed.emit(tr(_OP_TITLES.get(op, op)), msg)
+
+    @Slot(str, str)
+    def _op_failed(self, op: str, err: str) -> None:
+        """槽：worker 失败（主线程）——恢复按钮并报错。"""
+        btn = self._op_buttons.get(op)
+        if btn is not None:
+            btn.setEnabled(True)
+        self.status_changed.emit(tr("操作失败"), err[:60])
 
     def _refresh(self) -> None:
         """重新扫描目录，刷新缩略图与统计。"""
@@ -423,12 +445,27 @@ class DataManagePage(QWidget):
         return d
 
     def _tool_statistics(self) -> None:
-        """标注数据统计：各类别数量分布。"""
+        """标注数据统计：各类别数量分布（W3-T3: worker 线程扫描）。"""
         d = self._get_ann_dir()
         if not d:
             return
-        from labeling.batch_tools import label_data_statistics
-        stats = label_data_statistics(d)
+        from gui.pages.data_manage import workers
+        self.btn_stat.setEnabled(False)
+
+        def _work():
+            try:
+                stats = workers.label_statistics(d)
+            except (OSError, ValueError, RuntimeError) as exc:
+                invoke_main(self, "_op_failed", "stats", str(exc))
+                return
+            invoke_main(self, "_stats_done", stats if stats else {})
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    @Slot(dict)
+    def _stats_done(self, stats: dict) -> None:
+        """槽：统计完成（主线程）。"""
+        self.btn_stat.setEnabled(True)
         if not stats:
             self.status_changed.emit(tr("无标注数据"), "!")
             return
@@ -437,7 +474,7 @@ class DataManagePage(QWidget):
         self.status_changed.emit(tr("标注统计"), f"{len(stats)} {tr('个类别')}")
 
     def _tool_replace_label(self) -> None:
-        """批量替换标签名。"""
+        """批量替换标签名（W3-T3: worker 线程执行）。"""
         d = self._get_ann_dir()
         if not d:
             return
@@ -448,13 +485,16 @@ class DataManagePage(QWidget):
         new_label, ok = QInputDialog.getText(self, tr("替换标签"), tr("新标签名:"))
         if not ok or not new_label:
             return
-        from labeling.batch_tools import batch_replace_label
-        count = batch_replace_label(d, old_label, new_label)
-        self._refresh()
-        self.status_changed.emit(tr("替换完成"), f"{count} {tr('个文件')}")
+        from gui.pages.data_manage import workers
+
+        self._run_worker(
+            "replace",
+            lambda: workers.replace_labels(d, old_label, new_label),
+            lambda n: f"{n} {tr('个文件')}",
+        )
 
     def _tool_delete_labels(self) -> None:
-        """批量删除指定标签名的标注。"""
+        """批量删除指定标签名的标注（W3-T3: worker 线程执行）。"""
         d = self._get_ann_dir()
         if not d:
             return
@@ -465,13 +505,16 @@ class DataManagePage(QWidget):
         if not ok or not text:
             return
         labels = [s.strip() for s in text.split(",") if s.strip()]
-        from labeling.batch_tools import batch_delete_labels
-        count = batch_delete_labels(d, labels)
-        self._refresh()
-        self.status_changed.emit(tr("删除完成"), f"{count} {tr('个文件')}")
+        from gui.pages.data_manage import workers
+
+        self._run_worker(
+            "delete",
+            lambda: workers.delete_labels(d, labels),
+            lambda n: f"{n} {tr('个文件')}",
+        )
 
     def _tool_flip_annotation(self) -> None:
-        """翻转标注坐标（配合图像翻转）。"""
+        """翻转标注坐标（配合图像翻转）（W3-T3: worker 线程执行）。"""
         d = self._get_ann_dir()
         if not d:
             return
@@ -482,31 +525,16 @@ class DataManagePage(QWidget):
         )
         if not ok:
             return
-        from labeling.batch_tools import flip_image_annotation
-        import json
-        count = 0
-        for f in os.listdir(d):
-            if f.endswith(".json"):
-                path = os.path.join(d, f)
-                # 从 JSON 读取真实图像尺寸，避免 width=0 导致翻转坐标错误
-                w = h = 0
-                try:
-                    with open(path, "r", encoding="utf-8") as fh:
-                        _doc = json.load(fh)
-                    w = _doc.get("imageWidth", 0)
-                    h = _doc.get("imageHeight", 0)
-                except (OSError, json.JSONDecodeError):
-                    pass
-                if w == 0 and mode == "horizontal":
-                    continue  # 缺少宽度信息时跳过水平翻转，避免坐标错误
-                if h == 0 and mode == "vertical":
-                    continue  # 缺少高度信息时跳过垂直翻转
-                if flip_image_annotation(path, w, mode):
-                    count += 1
-        self.status_changed.emit(tr("翻转完成"), f"{count} {tr('个文件')}")
+        from gui.pages.data_manage import workers
+
+        self._run_worker(
+            "flip",
+            lambda: workers.flip_annotations(d, mode),
+            lambda n: f"{n} {tr('个文件')}",
+        )
 
     def _tool_cut_json(self) -> None:
-        """切割标注 JSON（大图切小图时同步切割标注）。"""
+        """切割标注 JSON（大图切小图时同步切割标注）（W3-T3: worker 线程执行）。"""
         d = self._get_ann_dir()
         if not d:
             return
@@ -522,15 +550,13 @@ class DataManagePage(QWidget):
         except (ValueError, IndexError):
             self.status_changed.emit(tr("格式错误"), "!")
             return
-        out_dir = os.path.join(d, "tiles")
-        from labeling.batch_tools import cut_labelme_json
-        total = 0
-        for f in os.listdir(d):
-            if f.endswith(".json"):
-                total += len(cut_labelme_json(
-                    os.path.join(d, f), tile_w, tile_h, out_dir
-                ))
-        self.status_changed.emit(tr("切割完成"), f"{total} {tr('个瓦片')}")
+        from gui.pages.data_manage import workers
+
+        self._run_worker(
+            "cut",
+            lambda: workers.cut_annotations(d, tile_w, tile_h),
+            lambda n: f"{n} {tr('个瓦片')}",
+        )
 
     def retranslate(self) -> None:
         """切换语言时刷新文案。"""
