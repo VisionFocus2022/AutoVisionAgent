@@ -36,12 +36,18 @@ a = Analysis(
         "models.supervised.engines.sgan_blend",
         "models.supervised.engines.sseg_smp",
         "models.supervised.engines.super_cv2",
-        # 标注子系统（仅注册已实现的模块）
+        # 标注子系统（手动 4 模式必须显式列出：modes/__init__ 用变量拼
+        # importlib 导入，PyInstaller 静态分析不可见——W4 发版检查实测漏打包
+        # 导致 exe 内全部手动标注失效，UIA 曾以"软通过"掩盖）
         "labeling.sam_adapter",
         "labeling.batch_tools",
         "labeling.io_labelme",
         "labeling.modes.auto",
         "labeling.modes.interactive",
+        "labeling.modes.polygon",
+        "labeling.modes.rectangle",
+        "labeling.modes.brush",
+        "labeling.modes.keypoint",
         # 分发器
         "industrial_vision_platform.vision_dispatcher",
     ],

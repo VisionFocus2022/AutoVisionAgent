@@ -219,8 +219,13 @@ def _step_annotate(win, data_dir: Path, labels_dir: Path) -> None:
             pass
 
     if not shape_committed:
-        logger.warning("矩形标注可能未提交，最后状态: '%s'", _last_status(win))
-        # 不再 assert，继续尝试保存（save 函数会处理空 shapes）
+        # W4 发版检查修复：矩形未提交必须硬失败——软通过曾掩盖 exe 漏打包
+        # labeling.modes.* 的缺陷（画布无响应仍"通过"全流程，era-4 假绿形态）
+        raise AssertionError(
+            f"矩形标注未提交：画布对鼠标拖拽无响应（最后状态='{_last_status(win)}'）。"
+            "常见原因：打包缺 labeling.modes 手动模式模块（查 spec hiddenimports），"
+            "或 controller 报'标注器构造失败'（查 logs/autovision.log）"
+        )
 
     # 2d. 应用标签（label_input 默认 "defect"）
     assert click_button(win, "添加标签", T_NAV), "未找到'添加标签'按钮"
