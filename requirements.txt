@@ -12,6 +12,7 @@ torchvision>=0.15
 opencv-python>=4.8
 Pillow>=10.0
 numpy>=1.24
+supervision>=0.25         # W5: 推理结果渲染 + 数据集导出回读验证（MIT）
 
 # 配置 / 序列化
 PyYAML>=6.0
