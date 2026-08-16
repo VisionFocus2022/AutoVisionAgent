@@ -49,13 +49,19 @@ _NAME_TO_NP: Dict[str, str] = {v: k for k, v in _DTYPE_MAP.items()}
 
 @dataclass(frozen=True)
 class SharedMemoryHandle:
-    """共享内存句柄（与 proto 同名结构体的 Python 镜像，便于内部传递）。"""
+    """共享内存句柄（与 proto 同名结构体的 Python 镜像，便于内部传递）。
+
+    encoding（W6-T2）：载荷编码，"raw"（原始字节，.NET 契约）或
+    "bool_rle"（mask_codec 游程压缩，仅 Python 读端支持；proto 侧由
+    dtype="bool_rle" 标记携带）。
+    """
 
     file_path: str
     offset: int
     length: int
     dtype: str
     shape: Tuple[int, ...]
+    encoding: str = "raw"
 
     def to_proto(self):
         """转换为 protobuf 消息。"""
@@ -142,6 +148,23 @@ class SharedMemoryManager:
             raise ValueError(f"不支持的 dtype: {dtype}，仅支持 {list(_DTYPE_MAP)}")
         return self._write_raw(bytes(data), dtype, tuple(int(s) for s in shape))
 
+    def write_mask_compact(self, masks) -> SharedMemoryHandle:
+        """bool 掩码走 RLE 压缩写出（W6-T2，对标 CompactMask 游程编码）。
+
+        dtype="bool_rle"（经 mask_codec 编码；read_array 自动解码）。
+        ⚠️ 跨语言注意：.NET SharedMemoryReader 需支持 bool_rle 才能消费该句柄；
+        gRPC Detect 默认仍走 raw（serialization 由 AVA_SHM_MASK_RLE 开关控制）。
+        """
+        import numpy as np
+
+        arr = np.asarray(masks)
+        if arr.dtype != np.bool_:
+            arr = arr.astype(np.bool_)
+        from serving.mask_codec import encode_mask_rle
+
+        payload = encode_mask_rle(arr)
+        return self._write_raw(payload, "bool_rle", tuple(int(s) for s in arr.shape))
+
     def _write_raw(self, raw: bytes, dtype: str, shape: Tuple[int, ...]) -> SharedMemoryHandle:
         name = f"ava_{uuid.uuid4().hex}.bin"
         path = str(self._base_dir / name)
@@ -177,16 +200,23 @@ class SharedMemoryManager:
     def read_array(self, handle) -> "numpy.ndarray":
         """按句柄读取并重建为 numpy 数组。
 
-        适用于任意句柄（本进程或对端进程创建）。
+        适用于任意句柄（本进程或对端进程创建）。dtype=="bool_rle" 时
+        经 mask_codec 解码还原 bool 掩码（W6-T2）。
         """
         import numpy as np
 
         h = _coerce_handle(handle)
-        dt_name = h.dtype
-        if dt_name not in _DTYPE_MAP:
-            raise ValueError(f"不支持的 dtype: {dt_name}，仅支持 {list(_DTYPE_MAP)}")
 
-        np_dtype = np.dtype(_DTYPE_MAP[dt_name])
+        if h.dtype == "bool_rle":
+            from serving.mask_codec import decode_mask_rle
+
+            data = self.read_bytes(h)
+            return decode_mask_rle(data, h.shape)
+
+        if h.dtype not in _DTYPE_MAP:
+            raise ValueError(f"不支持的 dtype: {h.dtype}，仅支持 {list(_DTYPE_MAP)}")
+
+        np_dtype = np.dtype(_DTYPE_MAP[h.dtype])
 
         # 优先复用本进程已映射的区域，否则按路径打开对端创建的文件
         with self._lock:
