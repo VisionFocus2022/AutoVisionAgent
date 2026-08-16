@@ -1,0 +1,39 @@
+[project]
+name = "autovisionagent"
+version = "2.0.0"
+description = "AutoVisionAgent — 工业视觉智能平台"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # 行长度由 line-length 控制，不强制折行
+
+[tool.ruff.lint.isort]
+known-first-party = ["core", "gui", "models", "training", "labeling", "inference", "exporter", "evaluation"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ["tests/", "build/", "dist/"]
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "unit: 单元测试（快速、无外部依赖）",
+    "e2e: 端到端测试（可能需要 GPU / 模型权重）",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]

@@ -1,0 +1,41 @@
+# AutoVisionAgent — 核心依赖
+# Python >= 3.10
+
+# GUI 框架
+PySide6>=6.5,<7
+
+# 深度学习
+torch>=2.0
+torchvision>=0.15
+
+# 图像处理
+opencv-python>=4.8
+Pillow>=10.0
+numpy>=1.24
+
+# 配置 / 序列化
+PyYAML>=6.0
+
+# 对外服务（gRPC + 共享内存，供 VisionAgent.Shared 等 .NET 进程调用）
+grpcio>=1.60
+protobuf>=4.25
+# 仅生成 pb2 代码时需要：grpcio-tools>=1.60
+
+# 打包
+pyinstaller>=6.0
+
+# ─── 可选：引擎扩展（按需安装）───
+# ultralytics>=8.1       # YOLO 检测/分割/关键点引擎
+# mmcv>=2.1               # 语义分割 / 超分辨率引擎
+# mmsegmentation>=1.2     # sseg_mmseg
+# mmedit>=0.10            # sgan_mmedit / super_mmedit
+# anomalib>=1.1           # abdet_anomalib 异常检测引擎
+
+# ─── 可选：导出 / 评估 / 生成 ───
+# openpyxl>=3.1           # Excel 导出（推理结果统计报表）
+# onnx>=1.16              # ONNX 模型导出
+# onnxsim>=0.4            # ONNX 模型简化
+# onnxruntime>=1.18       # ONNX Runtime 推理
+# lpips>=0.1              # LPIPS 感知损失（生成质量评估）
+# segment_anything>=1.0   # SAM 交互式分割
+# scipy>=1.11             # 科学计算（FID 矩阵开方等）

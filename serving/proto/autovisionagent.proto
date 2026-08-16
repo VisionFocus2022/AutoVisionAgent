@@ -1,0 +1,135 @@
+syntax = "proto3";
+
+package autovisionagent.v1;
+
+// C# 生成代码命名空间，与 VisionAgent.Shared 约定一致。
+option csharp_namespace = "VisionAgent.Shared.Protos.AutoVisionAgent";
+
+// ===========================================================================
+// 共享内存句柄：用于在 gRPC 控制信道之外零拷贝传递大块二进制数据
+// （原始图像、分割掩码、关键点数组）。同一机器上的文件映射 MMF。
+// ===========================================================================
+message SharedMemoryHandle {
+  // 内存映射文件绝对路径（同机临时文件，由生产方创建）。
+  string file_path = 1;
+  // 数据起始偏移（字节）。
+  int64 offset = 2;
+  // 数据长度（字节）。
+  int64 length = 3;
+  // 元素 dtype：uint8 / float32 / float64 / bool
+  string dtype = 4;
+  // 形状（行优先，例如 [N, H, W, 3]）。
+  repeated int32 shape = 5;
+}
+
+// ============================== 健康 & 元数据 ============================== #
+message PingRequest {}
+
+message PongResponse {
+  string server_version = 1;
+  bool dispatcher_ready = 2;
+  repeated string loaded_tasks = 3;
+}
+
+message ListTasksRequest {}
+
+message TaskInfo {
+  string task = 1;            // cls/det/seg/pseg/pose/sseg/abdet/sgan/super/zero_shot
+  string paradigm = 2;        // zero-shot / supervised
+  bool loaded = 3;
+  bool requires_training = 4;
+}
+
+message ListTasksResponse {
+  repeated TaskInfo tasks = 1;
+}
+
+message GetTaskInfoRequest {
+  string task = 1;
+}
+
+// ================================ 模型生命周期 ============================== #
+message LoadModelRequest {
+  string task = 1;            // 任务类型
+  string weights_path = 2;    // 权重绝对路径（同机）
+  string device = 3;          // cuda / cpu
+}
+
+message LoadModelResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message UnloadModelRequest {
+  string task = 1;
+}
+
+message UnloadModelResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// =================================== 推理 ================================== #
+message DetectRequest {
+  string task = 1;            // cls/det/seg/pseg/pose/sseg/abdet/sgan/super/zero_shot
+  string mode = 2;            // auto / zero_shot / supervised
+  float threshold = 3;
+  repeated string labels = 4;
+  repeated string prompts = 5;  // 零样本提示词
+  // 输入图像源（三选一，优先级：image_shm > image_path > image_bytes）
+  bytes image_bytes = 10;       // 内联小图（JPEG/PNG/RAW）
+  string image_path = 11;       // 同机文件路径
+  SharedMemoryHandle image_shm = 12;  // 共享内存大图（RAW uint8，shape=[H,W,C]）
+}
+
+message DetectionResultProto {
+  string task = 1;
+  double score = 2;
+  repeated double scores = 3;
+  repeated string labels = 4;
+  // 检测框扁平化 [x1,y1,x2,y2, x1,y1,x2,y2, ...]，box_count = boxes_flat.size / 4。
+  repeated double boxes_flat = 5;
+  int32 box_count = 6;
+  // 大块数据走共享内存（可选）：
+  SharedMemoryHandle masks_shm = 7;     // (N,H,W) bool
+  SharedMemoryHandle keypoints_shm = 8; // (N,K,2|3) float
+  map<string, string> extra = 9;
+}
+
+message DetectResponse {
+  bool success = 1;
+  string error = 2;
+  DetectionResultProto result = 3;
+}
+
+// ============================ 共享内存区域回收 ============================== #
+message ReleaseSharedMemoryRequest {
+  string file_path = 1;
+}
+
+message ReleaseSharedMemoryResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// ===========================================================================
+// AutoVisionAgent 对外服务。
+// 设计：gRPC 作为控制信道（RPC 契约 + 小结果元数据），
+//       共享内存作为大块二进制数据的零拷贝通道。
+// ===========================================================================
+service AutoVisionAgentService {
+  // 健康检查。
+  rpc Ping(PingRequest) returns (PongResponse);
+  // 列出全部任务能力。
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  // 查询单个任务状态。
+  rpc GetTaskInfo(GetTaskInfoRequest) returns (TaskInfo);
+  // 加载有监督引擎权重。
+  rpc LoadModel(LoadModelRequest) returns (LoadModelResponse);
+  // 卸载引擎、释放显存。
+  rpc UnloadModel(UnloadModelRequest) returns (UnloadModelResponse);
+  // 单图推理。
+  rpc Detect(DetectRequest) returns (DetectResponse);
+  // 回收由本服务创建的共享内存文件。
+  rpc ReleaseSharedMemory(ReleaseSharedMemoryRequest) returns (ReleaseSharedMemoryResponse);
+}

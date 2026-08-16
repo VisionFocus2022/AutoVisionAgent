@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# PyInstaller
+*.spec.bak
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 模型权重（大文件）
+*.pth
+*.pt
+*.onnx
+*.ckpt
+*.engine
+*.plan
+
+# 数据集
+datasets/
+*.zip
+
+# 配置/密钥（含敏感信息）
+configs/users.json
+configs/license.key
+configs/user_settings.json
+
+# 日志
+logs/
+*.log
+
+# 输出
+outputs/
+runs/
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# CodeGraph 索引（可重建）
+.codegraph/

@@ -1,0 +1,286 @@
+"""主窗口框架（PyDracula 风格侧边导航）。
+无边框圆角窗口 + 侧边导航栏 + QStackedWidget 页面栈 + 底部状态栏。
+提供 add_page / select / set_status 等接口供 gui.main 组装。
+"""
+from __future__ import annotations
+
+from typing import Dict, Optional
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont, QIcon
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+# 窗口控制按钮样式
+_BTN_STYLE = """
+QPushButton {
+    background: transparent; border: none; border-radius: 4px;
+    min-width: 36px; max-width: 36px; min-height: 28px; max-height: 28px;
+    font-size: 14px; color: #94a3b8;
+}
+QPushButton:hover { background: #3f4452; color: #e2e8f0; }
+QPushButton#btn_close:hover { background: #ef4444; color: #ffffff; }
+"""
+
+
+class MainWindow(QMainWindow):
+    """主窗口：无边框 + 侧边导航 + 页面栈 + 状态栏。"""
+
+    language_changed = Signal(str)
+    theme_changed = Signal(str)
+
+    def __init__(self, title: str = "AutoVisionAgent") -> None:
+        super().__init__()
+        self.setWindowTitle(title)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setMinimumSize(1200, 760)
+        self._prev_geometry = None  # 最大化前保存位置/尺寸
+
+        self._pages: Dict[str, QWidget] = {}
+        self._nav_buttons: Dict[str, QPushButton] = {}
+        self._theme_manager = None
+
+        self._build_shell(title)
+
+    # ============================== UI ============================== #
+
+    def _build_shell(self, title: str) -> None:
+        """构建无边框外壳。"""
+        central = QWidget(self)
+        self.setCentralWidget(central)
+        root = QHBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
+
+        # 侧边导航
+        self._left_menu = QFrame()
+        self._left_menu.setObjectName("leftMenu")
+        self._left_menu.setFixedWidth(200)
+        left_lay = QVBoxLayout(self._left_menu)
+        left_lay.setContentsMargins(0, 10, 0, 0)
+        left_lay.setSpacing(2)
+
+        # LOGO
+        logo = QLabel(f"  {title}")
+        logo.setObjectName("titleLogo")
+        logo.setFixedHeight(48)
+        left_lay.addWidget(logo)
+
+        # ---- 顶部窗口控制栏（关闭/最小化/最大化）----
+        self._top_bar = QFrame()
+        self._top_bar.setFixedHeight(32)
+        self._top_bar.setObjectName("topBar")
+        tb_lay = QHBoxLayout(self._top_bar)
+        tb_lay.setContentsMargins(0, 0, 0, 0)
+        tb_lay.setSpacing(0)
+        tb_lay.addStretch()
+
+        btn_min = QPushButton("–")
+        btn_min.setToolTip("\u6700\u5c0f\u5316")
+        btn_min.setStyleSheet(_BTN_STYLE)
+        btn_min.clicked.connect(self.showMinimized)
+        tb_lay.addWidget(btn_min)
+
+        btn_max = QPushButton("□")
+        btn_max.setToolTip("\u6700\u5927\u5316/\u8fd8\u539f")
+        btn_max.setStyleSheet(_BTN_STYLE)
+        btn_max.clicked.connect(self._toggle_maximize)
+        self._btn_max = btn_max
+        tb_lay.addWidget(btn_max)
+
+        btn_close = QPushButton("✕")
+        btn_close.setToolTip("\u5173\u95ed")
+        btn_close.setObjectName("btn_close")
+        btn_close.setStyleSheet(_BTN_STYLE)
+        btn_close.clicked.connect(self.close)
+        tb_lay.addWidget(btn_close)
+
+        # 导航按钮容器（动态添加）
+        self._nav_container = QWidget()
+        self._nav_lay = QVBoxLayout(self._nav_container)
+        self._nav_lay.setContentsMargins(0, 0, 0, 0)
+        self._nav_lay.setSpacing(0)
+        left_lay.addWidget(self._nav_container)
+        left_lay.addStretch()
+
+        # 语言切换按钮
+        self._lang_btn = QPushButton("  中文/EN")
+        self._lang_btn.setProperty("nav", True)
+        self._lang_btn.clicked.connect(self._toggle_language)
+        left_lay.addWidget(self._lang_btn)
+
+        # 主题切换按钮
+        self._theme_btn = QPushButton("  🌙/☀")
+        self._theme_btn.setProperty("nav", True)
+        self._theme_btn.setToolTip("Toggle Theme")
+        self._theme_btn.clicked.connect(self._toggle_theme)
+        left_lay.addWidget(self._theme_btn)
+
+        root.addWidget(self._left_menu)
+
+        # 右侧：页面栈 + 状态栏
+        right = QFrame()
+        right.setObjectName("bgApp")
+        right_lay = QVBoxLayout(right)
+        right_lay.setContentsMargins(0, 0, 0, 0)
+        right_lay.setSpacing(0)
+
+        right_lay.addWidget(self._top_bar)
+
+        self._stack = QStackedWidget()
+        self._stack.setObjectName("pagesContainer")
+        right_lay.addWidget(self._stack, 1)
+
+        # 状态栏
+        self._status_bar = QFrame()
+        self._status_bar.setObjectName("statusBar")
+        self._status_bar.setFixedHeight(32)
+        sb_lay = QHBoxLayout(self._status_bar)
+        sb_lay.setContentsMargins(12, 0, 12, 0)
+        self._status_text = QLabel("就绪")
+        self._status_text.setObjectName("statusText")
+        self._status_accent = QLabel("")
+        self._status_accent.setObjectName("statusAccent")
+        sb_lay.addWidget(self._status_text)
+        sb_lay.addStretch()
+        sb_lay.addWidget(self._status_accent)
+        right_lay.addWidget(self._status_bar)
+
+        root.addWidget(right, 1)
+
+    # ============================== 公开接口 ============================== #
+
+    def add_page(
+        self, key: str, icon: str, title: str, widget: QWidget
+    ) -> None:
+        """注册页面到侧边导航 + 页面栈。"""
+        self._pages[key] = widget
+        self._stack.addWidget(widget)
+
+        btn = QPushButton(f"  {title}")
+        btn.setProperty("nav", True)
+        btn.setCheckable(True)
+        btn.clicked.connect(lambda: self.select(key))
+        self._nav_buttons[key] = btn
+        self._nav_lay.addWidget(btn)
+
+    def select(self, key: str) -> None:
+        """切换到指定页面。"""
+        if key not in self._pages:
+            return
+        widget = self._pages[key]
+        self._stack.setCurrentWidget(widget)
+
+        # 更新导航按钮选中态
+        for k, btn in self._nav_buttons.items():
+            btn.setProperty("selected", k == key)
+            btn.style().polish(btn)
+
+    def set_status(self, text: str, accent: str = "") -> None:
+        """更新状态栏。"""
+        self._status_text.setText(text)
+        self._status_accent.setText(accent)
+
+    def attach_theme(self, theme_manager) -> None:
+        """绑定主题管理器（用于切换时刷新）。"""
+        self._theme_manager = theme_manager
+
+    def _toggle_theme(self) -> None:
+        """切换暗/亮主题。"""
+        if self._theme_manager is None:
+            return
+        # 使用 ThemeManager.theme 属性获取当前主题（而非错误属性名 _current_theme）
+        current = self._theme_manager.theme
+        new_theme = "daytime" if current == "night" else "night"
+        self._theme_manager.apply(new_theme)
+        self.theme_changed.emit(new_theme)
+
+    def _toggle_language(self) -> None:
+        """切换中英文。"""
+        from gui.core.i18n import current_language, set_language, tr
+
+        new_lang = "en_US" if current_language() == "ch_CN" else "ch_CN"
+        set_language(new_lang)
+        self.language_changed.emit(new_lang)
+
+    def _toggle_maximize(self) -> None:
+        """最大化/还原窗口。"""
+        if self.isMaximized():
+            self.showNormal()
+            if self._prev_geometry:
+                self.setGeometry(self._prev_geometry)
+            self._btn_max.setText("□")
+        else:
+            self._prev_geometry = self.geometry()
+            self.showMaximized()
+            self._btn_max.setText("❐")
+
+    # ============================== 窗口拖动 ============================== #
+
+    def mousePressEvent(self, event) -> None:
+        """无边框窗口拖动支持。"""
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        """无边框窗口拖动。"""
+        if hasattr(self, "_drag_pos") and event.buttons() & Qt.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
+    # ============================== 优雅退出 ============================== #
+
+    def closeEvent(self, event) -> None:
+        """窗口关闭事件：检查活动线程 + 释放资源。"""
+        import logging
+        from gui.core.i18n import tr
+        _logger = logging.getLogger(__name__)
+
+        # 检查是否有活动的训练 / 推理线程
+        has_active = False
+        for key, widget in self._pages.items():
+            worker = getattr(widget, "_worker", None)
+            if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
+                has_active = True
+                break
+            # 检查 batch 线程
+            if hasattr(widget, "_batch_cancel"):
+                # 如果有正在进行的批量推理
+                batch_btn = getattr(widget, "_btn_batch", None)
+                if batch_btn is not None and not batch_btn.isEnabled():
+                    has_active = True
+                    break
+
+        if has_active:
+            from PySide6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self, tr("确认退出"),
+                tr("有正在进行的操作（训练/推理）。\n确定要退出吗？未保存的数据可能丢失。"),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                event.ignore()
+                return
+
+        # 释放引擎缓存（GPU 显存）
+        try:
+            from models.supervised.registry import get_default_registry
+            get_default_registry().clear_cache()
+        except Exception:
+            _logger.debug("清理引擎缓存时出错", exc_info=True)
+
+        _logger.info("应用正常退出")
+        event.accept()
+
+
+__all__ = ["MainWindow"]

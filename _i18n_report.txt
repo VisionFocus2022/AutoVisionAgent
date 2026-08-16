@@ -1,0 +1,5 @@
+✅ All tr() strings have EN_US translations.
+
+✅ All retranslate() methods are implemented.
+
+✅ No duplicate keys in _EN_US.

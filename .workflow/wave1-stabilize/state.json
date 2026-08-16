@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "change_id": "wave1-stabilize",
+  "title": "第一波止血：git基线+venv归位+dispatcher锁+中文路径+宣称诚实化",
+  "created_at": "2026-08-16T10:56:04.450030+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": false,
+      "evidence": ""
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": false,
+      "evidence": ""
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [],
+    "acceptance": [],
+    "tasks": []
+  },
+  "verification": [],
+  "risks_open": [],
+  "deviations": [],
+  "request_evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'你的建议很好，根据你的建议开始实施'——批准 docs/AutoVisionAgent-架构解析与优化方案.md §11.5 第一波止血 5 项（含展示的 git init 命令原文）",
+  "final_summary": "",
+  "status": "draft"
+}

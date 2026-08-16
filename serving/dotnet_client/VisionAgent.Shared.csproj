@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="VisionAgent.Shared.Tests" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>VisionAgent.Shared</RootNamespace>
+    <Description>根共享库：契约、模型、枚举（所有项目依赖它）。</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NLog" />
+    <!-- gRPC 客户端：调用 AutoVisionAgent serving（Python）的检测能力。
+         版本由 Directory.Packages.props 集中管理（CPM），此处不写 Version。 -->
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+    <PackageReference Include="Google.Protobuf" />
+  </ItemGroup>
+
+  <!-- 由 Grpc.Tools 在编译期生成 C# 客户端桩代码（命名空间见 proto 的 csharp_namespace）。 -->
+  <ItemGroup>
+    <Protobuf Include="Protos\autovisionagent.proto" GrpcServices="Client" />
+  </ItemGroup>
+
+</Project>

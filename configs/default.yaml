@@ -1,0 +1,40 @@
+# AutoVisionAgent 默认配置模板
+# 复制为 config.yaml 并按需修改；或由程序自动回退使用此文件。
+
+inference:
+  device: "cuda"
+  precision: "fp16"
+  batch_size: 1
+  tiling:
+    enable: false
+    tile_size: 512
+    overlap: 64
+
+training:
+  default_epochs: 100
+  default_lr: 0.001
+  default_batch_size: 8
+  checkpoint_interval: 5
+  max_checkpoints: 3
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  log_dir: "./logs"
+  enable_file_logging: true
+  enable_console_logging: true
+  max_file_size_mb: 10
+  backup_count: 5
+
+security:
+  max_image_size: 10485760
+  max_image_dimension: 4096
+  min_image_dimension: 64
+  max_text_length: 1000
+  enable_rate_limiting: true
+  rate_limit_per_minute: 60
+
+monitoring:
+  enable_metrics: true
+  enable_tracing: false
+  metrics_port: 9090
