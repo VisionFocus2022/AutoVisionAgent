@@ -45,6 +45,11 @@ class AbstractLabeler(ILabeler):
         self._active: bool = False
 
     # ---- 公共辅助 ---- #
+    @property
+    def points(self) -> Tuple[Point, ...]:
+        """当前顶点序列（只读副本；era-2 契约：commit 后为空元组）。"""
+        return tuple(self._points)
+
     def _build(
         self, points: Optional[Tuple[Point, ...]] = None
     ) -> Shape:

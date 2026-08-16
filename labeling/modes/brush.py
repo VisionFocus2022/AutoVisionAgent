@@ -52,11 +52,11 @@ class BrushLabeler(AbstractLabeler):
         if len(self._points) < 2:
             self.reset()
             return None
-        # 简化路径
+        # 简化路径；笔触须构成区域（≥3 点），完全共线的退化笔触丢弃
         simplified = simplify_polyline(
             list(self._points), self._simplify_epsilon
         )
-        if len(simplified) < 2:
+        if len(simplified) < 3:
             self.reset()
             return None
         shape = self._build(tuple(simplified))

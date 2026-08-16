@@ -60,7 +60,6 @@ def test_label_page_rectangle_and_undo(label_page):
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 多边形 commit 闭合语义 v2.0 未恢复（W2：闭合+吸附+drain 一并恢复）", strict=True)
 def test_label_page_polygon_commit(label_page):
     label_page._apply_mode(AnnotationMode.POLYGON)
     for pt in [(10, 10), (80, 10), (80, 80), (10, 80)]:

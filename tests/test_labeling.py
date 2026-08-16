@@ -101,7 +101,6 @@ def test_simplify_polyline_keeps_big_deviation():
 
 # ============================== 标注模式 ============================== #
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 标注语义 v2.0 未恢复（W2：闭合/吸附/丢小形状/replace_all/引用语义 一并恢复）", strict=True)
 def test_rectangle_mode_normalizes_and_drops_tiny():
     lab = make_labeler(AnnotationMode.RECTANGLE, "d")
     lab.on_press((10, 10))
@@ -126,7 +125,6 @@ def test_keypoint_mode_single_point():
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 标注语义 v2.0 未恢复（W2：闭合/吸附/丢小形状/replace_all/引用语义 一并恢复）", strict=True)
 def test_polygon_mode_commit_closes():
     lab = make_labeler(AnnotationMode.POLYGON, "crack")
     for pt in [(0, 0), (50, 0), (50, 50), (0, 50)]:
@@ -139,7 +137,6 @@ def test_polygon_mode_commit_closes():
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 标注语义 v2.0 未恢复（W2：闭合/吸附/丢小形状/replace_all/引用语义 一并恢复）", strict=True)
 def test_polygon_mode_snap_to_first_point():
     lab = make_labeler(AnnotationMode.POLYGON, "crack", close_threshold=10)
     for pt in [(0, 0), (50, 0), (50, 50)]:
@@ -174,7 +171,6 @@ def test_brush_mode_simplifies_stroke():
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 标注语义 v2.0 未恢复（W2：闭合/吸附/丢小形状/replace_all/引用语义 一并恢复）", strict=True)
 def test_brush_mode_degenerate_line_dropped():
     # 完全共线的直线笔触 → 简化为 2 点 < 3 → 丢弃（不构成区域）
     lab = make_labeler(
@@ -287,7 +283,6 @@ def test_shape_from_labelme_infers_mode_without_custom_key():
 
 # ============================== 画布撤销/重做 ============================== #
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 标注语义 v2.0 未恢复（W2：闭合/吸附/丢小形状/replace_all/引用语义 一并恢复）", strict=True)
 def test_canvas_undo_redo(qapp):
     c = AnnotationCanvas()
     c.set_blank(200, 200)
@@ -328,7 +323,6 @@ def test_canvas_clear_shapes_undoable(qapp):
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 标注语义 v2.0 未恢复（W2：闭合/吸附/丢小形状/replace_all/引用语义 一并恢复）", strict=True)
 def test_canvas_replace_all_undoable(qapp):
     c = AnnotationCanvas()
     c.add_shape(Shape(AnnotationMode.RECTANGLE, ((1, 1), (2, 2)), label="a"))
@@ -361,7 +355,6 @@ def test_controller_rectangle_then_keypoint(qapp):
 
 
 @pytest.mark.unit
-@pytest.mark.xfail(reason="era-2 标注语义 v2.0 未恢复（W2：闭合/吸附/丢小形状/replace_all/引用语义 一并恢复）", strict=True)
 def test_controller_polygon_commit(qapp):
     c = AnnotationCanvas()
     c.set_blank(200, 200)

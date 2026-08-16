@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Optional
 
 from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
+from labeling.geometry import close_polygon
 from labeling.modes._base import AbstractLabeler
 
 
@@ -46,7 +47,8 @@ class PolygonLabeler(AbstractLabeler):
     def commit(self) -> Optional[Shape]:
         if not self._can_commit():
             return None
-        shape = self._build()
+        # era-2 语义：提交时自动闭合（首尾相接），状态随之清空
+        shape = self._build(close_polygon(tuple(self._points)))
         self.reset()
         return shape
 

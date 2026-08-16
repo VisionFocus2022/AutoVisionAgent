@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "change_id": "wave3-quality",
+  "title": "第三波：标注语义恢复+sseg真化+主线程迁移+覆盖率门禁",
+  "created_at": "2026-08-16T12:19:10.453023+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "四项均可经测试网即时验证（xfail 绊线/引擎矩阵/页面测试/覆盖率门禁）；GUI 线程迁移为不确定来源，uncertainty=medium；无硬触发器。延续 wave1/wave2 的 L2 定档先例。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'实施下一波候选（按架构审查 §11.5）：labeling 语义恢复（8 xfail 转绿）→ sseg 真化（兄弟树 sses_smp.py 现成）→ 主线程重活迁移 → 覆盖率门禁从兄弟树回归（serving 0% 优先补）'——该四项系本人上一轮作为下一波候选提出、用户逐字引用并令实施；PRD=docs/prd-wave3-quality.md"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'实施下一波候选（按架构审查 §11.5）：……'——'实施'即执行授权，四项范围与顺序由用户指定；任务表=docs/tasks-wave3-quality.md"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave3-quality.md",
+    "design": "",
+    "tasks": "docs/tasks-wave3-quality.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-004",
+        "requirements": [
+          "FR-004"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-002"
+        ],
+        "acceptance": [
+          "AC-002"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-003"
+        ]
+      },
+      {
+        "id": "TASK-004",
+        "requirements": [
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-004"
+        ]
+      },
+      {
+        "id": "TASK-005",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-002",
+          "AC-003",
+          "AC-004"
+        ]
+      }
+    ]
+  },
+  "verification": [],
+  "risks_open": [],
+  "deviations": [],
+  "request_evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'实施下一波候选（按架构审查 §11.5）：labeling 语义恢复（8 xfail 转绿）→ sseg 真化（兄弟树 sses_smp.py 现成）→ 主线程重活迁移 → 覆盖率门禁从兄弟树回归（serving 0% 优先补）'",
+  "final_summary": "",
+  "status": "in_progress"
+}

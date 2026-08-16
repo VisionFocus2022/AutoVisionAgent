@@ -4,7 +4,6 @@
 """
 from __future__ import annotations
 
-import copy
 import logging
 from typing import List, Optional, Tuple
 
@@ -73,8 +72,8 @@ class AnnotationCanvas(QGraphicsScene):
 
     # ============================== 撤销/重做 ============================== #
     def _save_state(self) -> None:
-        """保存当前状态到撤销栈。"""
-        self._undo_stack.append(copy.deepcopy(self._shapes))
+        """保存当前状态到撤销栈（浅快照：era-2 契约，undo 恢复同一 Shape 对象）。"""
+        self._undo_stack.append(list(self._shapes))
         self._redo_stack.clear()
         self._notify_undo_redo()
 
@@ -82,7 +81,7 @@ class AnnotationCanvas(QGraphicsScene):
         """撤销一步；返回是否真的执行（W1: 恢复 era-2 布尔契约）。"""
         if not self._undo_stack:
             return False
-        self._redo_stack.append(copy.deepcopy(self._shapes))
+        self._redo_stack.append(list(self._shapes))
         self._shapes = self._undo_stack.pop()
         self._redraw()
         self._notify_undo_redo()
@@ -93,7 +92,7 @@ class AnnotationCanvas(QGraphicsScene):
         """重做一步；返回是否真的执行（W1: 恢复 era-2 布尔契约）。"""
         if not self._redo_stack:
             return False
-        self._undo_stack.append(copy.deepcopy(self._shapes))
+        self._undo_stack.append(list(self._shapes))
         self._shapes = self._redo_stack.pop()
         self._redraw()
         self._notify_undo_redo()
@@ -112,21 +111,29 @@ class AnnotationCanvas(QGraphicsScene):
     # ============================== Shape CRUD ============================== #
     def add_shape(
         self,
-        mode: AnnotationMode = AnnotationMode.POLYGON,
+        mode=AnnotationMode.POLYGON,
         label: str = "",
         points: Optional[list] = None,
         color=DEFAULT_COLOR,
     ) -> None:
-        """添加标注形状。"""
-        if points is None:
-            points = []
+        """添加标注形状。
+
+        era-2 双契约：``mode`` 位既可传 Shape 实例（保持对象引用，供 undo
+        身份语义），也可传 AnnotationMode 枚举 + label/points/color 组合
+        （控制器/页面兼容路径）。
+        """
+        if isinstance(mode, Shape):
+            shape = mode
+        else:
+            if points is None:
+                points = []
+            shape = Shape(
+                mode=mode,
+                points=tuple((float(p[0]), float(p[1])) for p in points),
+                label=label,
+                color=color,
+            )
         self._save_state()
-        shape = Shape(
-            mode=mode,
-            points=tuple((float(p[0]), float(p[1])) for p in points),
-            label=label,
-            color=color,
-        )
         self._shapes.append(shape)
         self._redraw()
         self.shapes_changed.emit(self.shapes)
@@ -155,6 +162,14 @@ class AnnotationCanvas(QGraphicsScene):
             self._shapes.clear()
             self._redraw()
             self.shapes_changed.emit(self.shapes)
+
+    def replace_all(self, shapes) -> None:
+        """整体替换标注列表（era-2 契约：可撤销的单步替换）。"""
+        new_shapes = list(shapes)
+        self._save_state()
+        self._shapes = new_shapes
+        self._redraw()
+        self.shapes_changed.emit(self.shapes)
 
     def set_items_visible(self, visible: bool) -> None:
         self._show_shapes = visible

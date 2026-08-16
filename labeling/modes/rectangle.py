@@ -7,8 +7,11 @@ from __future__ import annotations
 from typing import Optional
 
 from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
-from labeling.geometry import normalize_rectangle
+from labeling.geometry import normalize_rectangle, rectangle_size
 from labeling.modes._base import AbstractLabeler
+
+# 误触保护阈值：任一边小于此值（像素）的矩形视为误触丢弃（era-2 语义）
+MIN_SIZE: float = 2.0
 
 
 class RectangleLabeler(AbstractLabeler):
@@ -17,7 +20,7 @@ class RectangleLabeler(AbstractLabeler):
     交互流程：
     1. on_press(pt) — 左键按下记录起点
     2. on_move(pt) — 拖拽实时更新终点（preview 显示矩形）
-    3. on_release(pt) — 释放完成矩形（两个对角点）
+    3. on_release(pt) — 释放完成矩形（两个对角点）；误触小矩形丢弃
     """
 
     mode = AnnotationMode.RECTANGLE
@@ -35,6 +38,10 @@ class RectangleLabeler(AbstractLabeler):
             return None
         start = self._points[0]
         tl, br = normalize_rectangle(start, pt)
+        w, h = rectangle_size(tl, br)
+        if w < MIN_SIZE or h < MIN_SIZE:
+            self.reset()
+            return None
         shape = self._build((tl, br))
         self.reset()
         return shape
