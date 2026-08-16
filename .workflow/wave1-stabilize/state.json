@@ -213,19 +213,69 @@
       "command": "git init && git add -A && git commit -m 'chore: 建立 v2.0 基线（架构审查 2026-08-16 前的原始状态）'",
       "exit_code": 0,
       "status": "passed",
-      "evidence": "提交 af972d6；142 文件入库；git status --short 干净（仅余 venv 复制产物，.venv 已被 .gitignore 排除）"
+      "evidence": "提交 af972d6（142 文件）；此后每个任务独立提交：861309e/b660f16/d817b11"
     },
     {
-      "name": "TASK-002 venv 归位验证",
+      "name": "TASK-002 venv 归位",
       "command": ".venv/Scripts/python.exe -c \"import PySide6, torch; print(PySide6.__version__, torch.__version__, torch.cuda.is_available())\"",
       "exit_code": 0,
       "status": "passed",
-      "evidence": "输出：PySide6 6.11.1 | torch 2.5.1+cu121 | cuda True（后台任务 bru2rz2v7 exit 0）；requirements.lock.txt 200 行；pytest 全量收集 214 项（另有 1 个收集错误待 TASK-010 排查）"
+      "evidence": "PySide6 6.11.1 | torch 2.5.1+cu121 | cuda True；requirements.lock.txt 200 行；pytest 全收集 214+ 项（uia 亦可收集）"
+    },
+    {
+      "name": "TASK-003/004 dispatcher 线程安全（RED→GREEN）",
+      "command": "py -3.12 -m pytest tests/test_dispatcher_threading.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "GREEN 6/6；RED 阶段同一命令曾以 KeyError(<TaskType.CLS>) 失败（确定性竞态复现，输出留档于会话）；矩阵 dispatcher 用例无劣化"
+    },
+    {
+      "name": "TASK-005/006 中文路径读图（RED→GREEN）",
+      "command": "py -3.12 -m pytest tests/test_image_io.py tests/test_vision_dataset.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "14/14；含对照实验（裸 cv2.imread 中文路径=None，OpenCV WARN 日志佐证）；grep 5 调用点无残留裸 imread"
+    },
+    {
+      "name": "TASK-007/008 诚实化下拉与警告（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_tasks_ui.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "7/7；RED 阶段 6 失败（模块缺失/下拉 3 项/无警告）；train 首项保持 DET（UIA 兼容）"
+    },
+    {
+      "name": "TASK-009 陈旧测试对齐",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui.py tests/test_labeling.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "24 passed + 8 xfailed（strict，W2 绊线）"
+    },
+    {
+      "name": "AC-002b i18n 校验真实通过",
+      "command": "PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe scripts/check_i18n.py",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "All i18n checks passed!（报告已重新生成；此前报告失真——实际 30 缺译，本批清零）"
+    },
+    {
+      "name": "TASK-010 定向回归（已知红外全绿）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_dispatcher_threading.py tests/test_image_io.py tests/test_tasks_ui.py tests/test_gui.py tests/test_labeling.py tests/test_vision_dataset.py tests/test_config.py tests/test_auth.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "全绿；全量（排 uia）= 240 passed / 10 failed（全部为引擎数诚实红，见 deviations）/ 8 xfailed"
     }
   ],
   "risks_open": [],
-  "deviations": [],
+  "deviations": [
+    "TASK-009 范围扩展：venv 归位使 test_gui/test_m2_e2e/test_m1_e2e/test_labeling 的陈旧 API 浮出（曾被缺 PySide6 的模块级跳过掩盖）。修复=test-only 对齐（_stack/_nav_buttons/_toggle_theme/images_dir/页数 10→11）+ labeling era-2 API 微移植（geometry 4 纯函数 + labelme_to_shapes + __init__ 导出 + undo/redo 布尔返回）。理由：恢复测试网是 FR-002 验证前提。",
+    "dataset 行为变更（FR-004 有意）：读图失败由静默 None 改为显式 ValueError；同变更集把 test_vision_dataset 的假魔数字节改为真实 PNG（锁定→翻转模式）。",
+    "labeling 7 个 era-2 语义差异测试标 xfail(strict=True)：多边形 commit 闭合/近点吸附/丢微小形状/canvas.replace_all/undo 引用语义——v2.0 重写时丢失，属行为恢复工作，整体延后第二波（xfail 绊线：W2 修复后 XPASS 会报警提醒移除标记）。",
+    "全量测试 10 failed 保留为诚实红：m2_matrix 7 + m2_e2e TestEngineRegistration 3，全部因 det/seg/abdet 引擎缺失——正是第一波'宣称诚实化'要暴露的事实，修复属第二波（从兄弟树移植引擎后自动变绿）。",
+    "eval GT 自比较警告（AC-007 第三项）经代码植入+复核，未单测（需驱动完整评估流程，其线程化结构不宜本波重构）；证据=gui/pages/eval_/page.py:319-326 + 代码审查。",
+    "UIA 真窗测试（1 例）未运行：需真人桌面会话且会操纵鼠标，留给用户按 tests/uia/test_full_workflow.py 文档运行。",
+    "TDD 说明：dispatcher 竞态的 RED 用 __contains__ 钩子确定性复现（非概率压力），无需豁免；'真训练不误警'守卫测试初版 monkeypatch 打错点，已修正为补丁 reg.get。"
+  ],
   "request_evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'你的建议很好，根据你的建议开始实施'——批准 docs/AutoVisionAgent-架构解析与优化方案.md §11.5 第一波止血 5 项（含展示的 git init 命令原文）",
-  "final_summary": "",
-  "status": "in_progress"
+  "final_summary": "第一波止血 5 项全部落地：① git 基线 af972d6 + 每任务独立提交（4 提交）；② venv（7.1G，PySide6 6.11.1+torch cu121+CUDA）自兄弟树归位原创建路径 + requirements.lock.txt（200 行）锁定；③ dispatcher 加锁消除并发驱逐竞态（确定性 RED 复现 KeyError→GREEN，显存释放保持锁外）；④ core/image_io.imread_unicode 中文路径安全读图替换 5 处（本机对照实测 imread=None），dataset 读失败显式报错；⑤ 宣称诚实化——engines docstring 6/9、train 下拉全 9 项缺引擎标注（模拟）且首项保持 DET、predict 下拉只列已注册 6 引擎、两条假 loss 静默路径与 eval GT 回退显式警告、i18n 41 键补齐且 check_i18n 真实通过。附带修复 venv 归位浮出的 4 个陈旧测试文件并移植 labeling era-2 API。终态（排 uia）：240 passed / 10 failed（均为引擎数诚实红，第二波移植 det/seg/abdet 后自动变绿）/ 8 xfailed（W2 绊线）。",
+  "status": "complete"
 }
