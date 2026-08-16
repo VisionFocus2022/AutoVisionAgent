@@ -458,37 +458,74 @@ class PredictPage(QWidget):
         self._batch_cancel = True
 
     def _show_result(self, img_path: str, result: DetectionResult) -> None:
-        """在预览区显示带标注的图像。"""
+        """在预览区显示带标注的图像（W5: supervision 渲染，缺库回退旧画法）。"""
+        try:
+            import cv2 as _cv2
+            from PySide6.QtGui import QImage
+
+            from core.image_io import imread_unicode
+            from inference.sv_bridge import render_result
+
+            img = imread_unicode(img_path)  # BGR（imread_unicode 契约）
+            if img is not None:
+                annotated = render_result(img, result)
+                h, w = annotated.shape[:2]
+                rgba = _cv2.cvtColor(annotated, _cv2.COLOR_BGR2RGBA)
+                qimg = QImage(
+                    rgba.tobytes(), w, h, rgba.strides[0], QImage.Format_RGBA8888
+                ).copy()
+                pm = QPixmap.fromImage(qimg)
+                self.preview.setPixmap(
+                    pm.scaledToWidth(400, Qt.SmoothTransformation)
+                )
+                return
+            # 图读不出（罕见）：降级走 Qt 原路径
+        except ImportError:
+            import logging
+            logging.getLogger(__name__).warning(
+                "supervision 未安装，预览回退为简化画法（pip install supervision）"
+            )
+        except (RuntimeError, ValueError) as exc:
+            import logging
+            logging.getLogger(__name__).warning("sv 渲染失败，回退旧画法: %s", exc)
+
         pm = QPixmap(img_path)
         if pm.isNull():
             return
-        if result.boxes:
-            painter = QPainter(pm)
-            try:
-                pen = QPen(QColor("#ef4444"), 3)
-                painter.setPen(pen)
-                for box in result.boxes:
-                    x1, y1, x2, y2 = box
-                    painter.drawRect(int(x1), int(y1), int(x2 - x1), int(y2 - y1))
-                # 绘制标签
-                if result.labels and result.scores:
-                    painter.setPen(QColor("#22c55e"))
-                    font = painter.font()
-                    font.setPointSize(10)
-                    painter.setFont(font)
-                    for i, (box, lbl, sc) in enumerate(zip(
-                        result.boxes, result.labels, result.scores
-                    )):
-                        x1, y1, _, _ = box
-                        painter.drawText(
-                            int(x1), int(y1) - 6,
-                            f"{lbl} {sc:.2f}"
-                        )
-            finally:
-                painter.end()
+        pm = self._draw_legacy(pm, result)
         self.preview.setPixmap(
             pm.scaledToWidth(400, Qt.SmoothTransformation)
         )
+
+    @staticmethod
+    def _draw_legacy(pm: QPixmap, result: DetectionResult) -> QPixmap:
+        """旧版 QPainter 简化画法（supervision 缺失时的真实降级路径）。"""
+        if not result.boxes:
+            return pm
+        painter = QPainter(pm)
+        try:
+            pen = QPen(QColor("#ef4444"), 3)
+            painter.setPen(pen)
+            for box in result.boxes:
+                x1, y1, x2, y2 = box
+                painter.drawRect(int(x1), int(y1), int(x2 - x1), int(y2 - y1))
+            # 绘制标签
+            if result.labels and result.scores:
+                painter.setPen(QColor("#22c55e"))
+                font = painter.font()
+                font.setPointSize(10)
+                painter.setFont(font)
+                for i, (box, lbl, sc) in enumerate(zip(
+                    result.boxes, result.labels, result.scores
+                )):
+                    x1, y1, _, _ = box
+                    painter.drawText(
+                        int(x1), int(y1) - 6,
+                        f"{lbl} {sc:.2f}"
+                    )
+        finally:
+            painter.end()
+        return pm
 
     def _add_result_row(self, img_path: str, result: DetectionResult) -> None:
         """添加一行到结果表。"""
