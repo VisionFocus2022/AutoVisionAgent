@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "change_id": "wave6-sv-infra",
+  "title": "第六波：InferenceSlicer/CompactMask 对标",
+  "created_at": "2026-08-16T21:50:12.752461+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "两后端新增+shm 编码扩展：默认关的环境开关、无公开 API 破坏（.NET 契约保持 raw 默认）；全部经单测/benchmark/门禁可验证。sv 私有 API 不作线格式，编码格式自控。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 消息）：'继续实施InferenceSlicer 对标本树的 tiling_inferencer（滑窗推理）、CompactMask RLE 压缩对标 serving 共享内存大掩码传输——都有现成对照物'——范围逐项点名；PRD=docs/prd-wave6-sv-infra.md"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（'继续实施'即执行授权）；任务表=docs/tasks-wave6-sv-infra.md"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave6-sv-infra.md",
+    "design": "",
+    "tasks": "docs/tasks-wave6-sv-infra.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-202"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-202"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-001",
+          "FR-202"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-202"
+        ],
+        "acceptance": [
+          "AC-002",
+          "AC-003"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-001",
+          "FR-202"
+        ],
+        "acceptance": [
+          "AC-003"
+        ]
+      }
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001 滑窗 sv 后端（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_tiling_sv.py tests/test_exporter_and_utils.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED=tile_infer_sv 不存在收集失败；GREEN=18 passed（含原生回归锚：合成 2400×1800 像素编码坐标假检测器，两后端各精确找回 6 物体、重叠带跨瓦片者经 NMS 合一无重复、字段完整、小图直推、A/B benchmark ×2）；提交 2d00952"
+    },
+    {
+      "name": "TASK-002 bool_rle shm 压缩（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_mask_codec.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED=模块不存在；GREEN=11 passed（往返×5/格式锚 [2,3,1]/压缩比 <10% 且与 sv CompactMask 公开 offsets 同量级/shm 与 proto 句柄往返/AVA_SHM_MASK_RLE 开关两态、默认关=W5 行为不变）；提交 712137e"
+    },
+    {
+      "name": "TASK-003 门禁全量 + 棘轮升门（AC-003）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "375 passed / 0 failed / 1 skipped，rc=0；覆盖率 71.97% ≥ fail-under=71（W5 的 70 升门）"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "实测 sv 0.30 InferenceSlicer 两处行为差异（已记录至测试 docstring 与模块注释）：① 切片网格含边缘锚定瓦片（x=W-slice、y=H-slice），比原生 compute_tiles 网格更密；② 回调返回切片越界坐标时 sv 告警并裁剪，被裁半框与邻片全框 IoU 低而双双存活——SAHI 前提=回调只报切片界内坐标，测试假检测器按此建模。",
+    "CompactMask 线格式取舍：sv CompactMask 内部 rles/crop_shapes 为私有字段（dir 仅 offsets/shape/dtype 公开），不宜作跨语言线格式——改自控 bool_rle 编码（同游程思想），sv CompactMask 作压缩比对照基准（公开 offsets 字节数同量级断言）。"
+  ],
+  "request_evidence": "用户原话（2026-08-16）：'继续实施InferenceSlicer 对标本树的 tiling_inferencer（滑窗推理）、CompactMask RLE 压缩对标 serving 共享内存大掩码传输——都有现成对照物'",
+  "final_summary": "第六波（sv 方法延伸对标）两项落地：① tile_infer_sv——sv.InferenceSlicer 后端滑窗推理（回调经 sv_bridge 桥接，与原生 tile_infer 同契约：小图直推/NMS 合并/extra 记 backend），合成大图对照测试两后端均精确找回 6 物体（含重叠带跨瓦片经 NMS 合一），pytest-benchmark A/B 延迟对比；实测记录 sv 两处网格/裁剪行为差异。② bool_rle 掩码压缩 shm 传输——自控线格式（sv CompactMask 内部字段私有，不作跨语言线格式，以其为压缩比对照），SharedMemoryManager.write_mask_compact/read_array 自动编解码，serialization 经 AVA_SHM_MASK_RLE=1 显式开启（默认关，.NET 支持前不得默认开，docstring 注明），1080p 稀疏工业掩码压缩比 <10%。门禁终态：375 passed / 0 failed / 1 skipped，覆盖率 71.97%，棘轮 fail-under 70→71。提交 2d00952 + 712137e。",
+  "status": "complete"
+}
