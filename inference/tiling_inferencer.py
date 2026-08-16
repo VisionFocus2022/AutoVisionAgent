@@ -221,8 +221,86 @@ def should_tile(image: np.ndarray, threshold_size: int = 2048) -> bool:
     return h > threshold_size or w > threshold_size
 
 
+def tile_infer_sv(
+    image: np.ndarray,
+    engine,
+    slice_wh: int = 640,
+    overlap_wh: int = 100,
+    iou_threshold: float = 0.45,
+    threshold: float = 0.5,
+) -> List:
+    """sv.InferenceSlicer 后端滑窗推理（W6-T1，对标 supervision 方法）。
+
+    与 :func:`tile_infer` 同契约：小图直推；瓦片内坐标经 sv 合并
+    （OverlapFilter.NON_MAX_SUPPRESSION）后映射回原图绝对坐标；
+    返回含单个合并 DetectionResult 的列表（extra 记录 backend="sv"）。
+
+    依赖 supervision（惰性导入）；切片回调复用 sv_bridge 桥接。
+    """
+    import numpy as np
+    import supervision as sv
+
+    from core.interfaces_supervised import TaskType
+    from inference.sv_bridge import result_to_detections
+
+    if image is None or not hasattr(image, "shape"):
+        return []
+    h, w = image.shape[:2]
+    if h <= slice_wh and w <= slice_wh:
+        result = engine.infer(image, threshold=threshold)
+        return [result] if result else []
+
+    holder = {"task": None}
+
+    def _callback(slice_img):
+        result = engine.infer(slice_img, threshold=threshold)
+        det = result_to_detections(result)
+        if len(det) and holder["task"] is None:
+            holder["task"] = result.task
+        return det
+
+    slicer = sv.InferenceSlicer(
+        callback=_callback,
+        slice_wh=slice_wh,
+        overlap_wh=overlap_wh,
+        overlap_filter=sv.OverlapFilter.NON_MAX_SUPPRESSION,
+        iou_threshold=iou_threshold,
+    )
+    merged = slicer(image)
+
+    n = len(merged)
+    if n == 0:
+        return []
+    from core.interfaces_supervised import DetectionResult
+
+    names = merged.data.get("class_name")
+    labels = tuple(
+        str(names[i]) if names is not None and i < len(names) else "unknown"
+        for i in range(n)
+    )
+    scores = (
+        tuple(float(c) for c in merged.confidence)
+        if merged.confidence is not None else None
+    )
+    return [
+        DetectionResult(
+            task=holder["task"] or TaskType.DET,
+            boxes=np.asarray(merged.xyxy, dtype=np.float32),
+            scores=scores,
+            labels=labels,
+            extra={
+                "backend": "sv",
+                "slice_wh": slice_wh,
+                "overlap_wh": overlap_wh,
+                "merged": True,
+            },
+        )
+    ]
+
+
 __all__ = [
     "tile_infer",
+    "tile_infer_sv",
     "compute_tiles",
     "should_tile",
 ]
