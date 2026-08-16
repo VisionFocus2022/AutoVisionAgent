@@ -45,6 +45,19 @@ def _sanitize_csv_cell(value: object) -> object:
     return value
 
 
+def _boxes_to_jsonable(boxes) -> Optional[list]:
+    """numpy (N,4) 框数组 → 纯 Python 嵌套 list（JSON 可序列化）。
+
+    真引擎 boxes 是 ndarray：不得做真值判断（歧义异常），且 list(ndarray)
+    仍是 ndarray 行数组、json.dump 必炸——统一经 tolist 转纯 list。
+    """
+    if boxes is None:
+        return None
+    if hasattr(boxes, "tolist"):
+        return boxes.tolist()
+    return [list(b) for b in boxes]
+
+
 class PredictPage(QWidget):
     """推理页：加载模型 → 单张/批量推理 → 结果表 → 导出。"""
 
@@ -307,7 +320,7 @@ class PredictPage(QWidget):
             from core.audit_logger import log_detection_complete
             from core.detection_history import get_history
             _task = self.cmb_task.currentData() or "det"
-            _count = len(result.boxes) if result.boxes else 0
+            _count = len(result.boxes) if result.boxes is not None else 0
             log_detection_complete(
                 task=_task, image=path, result_count=_count,
             )
@@ -413,7 +426,7 @@ class PredictPage(QWidget):
             "path": img_path,
             "task": result.task.value,
             "score": result.score,
-            "boxes": list(result.boxes) if result.boxes else None,
+            "boxes": _boxes_to_jsonable(result.boxes),
             "labels": list(result.labels) if result.labels else None,
         })
         # 延迟到主线程添加表格行（传完整数据避免列错位）

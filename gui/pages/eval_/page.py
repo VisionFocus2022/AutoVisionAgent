@@ -353,8 +353,10 @@ class EvalPage(QWidget):
                                     try:
                                         result = engine.infer(img_path)
                                         p_boxes = result.boxes if result.boxes is not None else boxes
-                                        p_scores = [result.score] * len(p_boxes) if p_boxes else []
-                                        p_labels = labels[:len(p_boxes)] if p_boxes else labels
+                                        # 真引擎 boxes 为 numpy 数组——不得做真值判断（歧义异常）
+                                        n_pred = len(p_boxes) if p_boxes is not None else 0
+                                        p_scores = [result.score] * n_pred
+                                        p_labels = labels[:n_pred] if n_pred else labels
                                         preds_data.append({"boxes": p_boxes, "scores": p_scores, "labels": p_labels})
                                     except (ImportError, RuntimeError, OSError, FileNotFoundError):
                                         _eval_logger.exception("推理失败: %s", img_path)
@@ -377,7 +379,10 @@ class EvalPage(QWidget):
                         rows.append(("-", "N/A", tr("无标注数据")))
 
                 invoke_main(self, "_set_results_slot", rows)
-            except (ImportError, RuntimeError, OSError, ValueError) as exc:
+            except (ImportError, RuntimeError, OSError, ValueError,
+                    TypeError) as exc:
+                # TypeError 必收：seg/abdet 指标吃矩形 dict 会抛 numpy
+                # TypeError——不收则裸穿线程、按钮永久卡禁用（W8 实测）
                 invoke_main(self, "_eval_failed_slot", str(exc))
 
         threading.Thread(target=_work, daemon=True).start()

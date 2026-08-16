@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "change_id": "wave8-gui-denominator",
+  "title": "第八波：eval/deploy worker+login 注册流补测 + gui 纳入门禁分母",
+  "created_at": "2026-08-16T22:43:57.412289+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "测试补齐 + 覆盖率门禁分母扩大（pytest.ini --cov=gui）：全部可逆、失败测试即可见；组合覆盖率不得低于旧地板 74（棘轮只升不降），故洼地填平是分母纳入的前置。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：eval/deploy 页 worker 路径、login 注册流补测，然后把 gui 纳入门禁分母（需先把 eval 36% 这类洼地填平）。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（用户指令即执行授权，且明确'填平洼地后再纳入分母'的顺序约束）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave8-gui-denominator.md",
+    "design": "",
+    "tasks": "docs/tasks-wave8-gui-denominator.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005"
+    ],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-002"]},
+      {"id": "AC-003", "requirements": ["FR-003"]},
+      {"id": "AC-004", "requirements": ["FR-004"]},
+      {"id": "AC-005", "requirements": ["FR-005"]}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-002", "requirements": ["FR-002"], "acceptance": ["AC-002"]},
+      {"id": "TASK-003", "requirements": ["FR-003"], "acceptance": ["AC-003"]},
+      {"id": "TASK-004", "requirements": ["FR-004"], "acceptance": ["AC-004"]},
+      {"id": "TASK-005", "requirements": ["FR-005"], "acceptance": ["AC-005"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001 eval 页 worker 路径（AC-001）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_eval_page.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "12 passed。_run_eval 全分支（校验/fid/lpips/supervised 引擎可用与回退 GT 自比较/无标注/seg·abdet）+ 三槽 + ConfusionMatrixWidget 自绘（offscreen grab）。覆盖 36%→98%。顺带修 2 个真 bug：① page.py:356-357 `if p_boxes` 在 (N,4) numpy 上必抛 ValueError——真引擎输出下评估 worker 从未成功过（隔离复现锚定'评估失败: The truth value of an array…'）；② except 元组缺 TypeError——seg/abdet 指标吃矩形 dict 抛 numpy TypeError 裸穿线程、按钮永久卡禁用（RED→GREEN 锚定）"
+    },
+    {
+      "name": "TASK-002 deploy 页 worker 路径（AC-002）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_deploy_page.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "9 passed。_do_export 全分支（校验/torch.load dict 解包/无法识别格式/TRT 失败降级不中断/装载异常）+ 完成失败槽 + 审计日志落账 + 进度槽。导出器与 torch.load 注入。覆盖 48%→99%"
+    },
+    {
+      "name": "TASK-003 login 注册流与账户安全（AC-003）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_login_page.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "10 passed。许可证导入三态（成功 copy/失败/取消）、连续失败 5 次锁定并持久化 lockout_until、锁定期拒绝正确密码、锁定过期恢复并清除、must_change 首登翻转、1000→600K 迭代哈希自动迁移（新哈希可验证）、空库首启随机密码 admin 且二次启动不覆盖、坏 JSON 容错。覆盖 67%→92%"
+    },
+    {
+      "name": "TASK-004 predict+flaw_gen+widgets（AC-004）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_predict_flawgen.py tests/test_gui_widgets.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "18 passed + 1 skipped（openpyxl 缺失，真 xlsx 分支合理跳过，CSV 回退已测）。predict：模型加载（注册表注入/旧引擎卸载/未注册）+ 单张推理全路径 + 批推理端到端（结果行+batch_results.json+自动统计报表）+ 导出 json/excel/CSV 回退 + legacy 绘制；flaw_gen：三重校验/SGAN 真图落盘/空模板目录/引擎诚实失败。覆盖 predict 46%→85%、flaw_gen 55%→90%、loss_chart 48%→100%、file_dialog 27%→100%。RED 揪出 2 个真 bug 并修复：① _single_done 审计块 `if result.boxes` 真值崩溃被 except Exception 吞——真引擎输出下审计永不落账；② _batch_add_row 同族崩溃致整批结果丢弃且 batch_results.json 恒为 []，另有 numpy 框 json.dump 不可序列化——新增 _boxes_to_jsonable 统一转换"
+    },
+    {
+      "name": "TASK-005 gui 纳入分母 + 棘轮升门（AC-005）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "440 passed / 0 failed / 2 skipped，rc=0；pytest.ini 增 --cov=gui，覆盖率 76.02%（8037 语句/1927 未覆盖）≥ fail-under=76（自 W7 的 74 升门；W7 分母不含 gui，本波分母扩大后地板仍上升）。摸底→填洼路径：gui 整体 59%→75.7%（eval 36→98/deploy 48→99/login 67→92/predict 46→85/flaw_gen 55→90/loss_chart 48→100/file_dialog 27→100）"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "范围扩大（记录）：摸底实测 gui 整体 ≈59%，仅补 eval/deploy/login（≈340 语句）组合覆盖仍 <74% 旧地板，无法满足'纳入分母且棘轮不降'——故增加 predict（46%）+flaw_gen（55%）+loss_chart/file_dialog 补测任务（TASK-004），此为用户'把洼地填平'约束的必然推论。",
+    "真 bug 修复超出纯覆盖范围（TDD RED 优先原则）：eval 页 2 处（numpy 真值——引擎路径从未可用；TypeError 裸穿——seg/abdet 卡死 UI）+ predict 页 2 处（审计被吞、批量结果整批丢弃+json 不可序列化），均为 RED 测试先证明后修复。",
+    "行为锚定不改码：file_dialog 坏 JSON 时 _save_last_dir 整体被吞（记忆静默失效直至文件删除）——影响仅'最近目录'便利功能，锚定现状并注明恢复路径，不在本波改行为。"
+  ],
+  "request_evidence": "用户原话（2026-08-17）：'eval/deploy 页 worker 路径、login 注册流补测，然后把 gui 纳入门禁分母（需先把 eval 36% 这类洼地填平）'",
+  "final_summary": "第八波完成：① 按用户点名三靶补测——eval 页 12 测（36%→98%）、deploy 页 9 测（48%→99%）、login 注册流 10 测（67%→92%）；② 摸底证明点名三靶不足以保住 74% 旧地板，按'填平洼地'约束追加 predict（46→85%）、flaw_gen（55→90%）、loss_chart/file_dialog（→100%）共 18+5 测；③ TDD RED 揪出并修复 4 个真 bug：eval 引擎路径 numpy 真值崩溃（该路径从未可用）、seg/abdet TypeError 裸穿线程卡死按钮、predict 审计被 except Exception 吞、批量推理整批丢弃+numpy 框 JSON 不可序列化（新增 _boxes_to_jsonable）；④ pytest.ini 增 --cov=gui 纳入门禁分母，组合覆盖 76.02%，棘轮 74→76。门禁终态：440 passed / 0 failed / 2 skipped，rc=0。剩余 gui 洼地（下一波候选）：label 页 55%（236 未覆盖）、gui/main 48%、data_manage/train/project 65-66%。",
+  "status": "complete"
+}
