@@ -16,7 +16,8 @@ message SharedMemoryHandle {
   int64 offset = 2;
   // 数据长度（字节）。
   int64 length = 3;
-  // 元素 dtype：uint8 / float32 / float64 / bool
+  // 元素 dtype：uint8 / float32 / float64 / bool / bool_rle（掩码游程压缩，
+  // int32 小端交替游程、False 起始——W7 起 Python serving 默认、.NET 侧支持解码）
   string dtype = 4;
   // 形状（行优先，例如 [N, H, W, 3]）。
   repeated int32 shape = 5;

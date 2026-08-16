@@ -132,23 +132,27 @@ def _pseg_result():
 
 
 @pytest.mark.unit
-def test_serialization_default_raw(shm, monkeypatch):
+def test_serialization_default_compact(shm, monkeypatch):
+    """W7：默认走压缩（.NET 已支持 bool_rle 解码）。"""
     monkeypatch.delenv("AVA_SHM_MASK_RLE", raising=False)
-    proto = detection_result_to_proto(_pseg_result(), shm)
-    assert proto.masks_shm.dtype == "bool"  # W5 行为不变
-    np.testing.assert_array_equal(
-        shm.read_array(proto.masks_shm), _pseg_result().masks
-    )
-
-
-@pytest.mark.unit
-def test_serialization_env_flag_compact(shm, monkeypatch):
-    monkeypatch.setenv("AVA_SHM_MASK_RLE", "1")
     result = _pseg_result()
     proto = detection_result_to_proto(result, shm)
 
     assert proto.masks_shm.dtype == "bool_rle"
     assert proto.masks_shm.length < result.masks.nbytes
+    np.testing.assert_array_equal(
+        shm.read_array(proto.masks_shm), result.masks
+    )
+
+
+@pytest.mark.unit
+def test_serialization_opt_out_raw(shm, monkeypatch):
+    """AVA_SHM_MASK_RLE=0 显式退回 raw（互操作逃生门）。"""
+    monkeypatch.setenv("AVA_SHM_MASK_RLE", "0")
+    result = _pseg_result()
+    proto = detection_result_to_proto(result, shm)
+
+    assert proto.masks_shm.dtype == "bool"
     np.testing.assert_array_equal(
         shm.read_array(proto.masks_shm), result.masks
     )

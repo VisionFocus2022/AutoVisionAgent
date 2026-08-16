@@ -10,6 +10,12 @@
     <Description>根共享库：契约、模型、枚举（所有项目依赖它）。</Description>
   </PropertyGroup>
 
+  <!-- 测试用 in-process TestServer 承载 fake gRPC 服务端（W7 修复：
+       随根共享库迁移时缺失的框架引用） -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="NLog" />
     <!-- gRPC 客户端：调用 AutoVisionAgent serving（Python）的检测能力。
@@ -17,11 +23,19 @@
     <PackageReference Include="Grpc.Net.Client" />
     <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
     <PackageReference Include="Google.Protobuf" />
+    <!-- 测试框架（W7 修复：此前缺失，dotnet test 静默跑 0 条测试） -->
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
+    <PackageReference Include="Grpc.AspNetCore.Server" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
   </ItemGroup>
 
-  <!-- 由 Grpc.Tools 在编译期生成 C# 客户端桩代码（命名空间见 proto 的 csharp_namespace）。 -->
+  <!-- 由 Grpc.Tools 在编译期生成 C# 客户端桩代码（命名空间见 proto 的 csharp_namespace）。
+       相对路径链接 Python 侧同一 proto——单一真源，避免两份漂移（W7 修复：
+       本树此前 Protos/ 目录缺失，该项目从未构建成功）。 -->
   <ItemGroup>
-    <Protobuf Include="Protos\autovisionagent.proto" GrpcServices="Client" />
+    <Protobuf Include="..\..\serving\proto\autovisionagent.proto" Link="Protos\autovisionagent.proto" GrpcServices="Both" />
   </ItemGroup>
 
 </Project>

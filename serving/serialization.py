@@ -92,9 +92,8 @@ def _array_to_shm_or_skip(
 ) -> pb.SharedMemoryHandle:
     """大数组写共享内存；小数组或失败时返回空句柄（消费方按 length==0 判定）。
 
-    W6-T2：环境变量 AVA_SHM_MASK_RLE=1 时，bool 掩码走 bool_rle 压缩
-    （对标 CompactMask 游程编码）。⚠️ 默认关闭——.NET SharedMemoryReader
-    需先支持 bool_rle 解码才能开启（否则消费端会因未知 dtype 报错）。
+    W7：bool 掩码默认走 bool_rle 压缩（.NET SharedMemoryReader.ReadMasks
+    已支持解码，见 serving/dotnet_client）；AVA_SHM_MASK_RLE=0 显式退回 raw。
     """
     import numpy as np
 
@@ -117,7 +116,7 @@ def _array_to_shm_or_skip(
     if nbytes == 0:
         return pb.SharedMemoryHandle()
 
-    if dtype_name == "bool" and os.environ.get("AVA_SHM_MASK_RLE") == "1":
+    if dtype_name == "bool" and os.environ.get("AVA_SHM_MASK_RLE", "1") == "1":
         return shm.write_mask_compact(arr).to_proto()
 
     handle = shm.write_array(arr, dtype=dtype_name)

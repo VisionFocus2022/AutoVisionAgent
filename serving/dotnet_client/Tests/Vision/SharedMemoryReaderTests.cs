@@ -192,5 +192,72 @@ namespace VisionAgent.Shared.Tests.Vision
             var handle = new SharedMemoryHandle { FilePath = string.Empty, Length = 0, Dtype = "uint8" };
             Assert.Empty(_reader.ReadBytes(handle));
         }
+
+        // ------------------------------- bool_rle（W7：与 Python mask_codec 契约对齐） ------------------------------- //
+
+        /// <summary>int32 LE 交替游程（False 起始）→ [N,H,W] bool。</summary>
+        private static byte[] RunsToBytes(params int[] runs)
+        {
+            var bytes = new byte[runs.Length * 4];
+            System.Buffer.BlockCopy(runs, 0, bytes, 0, bytes.Length);
+            return bytes;
+        }
+
+        [Fact]
+        public void ReadMasks_Decodes_BoolRle_RunContract()
+        {
+            // Python: encode([[0,0,1,1,1,0]]) → runs [2,3,1]
+            var handle = WriteTemp(RunsToBytes(2, 3, 1), "bool_rle", 1, 1, 6);
+
+            var masks = _reader.ReadMasks(handle);
+
+            Assert.Equal(1, masks.GetLength(0));
+            Assert.False(masks[0, 0, 0]);
+            Assert.False(masks[0, 0, 1]);
+            Assert.True(masks[0, 0, 2]);
+            Assert.True(masks[0, 0, 3]);
+            Assert.True(masks[0, 0, 4]);
+            Assert.False(masks[0, 0, 5]);
+        }
+
+        [Fact]
+        public void ReadMasks_BoolRle_HandlesZeroLeadingRun_AndMultiInstance()
+        {
+            // 首像素为 True：False 首段长度 0（runs [0,3,2]）；
+            // 两实例各 1×5：inst0=[1,1,1,0,0], inst1=[0,0,1,1,0]
+            var handle = WriteTemp(RunsToBytes(0, 3, 4, 2, 1), "bool_rle", 2, 1, 5);
+
+            var masks = _reader.ReadMasks(handle);
+
+            Assert.True(masks[0, 0, 0] && masks[0, 0, 1] && masks[0, 0, 2]);
+            Assert.False(masks[0, 0, 3] || masks[0, 0, 4]);
+            Assert.False(masks[1, 0, 0] || masks[1, 0, 1]);
+            Assert.True(masks[1, 0, 2] && masks[1, 0, 3]);
+            Assert.False(masks[1, 0, 4]);
+        }
+
+        [Fact]
+        public void ReadMasks_BoolRle_Throws_OnRunSumMismatch()
+        {
+            var handle = WriteTemp(RunsToBytes(4), "bool_rle", 1, 2, 3); // 4 != 6
+
+            Assert.Throws<InvalidOperationException>(() => _reader.ReadMasks(handle));
+        }
+
+        [Fact]
+        public void ReadMasks_BoolRle_Throws_OnNegativeRun()
+        {
+            var handle = WriteTemp(RunsToBytes(-1, 7), "bool_rle", 1, 1, 6);
+
+            Assert.Throws<InvalidOperationException>(() => _reader.ReadMasks(handle));
+        }
+
+        [Fact]
+        public void ReadMasks_BoolRle_Throws_OnTruncatedRunBytes()
+        {
+            var handle = WriteTemp(new byte[] { 1, 2, 3 }, "bool_rle", 1, 1, 6); // 非 4 倍长
+
+            Assert.Throws<InvalidOperationException>(() => _reader.ReadMasks(handle));
+        }
     }
 }

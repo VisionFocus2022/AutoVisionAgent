@@ -152,8 +152,8 @@ class SharedMemoryManager:
         """bool 掩码走 RLE 压缩写出（W6-T2，对标 CompactMask 游程编码）。
 
         dtype="bool_rle"（经 mask_codec 编码；read_array 自动解码）。
-        ⚠️ 跨语言注意：.NET SharedMemoryReader 需支持 bool_rle 才能消费该句柄；
-        gRPC Detect 默认仍走 raw（serialization 由 AVA_SHM_MASK_RLE 开关控制）。
+        W7 起 .NET SharedMemoryReader.ReadMasks 已支持 bool_rle 解码，
+        gRPC Detect 默认走此路径（AVA_SHM_MASK_RLE=0 可退回 raw）。
         """
         import numpy as np
 

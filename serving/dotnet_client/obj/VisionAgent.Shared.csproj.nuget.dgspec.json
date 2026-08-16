@@ -1,0 +1,133 @@
+{
+  "format": 1,
+  "restore": {
+    "E:\\学习项目\\视觉大模型\\serving\\dotnet_client\\VisionAgent.Shared.csproj": {}
+  },
+  "projects": {
+    "E:\\学习项目\\视觉大模型\\serving\\dotnet_client\\VisionAgent.Shared.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "E:\\学习项目\\视觉大模型\\serving\\dotnet_client\\VisionAgent.Shared.csproj",
+        "projectName": "VisionAgent.Shared",
+        "projectPath": "E:\\学习项目\\视觉大模型\\serving\\dotnet_client\\VisionAgent.Shared.csproj",
+        "packagesPath": "C:\\Users\\888\\.nuget\\packages\\",
+        "outputPath": "E:\\学习项目\\视觉大模型\\serving\\dotnet_client\\obj\\",
+        "projectStyle": "PackageReference",
+        "centralPackageVersionsManagementEnabled": true,
+        "configFilePaths": [
+          "C:\\Users\\888\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net8.0"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net8.0": {
+            "targetAlias": "net8.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "9.0.300"
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "dependencies": {
+            "Google.Protobuf": {
+              "target": "Package",
+              "version": "[3.31.1, )",
+              "versionCentrallyManaged": true
+            },
+            "Grpc.AspNetCore.Server": {
+              "target": "Package",
+              "version": "[2.66.0, )",
+              "versionCentrallyManaged": true
+            },
+            "Grpc.Net.Client": {
+              "target": "Package",
+              "version": "[2.66.0, )",
+              "versionCentrallyManaged": true
+            },
+            "Grpc.Tools": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.66.0, )",
+              "versionCentrallyManaged": true
+            },
+            "Microsoft.AspNetCore.TestHost": {
+              "target": "Package",
+              "version": "[8.0.11, )",
+              "versionCentrallyManaged": true
+            },
+            "Microsoft.NET.Test.Sdk": {
+              "target": "Package",
+              "version": "[17.11.1, )",
+              "versionCentrallyManaged": true
+            },
+            "NLog": {
+              "target": "Package",
+              "version": "[5.3.4, )",
+              "versionCentrallyManaged": true
+            },
+            "xunit": {
+              "target": "Package",
+              "version": "[2.9.2, )",
+              "versionCentrallyManaged": true
+            },
+            "xunit.runner.visualstudio": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[2.8.2, )",
+              "versionCentrallyManaged": true
+            }
+          },
+          "centralPackageVersions": {
+            "Google.Protobuf": "3.31.1",
+            "Grpc.AspNetCore.Server": "2.66.0",
+            "Grpc.Net.Client": "2.66.0",
+            "Grpc.Tools": "2.66.0",
+            "Microsoft.AspNetCore.TestHost": "8.0.11",
+            "Microsoft.NET.Test.Sdk": "17.11.1",
+            "NLog": "5.3.4",
+            "xunit": "2.9.2",
+            "xunit.runner.visualstudio": "2.8.2"
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.316/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

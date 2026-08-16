@@ -45,30 +45,76 @@ namespace VisionAgent.Shared.Services.Vision
         /// <summary>
         /// 读取 (N,H,W) bool 掩码为三维数组 [N,H,W]。
         /// 用于 <see cref="DetectionResultProto.MasksShm"/>。
+        /// dtype 支持：
+        /// <list type="bullet">
+        /// <item><c>bool</c>：原始字节（每元素 1 字节）。</item>
+        /// <item><c>bool_rle</c>（W7）：int32 小端交替游程、False 起始、C 序展平，
+        /// 与 Python <c>serving.mask_codec</c> 契约一致（大掩码压缩传输）。</item>
+        /// </list>
         /// </summary>
         public bool[,,] ReadMasks(SharedMemoryHandle handle)
         {
             if (handle is null || handle.Length <= 0) return EmptyBool3D();
-            if (!string.Equals(handle.Dtype, "bool", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"掩码 dtype 不匹配：期望 bool，实际 {handle.Dtype}");
+
+            var isRaw = string.Equals(handle.Dtype, "bool", StringComparison.OrdinalIgnoreCase);
+            var isRle = string.Equals(handle.Dtype, "bool_rle", StringComparison.OrdinalIgnoreCase);
+            if (!isRaw && !isRle)
+                throw new InvalidOperationException($"掩码 dtype 不匹配：期望 bool/bool_rle，实际 {handle.Dtype}");
 
             var raw = ReadBytes(handle);
             var shape = handle.Shape;
             int n = shape.Count > 0 ? shape[0] : 0;
             int h = shape.Count > 1 ? shape[1] : 0;
             int w = shape.Count > 2 ? shape[2] : 0;
+            long total = (long)n * h * w;
 
-            if (n * h * w != raw.Length)
+            if (isRaw)
+            {
+                if (total != raw.Length)
+                    throw new InvalidOperationException(
+                        $"掩码形状 [{n},{h},{w}] 与数据长度 {raw.Length} 不一致。");
+
+                var masks = new bool[n, h, w];
+                int idx = 0;
+                for (int i = 0; i < n; i++)
+                    for (int j = 0; j < h; j++)
+                        for (int k = 0; k < w; k++)
+                            masks[i, j, k] = raw[idx++] != 0;
+                return masks;
+            }
+
+            // bool_rle：游程解码
+            if (raw.Length == 0 || raw.Length % 4 != 0)
                 throw new InvalidOperationException(
-                    $"掩码形状 [{n},{h},{w}] 与数据长度 {raw.Length} 不一致。");
+                    $"bool_rle 载荷长度 {raw.Length} 非 4 字节对齐，无法解码。");
+            var runs = new int[raw.Length / 4];
+            Buffer.BlockCopy(raw, 0, runs, 0, raw.Length);
 
-            var masks = new bool[n, h, w];
-            int idx = 0;
-            for (int i = 0; i < n; i++)
-                for (int j = 0; j < h; j++)
-                    for (int k = 0; k < w; k++)
-                        masks[i, j, k] = raw[idx++] != 0;
-            return masks;
+            long sum = 0;
+            foreach (var r in runs)
+            {
+                if (r < 0)
+                    throw new InvalidOperationException("bool_rle 游程包含负值，载荷损坏。");
+                sum += r;
+            }
+            if (sum != total)
+                throw new InvalidOperationException(
+                    $"bool_rle 游程之和 {sum} 与形状 [{n},{h},{w}] 元素数 {total} 不一致。");
+
+            var decoded = new bool[n, h, w];
+            int flat = 0;
+            bool value = false;
+            int hw = h * w;
+            foreach (var run in runs)
+            {
+                for (int c = 0; c < run; c++)
+                {
+                    decoded[flat / hw, (flat % hw) / w, flat % w] = value;
+                    flat++;
+                }
+                value = !value;
+            }
+            return decoded;
         }
 
         /// <summary>

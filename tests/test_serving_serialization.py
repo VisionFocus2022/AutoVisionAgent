@@ -68,8 +68,9 @@ def test_result_to_proto_masks_via_shm(shm):
     result = DetectionResult(task=TaskType.PSEG, masks=masks)
 
     proto = detection_result_to_proto(result, shm)
-    assert proto.masks_shm.length == masks.nbytes
-    assert proto.masks_shm.dtype == "bool"
+    # W7：bool 掩码默认走 bool_rle 压缩（长度 < 原始字节）
+    assert proto.masks_shm.dtype == "bool_rle"
+    assert proto.masks_shm.length < masks.nbytes
     assert list(proto.masks_shm.shape) == [2, 256, 256]
 
     back = shm.read_array(proto.masks_shm)
