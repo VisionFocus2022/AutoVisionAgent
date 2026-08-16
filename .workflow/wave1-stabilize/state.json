@@ -16,8 +16,8 @@
   "approvals": {
     "G1_requirements": {
       "required": true,
-      "approved": false,
-      "evidence": ""
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'你的建议很好，根据你的建议开始实施'——批准 docs/AutoVisionAgent-架构解析与优化方案.md §11.5 第一波止血 5 项；PRD=docs/prd-wave1-stabilize.md"
     },
     "G2_decision": {
       "required": false,
@@ -26,25 +26,206 @@
     },
     "G3_execution": {
       "required": true,
-      "approved": false,
-      "evidence": ""
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'你的建议很好，根据你的建议开始实施'——批准 docs/AutoVisionAgent-架构解析与优化方案.md §11.5 第一波止血 5 项；'开始实施'即执行授权；任务表=docs/tasks-wave1-stabilize.md"
     }
   },
   "documents": {
     "change_card": "",
-    "prd": "",
+    "prd": "docs/prd-wave1-stabilize.md",
     "design": "",
-    "tasks": ""
+    "tasks": "docs/tasks-wave1-stabilize.md"
   },
   "traceability": {
-    "requirements": [],
-    "acceptance": [],
-    "tasks": []
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-004",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-005",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-006",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-007",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-008",
+        "requirements": [
+          "FR-003",
+          "FR-004",
+          "FR-005"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-002"
+        ],
+        "acceptance": [
+          "AC-002"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-003"
+        ]
+      },
+      {
+        "id": "TASK-004",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-003",
+          "AC-008"
+        ]
+      },
+      {
+        "id": "TASK-005",
+        "requirements": [
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-004"
+        ]
+      },
+      {
+        "id": "TASK-006",
+        "requirements": [
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-004",
+          "AC-008"
+        ]
+      },
+      {
+        "id": "TASK-007",
+        "requirements": [
+          "FR-005"
+        ],
+        "acceptance": [
+          "AC-005",
+          "AC-006",
+          "AC-007"
+        ]
+      },
+      {
+        "id": "TASK-008",
+        "requirements": [
+          "FR-005"
+        ],
+        "acceptance": [
+          "AC-005",
+          "AC-006",
+          "AC-007",
+          "AC-008"
+        ]
+      },
+      {
+        "id": "TASK-009",
+        "requirements": [
+          "FR-005"
+        ],
+        "acceptance": [
+          "AC-008"
+        ]
+      },
+      {
+        "id": "TASK-010",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004",
+          "FR-005"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-002",
+          "AC-003",
+          "AC-004",
+          "AC-005",
+          "AC-006",
+          "AC-007",
+          "AC-008"
+        ]
+      }
+    ]
   },
-  "verification": [],
+  "verification": [
+    {
+      "name": "TASK-001 git 基线",
+      "command": "git init && git add -A && git commit -m 'chore: 建立 v2.0 基线（架构审查 2026-08-16 前的原始状态）'",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "提交 af972d6；142 文件入库；git status --short 干净（仅余 venv 复制产物，.venv 已被 .gitignore 排除）"
+    },
+    {
+      "name": "TASK-002 venv 归位验证",
+      "command": ".venv/Scripts/python.exe -c \"import PySide6, torch; print(PySide6.__version__, torch.__version__, torch.cuda.is_available())\"",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "输出：PySide6 6.11.1 | torch 2.5.1+cu121 | cuda True（后台任务 bru2rz2v7 exit 0）；requirements.lock.txt 200 行；pytest 全量收集 214 项（另有 1 个收集错误待 TASK-010 排查）"
+    }
+  ],
   "risks_open": [],
   "deviations": [],
   "request_evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'你的建议很好，根据你的建议开始实施'——批准 docs/AutoVisionAgent-架构解析与优化方案.md §11.5 第一波止血 5 项（含展示的 git init 命令原文）",
   "final_summary": "",
-  "status": "draft"
+  "status": "in_progress"
 }

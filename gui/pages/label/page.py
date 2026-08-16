@@ -463,8 +463,8 @@ class LabelPage(QWidget):
             reg = get_default_registry()
             if reg.has(TaskType.DET):
                 engine = reg.get(TaskType.DET)
-                import cv2
-                img = cv2.imread(self._image_path)
+                from core.image_io import imread_unicode
+                img = imread_unicode(self._image_path)
                 if img is not None:
                     result = engine.infer(img)
                     if result.boxes:
@@ -514,9 +514,9 @@ class LabelPage(QWidget):
                     logging.getLogger(__name__).exception("零样本检测回调失败")
                     return []
 
-            # 读取图像为 ndarray
-            import cv2
-            img = cv2.imread(self._image_path)
+            # 读取图像为 ndarray（W1: 中文路径安全）
+            from core.image_io import imread_unicode
+            img = imread_unicode(self._image_path)
             if img is None:
                 self.status_changed.emit(tr("图像读取失败"), self._image_path)
                 return

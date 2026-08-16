@@ -265,8 +265,8 @@ class PredictPage(QWidget):
             return
 
         try:
-            import cv2
-            img = cv2.imread(path)
+            from core.image_io import imread_unicode
+            img = imread_unicode(path)
             if img is None:
                 self.status_changed.emit(tr("图像读取失败"), "!")
                 return
@@ -355,11 +355,11 @@ class PredictPage(QWidget):
                         for img_path, result in zip(batch_paths, results):
                             self._batch_add_row(img_path, result)
                     else:
-                        import cv2
+                        from core.image_io import imread_unicode
                         for img_path in batch_paths:
                             if self._batch_cancel:
                                 break
-                            img = cv2.imread(img_path)
+                            img = imread_unicode(img_path)
                             if img is None:
                                 continue
                             result = engine.infer(img)

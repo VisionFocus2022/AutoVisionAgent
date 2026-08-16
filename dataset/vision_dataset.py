@@ -58,15 +58,16 @@ class VisionDataset:
         """返回 (image, annotation) 字典。"""
         img_path, ann_path = self._items[idx]
 
-        # 加载图像
+        # 加载图像（W1: 中文路径安全；读失败显式报错，不让 None 静默流入训练数据）
+        from core.image_io import imread_unicode
+        image = imread_unicode(img_path)
+        if image is None:
+            raise ValueError(f"图像读取失败: {img_path}")
         try:
             import cv2
-            image = cv2.imread(img_path)
-            if image is not None:
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         except ImportError:
-            from PIL import Image
-            image = np.asarray(Image.open(img_path).convert("RGB"))
+            pass  # PIL 路径读出的已是 RGB
 
         # 加载标注
         annotation = {"boxes": [], "labels": [], "shapes": []}
