@@ -416,6 +416,15 @@ _EN_US: Dict[str, str] = {
 
     # ---- W3 新增（主线程迁移：worker 失败提示） ----
     "操作失败": "Operation Failed",
+
+    # ---- W4 新增（SAM 接线 P2-6） ----
+    "SAM 未安装": "SAM not installed",
+    "SAM 未加载权重": "SAM weights not loaded",
+    "SAM 已加载": "SAM loaded",
+    "SAM 加载失败": "SAM load failed",
+    "选择 SAM 权重": "Select SAM weights",
+    "交互式标注不可用": "Interactive labeling unavailable",
+    "交互式标注就绪": "Interactive labeling ready",
 }
 
 

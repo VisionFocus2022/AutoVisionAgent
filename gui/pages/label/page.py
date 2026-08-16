@@ -215,6 +215,11 @@ class LabelPage(QWidget):
         self._thumb_pool.setMaxThreadCount(4)
         self._thumb_items: Dict[str, "QListWidgetItem"] = {}
 
+        # W4-T3 (P2-6): SAM 交互式标注接线状态
+        self._sam_adapter = None
+        self._sam_busy = False
+        self._pending_sam_image = None
+
         self._build_ui()
         self._wire()
         self._apply_mode(AnnotationMode.POLYGON)
@@ -511,6 +516,11 @@ class LabelPage(QWidget):
         filename = os.path.basename(path)
         self.status_changed.emit(filename, f"{pm.width()}x{pm.height()}")
 
+        # W4-T3: 交互式模式下换图 → 重新预热 SAM embedding（缓存按图哈希）
+        if (self.controller.mode is AnnotationMode.INTERACTIVE
+                and getattr(self._sam_adapter, "loaded", False)):
+            self._warm_sam()
+
     def _on_file_selected(self, row: int) -> None:
         """文件列表点击 -> 加载图像。"""
         if 0 <= row < len(self._image_files):
@@ -596,8 +606,95 @@ class LabelPage(QWidget):
         )
         self.view.set_draw_mode(is_draw_mode)
 
+        # W4-T3 (P2-6): 交互式模式接线 SAM（依赖检测/权重选择/注入）
+        if mode is AnnotationMode.INTERACTIVE:
+            self._ensure_sam()
+
         # 切模式后刷新可用性
         self._on_undo_redo_changed(self.canvas.can_undo(), self.canvas.can_redo())
+
+    # ------------------------------ SAM 接线（W4-T3 / P2-6） ------------------------------ #
+    def _ensure_sam(self) -> None:
+        """进入交互式模式：依赖检测 + 权重选择/加载 + 注入（状态栏全程明示）。"""
+        if getattr(self._sam_adapter, "loaded", False):
+            self._warm_sam()
+            return
+
+        try:
+            import segment_anything  # noqa: F401  仅探测可选依赖
+        except ImportError:
+            self.status_changed.emit(tr("SAM 未安装"), tr("交互式标注不可用"))
+            return
+
+        ckpt = pick_open_file(self, tr("选择 SAM 权重"), "SAM Checkpoint (*.pth)")
+        if not ckpt:
+            self.status_changed.emit(tr("SAM 未加载权重"), tr("交互式标注不可用"))
+            return
+
+        from labeling.sam_adapter import SamAdapter
+
+        adapter = SamAdapter()
+        self._sam_busy = True
+
+        def _work():
+            err = ""
+            try:
+                adapter.load(ckpt, device="cpu")
+            except (ImportError, RuntimeError, OSError, ValueError) as exc:
+                err = str(exc)
+            self._sam_adapter = adapter
+            self._sam_busy = False
+            if err:
+                invoke_main(self, "_sam_failed", err)
+                return
+            invoke_main(self, "_sam_warmed")
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    @Slot()
+    def _sam_warmed(self) -> None:
+        """槽：权重加载完成（主线程）——继续预热当前帧。"""
+        self._warm_sam()
+
+    def _warm_sam(self) -> None:
+        """worker 预计算当前帧 embedding（点击时命中缓存，UI 不冻结）。"""
+        if not self._image_path or self._sam_busy:
+            return
+        adapter = self._sam_adapter
+        image_path = self._image_path
+        self._sam_busy = True
+
+        def _work():
+            from core.image_io import imread_unicode
+
+            err = ""
+            img = imread_unicode(image_path)
+            if img is not None:
+                try:
+                    adapter.set_image(img)
+                except (RuntimeError, OSError, ValueError) as exc:
+                    err = str(exc)
+            self._sam_busy = False
+            if img is None or err:
+                invoke_main(self, "_sam_failed", err or tr("图像读取失败"))
+                return
+            self._pending_sam_image = img
+            invoke_main(self, "_sam_attach")
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    @Slot()
+    def _sam_attach(self) -> None:
+        """槽：预热完成（主线程）——注入 InteractiveLabeler。"""
+        if self.controller.attach_interactive(
+            self._sam_adapter, self._pending_sam_image
+        ):
+            self.status_changed.emit(tr("SAM 已加载"), tr("交互式标注就绪"))
+
+    @Slot(str)
+    def _sam_failed(self, err: str) -> None:
+        """槽：SAM 加载/预热失败（主线程）——诚实报错。"""
+        self.status_changed.emit(tr("SAM 加载失败"), err[:60])
 
     def _apply_label(self) -> None:
         text = self.label_input.text().strip() or "defect"

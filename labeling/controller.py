@@ -191,6 +191,23 @@ class AnnotationController:
             self._labeler.reset()
         self._canvas._redraw()
 
+    def attach_interactive(self, adapter, image=None) -> bool:
+        """为交互式模式注入 SAM 适配器与当前帧（W4-T3 / P2-6）。
+
+        仅在当前模式为 INTERACTIVE 且标注器支持注入时生效。
+
+        Returns:
+            是否注入成功。
+        """
+        if self._mode is not AnnotationMode.INTERACTIVE or self._labeler is None:
+            return False
+        if not hasattr(self._labeler, "set_adapter"):
+            return False
+        self._labeler.set_adapter(adapter)
+        if image is not None:
+            self._labeler.set_image(image)
+        return True
+
     def _commit_shape(self, shape: Shape) -> None:
         """将标注添加到画布。"""
         self._canvas.add_shape(
