@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "change_id": "wave7-dotnet-rle",
+  "title": "第七波：.NET bool_rle 解码+默认开启压缩 + 覆盖棘轮推进",
+  "created_at": "2026-08-16T22:08:45.754953+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "cross_system",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "跨语言契约变更（dtype=bool_rle 默认启用）：以 .NET 同变更集补齐解码+单测为前置，Python 默认翻转与 C# 支持原子落地；dotnet test 与 pytest 双端验证。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-16 消息）：把 .NET SharedMemoryReader 补上 bool_rle 解码后默认开启压缩（跨语言小改）、和覆盖棘轮继续向 serving/server 与 gui 各页推进。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（用户指令即执行授权）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave7-dotnet-rle.md",
+    "design": "",
+    "tasks": "docs/tasks-wave7-dotnet-rle.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-003"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-002"
+        ],
+        "acceptance": [
+          "AC-002"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-003"
+        ]
+      }
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001 .NET bool_rle + default on",
+      "command": "cd serving/dotnet_client && dotnet test --nologo",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "C# 45/45（本树历史首次真正构建+运行）。修复项目残缺：CPM（Google.Protobuf 3.0.0 含 GHSA-77rm-9x9h-xj3g/GHSA-jwvw-v7c5-m82h 高危 CVE→3.31.1、NLog→5.3.4）、测试框架接入（此前 dotnet test 静默 0 条）、proto 相对链接单一真源（Protos/ 缺失，Client→Both）、重建 DetectionTaskType/DetectionResult。ReadMasks 增 bool_rle 解码（负游程/和不等/截断显式报错）+5 xUnit（契约锚=Python 编码器实测字节）。Python 默认开启（AVA_SHM_MASK_RLE=0 逃生门）+proto 注释+测试翻转；提交 e70c492/49d9a90"
+    },
+    {
+      "name": "TASK-002 gui/serving 覆盖推进 + numpy bug",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_pages_more.py tests/test_serving_server.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "12+21 passed。workers 纯函数全测/serve 优雅停机/argparser env+CLI/__main__ runpy/settings 保存重置/login 离线与错误密码/predict 表格+CSV 注入防护；修复 predict 页两处 numpy boxes 真值判断（真引擎输出必崩 ValueError）；提交 e705c51"
+    },
+    {
+      "name": "TASK-003 门禁全量 + 棘轮（AC-003）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "391 passed / 0 failed / 1 skipped，rc=0；覆盖率 74.74% ≥ fail-under=74（自 W6 的 71 升门）"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "范围扩大（记录）：.NET 侧小改实为大修——csproj 无测试框架（dotnet test 静默 0 条）、Protos/ 目录缺失（项目从未构建）、Models/Enums 类型缺失、CPM 缺失且 Google.Protobuf 解析到 3.0.0（2 条高危 CVE）。全部修复后 C# 测试首次 45/45 跑通——这是默认开启压缩的诚实前置。",
+    "契约锚纪律：C# 测试游程字节初版手写违反交替契约（相邻同值段），改用 Python encode_mask_rle 实测输出 [0,3,4,2,1] 后全绿。"
+  ],
+  "request_evidence": "用户原话（2026-08-16）：'把 .NET SharedMemoryReader 补上 bool_rle 解码后默认开启压缩（跨语言小改）、和覆盖棘轮继续向 serving/server 与 gui 各页推进。'",
+  "final_summary": "第七波两项落地：① .NET SharedMemoryReader 补 bool_rle 解码（int32 LE 交替游程，负值/和不等/截断显式报错）并默认开启掩码压缩传输（AVA_SHM_MASK_RLE=0 逃生门）——跨语言契约双端原子落地；过程中修复 C# 项目残缺四件套（测试框架/Protos 目录/Models+Enums 类型/CPM 版本管理，含 Google.Protobuf 高危 CVE 升级），C# 测试本树历史首次 45/45 通过。② 覆盖棘轮推进：gui 六处高价值路径 + serving 入口/生命周期补测，并修复 predict 页两处 numpy boxes 真值判断潜在 bug。门禁终态：391 passed / 0 failed / 1 skipped，覆盖率 74.74%，棘轮 fail-under 71→74。",
+  "status": "complete"
+}
