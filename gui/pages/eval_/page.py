@@ -319,6 +319,11 @@ class EvalPage(QWidget):
                         except (ImportError, RuntimeError, OSError, FileNotFoundError):
                             _eval_logger.exception("加载评估引擎失败，回退到 GT 自比较")
                             engine = None
+                            # W1: 假指标路径显式警告（GT 当预测，指标无意义）
+                            self.status_changed.emit(
+                                tr("评估引擎不可用，退化为 GT 自比较（指标仅供参考）"),
+                                "warn",
+                            )
 
                         import cv2
                         total_files = len(json_files)

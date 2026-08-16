@@ -365,6 +365,53 @@ _EN_US: Dict[str, str] = {
     "暂无检测记录": "No detection records",
     "推理总数": "Total Inferences",
     "平均置信度": "Average Confidence",
+
+    # ---- W1 新增（任务下拉与引擎注册表实况对齐） ----
+    "检测": "Detection",
+    "分割": "Segmentation",
+    "分类": "Classification",
+    "实例分割": "Instance Segmentation",
+    "语义分割": "Semantic Segmentation",
+    "超分辨率": "Super Resolution",
+    "警告：": "Warning: ",
+    "（模拟）": " (simulated)",
+    "（未装引擎）": " (engine not installed)",
+    "该任务引擎未安装": "Engine for this task is not installed",
+    "引擎不可用，使用模拟训练": "Engine unavailable; simulated training in use",
+    "任务引擎未注册，使用模拟训练": "Task engine not registered; simulated training in use",
+    "引擎不支持逐轮训练，使用模拟训练": "Engine lacks per-epoch training; simulated training in use",
+    "引擎未安装：训练将使用模拟策略（假 loss，仅供流程验证）":
+        "Engine not installed: training uses a simulated strategy (fake loss, flow validation only)",
+    "评估引擎不可用，退化为 GT 自比较（指标仅供参考）":
+        "Eval engine unavailable; degraded to GT self-comparison (metrics indicative only)",
+
+    # ---- W1 补齐（check_i18n 曾报全过但实际缺译 30 处，此批清零） ----
+    "LR 调度": "LR Scheduler",
+    "余弦": "Cosine",
+    "阶跃": "Step",
+    "平台": "Plateau",
+    "无": "None",
+    "预热轮数": "Warmup Epochs",
+    "混合精度": "Mixed Precision",
+    "加载线程": "Loader Threads",
+    "图像尺寸": "Image Size",
+    "复制": "Copy",
+    "已复制": "Copied",
+    "已粘贴": "Pasted",
+    "剪贴板为空": "Clipboard is empty",
+    "标签": "Label",
+    "模式": "Mode",
+    "检测框数": "Detected Boxes",
+    "文件列表": "File List",
+    "移动": "Move",
+    "符号链接": "Symlink",
+    "确认退出": "Confirm Exit",
+    "有正在进行的操作（训练/推理）。\n确定要退出吗？未保存的数据可能丢失。":
+        "Operations in progress (training/inference).\nExit anyway? Unsaved data may be lost.",
+    "最近项目": "Recent Projects",
+    "暂无最近项目": "No recent projects",
+    "张更多（仅加载前500张缩略图）": " more (only first 500 thumbnails loaded)",
+    "路径不安全，拒绝删除": "Unsafe path; deletion refused",
 }
 
 

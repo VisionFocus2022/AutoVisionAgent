@@ -12,7 +12,15 @@ from labeling.base import (
     Point,
     Shape,
 )
-from labeling.io_labelme import save_labelme, load_labelme, load_labelme_shapes
+from labeling.io_labelme import (
+    labelme_to_shapes,
+    load_labelme,
+    load_labelme_shapes,
+    save_labelme,
+    shape_from_labelme,
+    shape_to_labelme,
+    shapes_to_labelme,
+)
 
 __all__ = [
     "Point",
@@ -24,4 +32,8 @@ __all__ = [
     "save_labelme",
     "load_labelme",
     "load_labelme_shapes",
+    "labelme_to_shapes",
+    "shape_to_labelme",
+    "shape_from_labelme",
+    "shapes_to_labelme",
 ]

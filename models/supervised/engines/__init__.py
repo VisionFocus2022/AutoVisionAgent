@@ -1,5 +1,9 @@
-"""有监督任务引擎实现集（M2 完整版：9 任务全注册）。
+"""有监督任务引擎实现集（W1 诚实化：当前实装 6/9）。
 
+实装：cls / pose / pseg / sseg / sgan / super。
+缺失：det_yolo / seg_yolo / abdet_anomalib（register_all_engines 跳过并记警告；
+补齐属第二波工作）。GUI 任务下拉已按注册表实况标注/过滤
+（gui/core/tasks_ui.py），"9 任务"对外宣称以注册表为准。
 每个引擎模块在导入时通过 @register_engine 自注册到默认注册表。
 调用 ``register_all_engines()`` 触发全部引擎注册（惰性导入重依赖）。
 """

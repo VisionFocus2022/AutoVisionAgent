@@ -26,16 +26,10 @@ from PySide6.QtWidgets import (
 
 from core.interfaces_supervised import TaskType, TrainConfig
 from gui.core.i18n import tr
+from gui.core.tasks_ui import populate_task_combo
 from gui.widgets.loss_chart import LossChartWidget
 from gui.pages.train.worker import TrainWorker
 
-
-# 可用任务类型（M1 阶段：det/seg/abdet）
-_M1_TASKS = [
-    (TaskType.DET, "检测 (det)"),
-    (TaskType.SEG, "分割 (seg)"),
-    (TaskType.ABDET, "异常检测 (abdet)"),
-]
 
 # 多规模配置预设（对标 SKolpha normal/small/large/ultra 变体）
 _TRAIN_PRESETS = {
@@ -114,8 +108,13 @@ class TrainPage(QWidget):
         self.cmb_preset.currentIndexChanged.connect(self._apply_preset)
 
         self.cmb_task = QComboBox(form_frame)
-        for task, label in _M1_TASKS:
-            self.cmb_task.addItem(label, task)
+        # W1: 下拉与引擎注册表实况对齐——全 9 项，缺引擎标"模拟"（首项保持 DET，兼容 UIA 默认）
+        populate_task_combo(
+            self.cmb_task,
+            only_available=False,
+            unavailable_suffix="（模拟）",
+            unavailable_tooltip="引擎未安装：训练将使用模拟策略（假 loss，仅供流程验证）",
+        )
         form.addRow(tr("任务"), self.cmb_task)
 
         self.spin_epochs = QSpinBox(form_frame)
@@ -293,7 +292,8 @@ class TrainPage(QWidget):
     def _make_trainer(self, cfg: TrainConfig):
         """根据任务类型构建训练器（策略模式）。
 
-        优先尝试真实引擎训练；若引擎不支持 train 则回退到模拟策略。
+        优先尝试真实引擎训练；W1: 引擎未注册 / 引擎无 train_epoch 两条
+        假 loss 路径均显式警告后再回退模拟策略（消灭静默假 loss）。
         """
         from training.generic_trainer import GenericTrainer
 
@@ -303,16 +303,15 @@ class TrainPage(QWidget):
             reg = get_default_registry()
             if reg.has(cfg.task):
                 engine = reg.get(cfg.task)
-                strategy = EngineTrainStrategy(engine, cfg)
-                return GenericTrainer(cfg.task, strategy)
+                if hasattr(engine, "train_epoch"):
+                    return GenericTrainer(cfg.task, EngineTrainStrategy(engine, cfg))
+                self._warn_simulated(tr("引擎不支持逐轮训练，使用模拟训练"))
+            else:
+                self._warn_simulated(tr("任务引擎未注册，使用模拟训练"))
         except (ImportError, RuntimeError, OSError):
             import logging
             logging.getLogger(__name__).exception("引擎不可用，回退到模拟训练策略")
-            # R5-3: 明确提示用户当前为模拟训练
-            self.status_changed.emit(tr("引擎不可用，使用模拟训练"), "warn")
-            self.lbl_log.setText(
-                tr("警告：真实引擎不可用，当前为模拟训练模式！")
-            )
+            self._warn_simulated(tr("引擎不可用，使用模拟训练"))
 
         # 回退：模拟训练策略（用于 UI 验证 / 无 GPU 环境）
         class _SimStrategy:
@@ -334,6 +333,11 @@ class TrainPage(QWidget):
                 return None
 
         return GenericTrainer(cfg.task, _SimStrategy())
+
+    def _warn_simulated(self, message: str) -> None:
+        """R5-3/W1：进入模拟训练模式时显式警告（状态栏 + 日志区，不静默）。"""
+        self.status_changed.emit(message, "warn")
+        self.lbl_log.setText(tr("警告：") + message)
 
     def _stop_training(self) -> None:
         """请求强制结束。"""

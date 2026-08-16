@@ -93,6 +93,16 @@ def shape_from_labelme(data: Dict[str, Any]) -> Shape:
     )
 
 
+def labelme_to_shapes(doc: Dict[str, Any]) -> List[Shape]:
+    """完整 LabelMe 文档字典 → Shape 列表。（W1: 自 era-2 树移植）"""
+    out: List[Shape] = []
+    for item in doc.get("shapes") or []:
+        if not isinstance(item, dict):
+            continue
+        out.append(shape_from_labelme(item))
+    return out
+
+
 def shapes_to_labelme(
     shapes: Sequence[Shape],
     image_path: str,

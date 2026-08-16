@@ -162,8 +162,8 @@ class TestM1E2E:
         ext = DataManagerExt(None, str(tmp_path))
         dirname, layout = ext.create_project("test", "det")
         assert os.path.isdir(layout.root)
-        assert os.path.isdir(layout.images)
-        assert os.path.isdir(layout.annotations)
+        assert os.path.isdir(layout.images_dir)
+        assert os.path.isdir(layout.annotations_dir)
 
         stats = ext.get_project_stats(layout.root)
         assert stats["total_images"] == 0

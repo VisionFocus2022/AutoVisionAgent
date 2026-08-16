@@ -78,23 +78,27 @@ class AnnotationCanvas(QGraphicsScene):
         self._redo_stack.clear()
         self._notify_undo_redo()
 
-    def undo(self) -> None:
+    def undo(self) -> bool:
+        """撤销一步；返回是否真的执行（W1: 恢复 era-2 布尔契约）。"""
         if not self._undo_stack:
-            return
+            return False
         self._redo_stack.append(copy.deepcopy(self._shapes))
         self._shapes = self._undo_stack.pop()
         self._redraw()
         self._notify_undo_redo()
         self.shapes_changed.emit(self.shapes)
+        return True
 
-    def redo(self) -> None:
+    def redo(self) -> bool:
+        """重做一步；返回是否真的执行（W1: 恢复 era-2 布尔契约）。"""
         if not self._redo_stack:
-            return
+            return False
         self._undo_stack.append(copy.deepcopy(self._shapes))
         self._shapes = self._redo_stack.pop()
         self._redraw()
         self._notify_undo_redo()
         self.shapes_changed.emit(self.shapes)
+        return True
 
     def can_undo(self) -> bool:
         return len(self._undo_stack) > 0

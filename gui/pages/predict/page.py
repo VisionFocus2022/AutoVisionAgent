@@ -77,9 +77,9 @@ class PredictPage(QWidget):
         h.setSpacing(6)
 
         self.cmb_task = QComboBox(bar)
-        self.cmb_task.addItem(tr("检测 (det)"), TaskType.DET)
-        self.cmb_task.addItem(tr("分割 (seg)"), TaskType.SEG)
-        self.cmb_task.addItem(tr("异常检测 (abdet)"), TaskType.ABDET)
+        # W1: 推理页只列已注册引擎的任务（旧下拉恰好只含缺失的 det/seg/abdet）
+        from gui.core.tasks_ui import populate_task_combo
+        populate_task_combo(self.cmb_task, only_available=True)
         h.addWidget(self.cmb_task)
 
         self.btn_load_model = QPushButton(tr("加载模型"), bar)

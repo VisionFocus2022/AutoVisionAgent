@@ -142,10 +142,56 @@ def bbox_of_points(
     return (min(xs), min(ys), max(xs), max(ys))
 
 
+def rectangle_size(pt1: Point, pt2: Point) -> Tuple[float, float]:
+    """矩形 (宽, 高)。（W1: 自 era-2 树移植，恢复 test_labeling 契约）"""
+    (tx, ty), (bx, by) = normalize_rectangle(pt1, pt2)
+    return (bx - tx, by - ty)
+
+
+def polygon_centroid(points: List[Point]) -> Point:
+    """多边形质心 (x, y)；退化情况（点数<3 或面积≈0）回退为顶点均值。"""
+    n = len(points)
+    if n == 0:
+        raise ValueError("空点序列无质心")
+    if n < 3:
+        return (sum(p[0] for p in points) / n, sum(p[1] for p in points) / n)
+    area2 = cx = cy = 0.0
+    for i in range(n):
+        x1, y1 = points[i]
+        x2, y2 = points[(i + 1) % n]
+        cross = x1 * y2 - x2 * y1
+        area2 += cross
+        cx += (x1 + x2) * cross
+        cy += (y1 + y2) * cross
+    if abs(area2) < 1e-12:
+        return (sum(p[0] for p in points) / n, sum(p[1] for p in points) / n)
+    return (cx / (3.0 * area2), cy / (3.0 * area2))
+
+
+def is_closed(points: List[Point]) -> bool:
+    """首尾点是否重合（视为已闭合）。"""
+    if len(points) < 2:
+        return False
+    (x1, y1), (x2, y2) = points[0], points[-1]
+    return math.hypot(x1 - x2, y1 - y2) < 1e-9
+
+
+def close_polygon(points: List[Point]) -> Tuple[Point, ...]:
+    """返回首尾闭合的点序列（已闭合则原样返回）。"""
+    pts = tuple(points)
+    if len(pts) >= 3 and not is_closed(pts):
+        return (*pts, pts[0])
+    return pts
+
+
 __all__ = [
     "simplify_polyline",
     "polygon_area",
     "normalize_rectangle",
     "point_in_polygon",
     "bbox_of_points",
+    "rectangle_size",
+    "polygon_centroid",
+    "is_closed",
+    "close_polygon",
 ]

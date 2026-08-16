@@ -183,16 +183,23 @@ class TestM2MainWindow:
     def test_build_window(self, qapp) -> None:
         from gui.main import build_window
         win = build_window()
-        # 10 pages registered
-        assert win.stack.count() == 10
+        # W1: 11 pages（flaw_gen 为 era-2 后新增）
+        assert win._stack.count() == 11
 
     def test_login_to_home_navigation(self, qapp) -> None:
         from gui.main import build_window
         win = build_window()
-        # Simulate login
-        from gui.pages.login import LoginPage
-        login_page = win.stack.widget(0)
-        login_page._user_edit.setText("test_user")
-        login_page._do_login()
-        # Should navigate to home
-        assert win._current_id is not None
+        # W1: 离线模式登录（license.key 存在即直通，同 UIA conftest 手法）
+        from core.constants import CONFIG_DIR
+        license_path = CONFIG_DIR / "license.key"
+        created = not license_path.exists()
+        license_path.parent.mkdir(parents=True, exist_ok=True)
+        license_path.write_bytes(b"")
+        try:
+            login_page = win._pages["login"]
+            login_page._do_offline()
+        finally:
+            if created:
+                license_path.unlink(missing_ok=True)
+        # login_success → build_window 接线 win.select("home")
+        assert win._stack.currentWidget() is win._pages["home"]
