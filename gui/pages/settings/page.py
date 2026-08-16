@@ -203,15 +203,14 @@ class SettingsPage(QWidget):
             "cache_dir": self._cache_edit.text().strip(),
         }
 
-        # 即时应用主题（夜/日切换）
+        # 即时应用主题（夜/日/自动——auto 随系统配色解析，W4-T4 / P2-9）
         theme_key = settings["theme"]
         try:
             from PySide6.QtWidgets import QApplication
             app = QApplication.instance()
             if app:
-                theme_name = "daytime" if theme_key == "daytime" else "night"
-                from gui.core.theme import apply_theme
-                apply_theme(app, theme_name)
+                from gui.core.theme import apply_theme, resolve_theme
+                apply_theme(app, resolve_theme(theme_key))
         except (ImportError, RuntimeError):
             import logging
             logging.getLogger(__name__).exception("应用主题失败")

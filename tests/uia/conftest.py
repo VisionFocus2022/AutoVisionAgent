@@ -32,6 +32,23 @@ if str(_TESTS_UIA_DIR) not in sys.path:
 
 import pytest
 
+
+def _has_desktop_session() -> bool:
+    """是否存在交互桌面会话（无头 CI/纯 SSH 控制台下 GetSystemMetrics 返回 0）。"""
+    try:
+        import ctypes
+
+        return ctypes.windll.user32.GetSystemMetrics(0) > 0
+    except Exception:
+        return False
+
+
+if not _has_desktop_session():
+    # W4-T4：无头环境跳过而非报错（架构审查 P2-1 收尾；
+    # 默认门禁已 --ignore=tests/uia，此处兜底手动误跑场景）
+    pytest.skip("UIA 测试需要交互桌面会话（无头环境自动跳过）",
+                allow_module_level=True)
+
 import uiautomation as ua
 
 try:

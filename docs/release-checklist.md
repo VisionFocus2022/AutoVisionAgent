@@ -1,0 +1,45 @@
+# AutoVisionAgent 发版检查单
+
+> 适用：打包发布 dist/ 前的人工验证流程（W4-T4 建立，P2-1 收尾）。
+> 常规开发验证不需要本单——`pytest`（门禁 64% + uia 默认排除）即可。
+
+## 1. 门禁全量（必须 rc=0）
+
+```bash
+.venv/Scripts/python.exe -m pytest
+```
+
+预期：全绿，覆盖率 ≥ 64（棘轮地板，见 pytest.ini 注释）。
+
+## 2. 打包
+
+```bash
+.venv/Scripts/python.exe -m PyInstaller autovisionagent.spec --noconfirm
+```
+
+确认 `dist/AutoVisionAgent/AutoVisionAgent.exe` 生成且时间戳更新。
+
+## 3. UIA 真窗端到端（需桌面会话 + 打包 exe，手动执行）
+
+```bash
+.venv/Scripts/python.exe -m pytest tests/uia -o addopts=
+```
+
+前提：
+- 交互桌面会话（无头环境 conftest 会自动 skip 而非报错）；
+- 目标 exe 未在运行（同名单实例会找不到窗口）；
+- 预创建空 `configs/license.key` 可进离线模式免登录。
+
+## 4. 冒烟（人工，~2 分钟）
+
+- [ ] 启动 exe → 登录页 → 离线模式进入主页
+- [ ] 标注页：画矩形/多边形（闭合）/画笔，撤销-重做，保存 JSON
+- [ ] 数据管理页：选目录 → 导入 → 划分（copy 模式）
+- [ ] 训练页：任务下拉按注册表实况展示；模拟训练路径有"（模拟）"警告
+- [ ] 推理页：批量推理出结果表、导出 CSV
+- [ ] 设置页：主题 夜/日/自动（auto 随系统）、语言切换即时生效
+
+## 5. 归档
+
+- [ ] `git log --oneline` 确认本版提交链完整
+- [ ] 版本号（pyproject version）与 tag 一致

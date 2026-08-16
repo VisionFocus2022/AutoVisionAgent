@@ -175,6 +175,27 @@ def _build_qss(theme: ThemeName) -> str:
 _current: ThemeName = "night"
 
 
+def resolve_theme(theme: str) -> ThemeName:
+    """解析主题名（W4-T4 / P2-9）。
+
+    - night / daytime 原样透传；
+    - auto → 随系统配色（Qt≥6.5 QStyleHints.colorScheme：Light→daytime，
+      Dark/Unknown/旧平台 → night 回退）。
+    """
+    if theme in ("night", "daytime"):
+        return theme  # type: ignore[return-value]
+    try:
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QGuiApplication
+
+        scheme = QGuiApplication.styleHints().colorScheme()
+        if scheme == Qt.ColorScheme.Light:
+            return "daytime"
+        return "night"
+    except Exception:
+        return "night"
+
+
 class ThemeManager:
     """主题管理器：应用与切换 night/daytime。"""
 
@@ -186,13 +207,14 @@ class ThemeManager:
     def theme(self) -> ThemeName:
         return self._theme
 
-    def apply(self, theme: ThemeName) -> None:
-        """应用指定主题（刷新 QSS + QPalette）。"""
+    def apply(self, theme: str) -> None:
+        """应用指定主题（auto 先解析；刷新 QSS + QPalette）。"""
         global _current
-        self._theme = theme
-        _current = theme
-        self._app.setStyleSheet(_build_qss(theme))
-        self._apply_palette(theme)
+        resolved = resolve_theme(theme)
+        self._theme = resolved
+        _current = resolved
+        self._app.setStyleSheet(_build_qss(resolved))
+        self._apply_palette(resolved)
 
     def toggle(self) -> ThemeName:
         """在 night/daytime 之间切换，返回新主题。"""
@@ -225,4 +247,4 @@ def current_theme() -> ThemeName:
     return _current
 
 
-__all__ = ["ThemeManager", "ThemeName", "apply_theme", "current_theme"]
+__all__ = ["ThemeManager", "ThemeName", "apply_theme", "current_theme", "resolve_theme"]
