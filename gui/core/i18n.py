@@ -425,6 +425,13 @@ _EN_US: Dict[str, str] = {
     "选择 SAM 权重": "Select SAM weights",
     "交互式标注不可用": "Interactive labeling unavailable",
     "交互式标注就绪": "Interactive labeling ready",
+
+    # ---- W5 新增（训练集导出） ----
+    "导出训练集": "Export Training Set",
+    "选择导出输出目录": "Select export output directory",
+    "跳过": "skipped",
+    "YOLO 格式": "YOLO",
+    "COCO 格式": "COCO",
 }
 
 

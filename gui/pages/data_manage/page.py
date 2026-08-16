@@ -40,6 +40,7 @@ _OP_TITLES = {
     "delete": "删除完成",
     "flip": "翻转完成",
     "cut": "切割完成",
+    "export": "导出完成",
 }
 
 
@@ -72,6 +73,7 @@ class DataManagePage(QWidget):
             "delete": self.btn_delete_lbl,
             "flip": self.btn_flip,
             "cut": self.btn_cut,
+            "export": self.btn_export,
         }
 
     # ============================== UI ============================== #
@@ -156,6 +158,14 @@ class DataManagePage(QWidget):
         self.btn_cut = QPushButton(tr("切割标注"), bar)
         h.addWidget(self.btn_cut)
 
+        # W5-T2: 训练集导出（LabelMe→YOLO/COCO，补齐标注→训练断链）
+        self.cmb_export_fmt = QComboBox(bar)
+        self.cmb_export_fmt.addItem(tr("YOLO 格式"), "yolo")
+        self.cmb_export_fmt.addItem(tr("COCO 格式"), "coco")
+        h.addWidget(self.cmb_export_fmt)
+        self.btn_export = QPushButton(tr("导出训练集"), bar)
+        h.addWidget(self.btn_export)
+
         root.addWidget(bar)
 
         # ---- 正文：缩略图 + 右侧统计 ----
@@ -223,6 +233,7 @@ class DataManagePage(QWidget):
         self.btn_delete_lbl.clicked.connect(self._tool_delete_labels)
         self.btn_flip.clicked.connect(self._tool_flip_annotation)
         self.btn_cut.clicked.connect(self._tool_cut_json)
+        self.btn_export.clicked.connect(self._tool_export_dataset)
 
         # 比例联动：三者之和 = 1.0
         self.spin_train.valueChanged.connect(self._on_ratio_changed)
@@ -558,6 +569,39 @@ class DataManagePage(QWidget):
             lambda n: f"{n} {tr('个瓦片')}",
         )
 
+    def _tool_export_dataset(self) -> None:
+        """导出训练集：LabelMe → YOLO/COCO（W5-T2，worker 线程执行）。"""
+        d = self._get_ann_dir()
+        if not d:
+            return
+        img_dir = self._image_dir or d
+        out_root = pick_directory(self, "选择导出输出目录")
+        if not out_root:
+            return
+        fmt = self.cmb_export_fmt.currentData() or "yolo"
+        from dataset.format_export import labelme_dir_to_coco, labelme_dir_to_yolo
+
+        if fmt == "coco":
+            def work():
+                return labelme_dir_to_coco(
+                    img_dir, d,
+                    os.path.join(out_root, "coco", "annotations.json"),
+                )
+        else:
+            def work():
+                return labelme_dir_to_yolo(
+                    img_dir, d, os.path.join(out_root, "yolo")
+                )
+
+        self._run_worker(
+            "export",
+            work,
+            lambda s: (
+                f"{s.images} {tr('张')} / {s.labels} {tr('标注数')}"
+                f" / {tr('跳过')} {s.skipped}"
+            ),
+        )
+
     def retranslate(self) -> None:
         """切换语言时刷新文案。"""
         self.btn_open_dir.setText(tr("选择目录"))
@@ -569,6 +613,9 @@ class DataManagePage(QWidget):
         self.btn_delete_lbl.setText(tr("删除标签"))
         self.btn_flip.setText(tr("翻转标注"))
         self.btn_cut.setText(tr("切割标注"))
+        self.btn_export.setText(tr("导出训练集"))
+        self.cmb_export_fmt.setItemText(0, tr("YOLO 格式"))
+        self.cmb_export_fmt.setItemText(1, tr("COCO 格式"))
         self._refresh()
 
 
