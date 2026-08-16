@@ -26,7 +26,7 @@ def register_all_engines() -> None:
         "cls_torchvision",
         "pose_yolo",
         "pseg_yolo",
-        "sseg_mmseg",
+        "sseg_smp",
         "sgan_blend",
         "super_cv2",
     ]

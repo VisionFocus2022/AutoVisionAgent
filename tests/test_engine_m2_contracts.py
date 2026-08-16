@@ -18,7 +18,7 @@ from models.supervised.engines.cls_torchvision import ClsTorchvisionEngine
 from models.supervised.engines.pose_yolo import PoseYoloEngine
 from models.supervised.engines.pseg_yolo import PsegYoloEngine
 from models.supervised.engines.sgan_blend import SganBlendEngine
-from models.supervised.engines.sseg_mmseg import SsegMmsegEngine
+from models.supervised.engines.sseg_smp import SsegSmpEngine
 from models.supervised.engines.super_cv2 import SuperCv2Engine
 
 _DUMMY_IMG = "dummy_input_placeholder"
@@ -28,7 +28,7 @@ _M2_ENGINES = [
     (ClsTorchvisionEngine, TaskType.CLS),
     (PoseYoloEngine, TaskType.POSE),
     (PsegYoloEngine, TaskType.PSEG),
-    (SsegMmsegEngine, TaskType.SSEG),
+    (SsegSmpEngine, TaskType.SSEG),
     (SganBlendEngine, TaskType.SGAN),
     (SuperCv2Engine, TaskType.SUPER),
 ]

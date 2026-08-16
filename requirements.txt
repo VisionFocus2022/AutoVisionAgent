@@ -26,9 +26,7 @@ pyinstaller>=6.0
 
 # ─── 可选：引擎扩展（按需安装）───
 # ultralytics>=8.1       # YOLO 检测/分割/关键点引擎
-# mmcv>=2.1               # 语义分割 / 超分辨率引擎
-# mmsegmentation>=1.2     # sseg_mmseg
-# mmedit>=0.10            # sgan_mmedit / super_mmedit
+# segmentation-models-pytorch>=0.4  # sseg_smp 语义分割引擎
 # anomalib>=1.1           # abdet_anomalib 异常检测引擎
 
 # ─── 可选：导出 / 评估 / 生成 ───

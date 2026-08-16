@@ -24,7 +24,7 @@ COMPILE_TARGETS = [
     "models/supervised/engines/cls_torchvision.py",
     "models/supervised/engines/pose_yolo.py",
     "models/supervised/engines/pseg_yolo.py",
-    "models/supervised/engines/sseg_mmseg.py",
+    "models/supervised/engines/sseg_smp.py",
     "models/supervised/engines/sgan_blend.py",
     "models/supervised/engines/super_cv2.py",
     "labeling/sam_adapter.py",

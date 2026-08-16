@@ -34,7 +34,7 @@ a = Analysis(
         "models.supervised.engines.pseg_yolo",
         "models.supervised.engines.seg_yolo",
         "models.supervised.engines.sgan_blend",
-        "models.supervised.engines.sseg_mmseg",
+        "models.supervised.engines.sseg_smp",
         "models.supervised.engines.super_cv2",
         # 标注子系统（仅注册已实现的模块）
         "labeling.sam_adapter",

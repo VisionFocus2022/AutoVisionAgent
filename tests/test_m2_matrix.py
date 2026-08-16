@@ -25,7 +25,7 @@ _EXPECTED_ENGINE_NAMES = {
     TaskType.SEG: "SegYoloEngine",
     TaskType.PSEG: "PsegYoloEngine",
     TaskType.POSE: "PoseYoloEngine",
-    TaskType.SSEG: "SsegMmsegEngine",
+    TaskType.SSEG: "SsegSmpEngine",
     TaskType.ABDET: "AbdetAnomalibEngine",
     TaskType.SGAN: "SganBlendEngine",
     TaskType.SUPER: "SuperCv2Engine",
