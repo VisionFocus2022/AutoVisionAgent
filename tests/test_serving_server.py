@@ -282,3 +282,65 @@ def test_list_all_tasks_advertises_only_registered(monkeypatch):
     monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _FakeReg())
     tasks = {t["task"] for t in VisionModelDispatcher.list_all_tasks()}
     assert tasks == {"zero_shot", "det"}  # 只有零样本 + 已注册的 det
+
+
+# ------------------------------- 入口与生命周期（W7-T2） ------------------------------- #
+@pytest.mark.unit
+def test_build_arg_parser_defaults(monkeypatch):
+    from serving.server import _build_arg_parser
+
+    for key in ("AVA_HOST", "AVA_PORT", "AVA_MAX_WORKERS"):
+        monkeypatch.delenv(key, raising=False)
+    args = _build_arg_parser().parse_args([])
+    assert (args.host, args.port, args.max_workers) == ("127.0.0.1", 50051, 8)
+
+
+@pytest.mark.unit
+def test_build_arg_parser_env_and_cli_override(monkeypatch):
+    from serving.server import _build_arg_parser
+
+    monkeypatch.setenv("AVA_HOST", "0.0.0.0")
+    monkeypatch.setenv("AVA_PORT", "6001")
+    monkeypatch.setenv("AVA_MAX_WORKERS", "4")
+    args = _build_arg_parser().parse_args(["--port", "7001"])
+    assert args.host == "0.0.0.0"
+    assert args.port == 7001  # CLI 覆盖环境变量
+    assert args.max_workers == 4
+
+
+@pytest.mark.unit
+def test_serve_graceful_on_keyboard_interrupt(monkeypatch):
+    from serving import server as srv
+
+    stops = []
+
+    class _FakeServer:
+        def start(self):
+            pass
+
+        def wait_for_termination(self):
+            raise KeyboardInterrupt
+
+        def stop(self, grace):
+            stops.append(grace)
+
+    monkeypatch.setattr(srv, "create_server", lambda *a, **k: _FakeServer())
+    srv.serve()  # 不得抛出 KeyboardInterrupt
+    assert stops == [3]
+
+
+@pytest.mark.unit
+def test_main_entry_invokes_serve(monkeypatch):
+    import runpy
+    import sys
+
+    from serving import server as srv
+
+    calls = []
+    monkeypatch.setattr(
+        srv, "serve",
+        lambda host, port, max_workers: calls.append((host, port, max_workers)),
+    )
+    monkeypatch.setattr(sys, "argv", ["serving"])
+    runpy.run_module("serving", run_name="__main__")
+    assert calls == [("127.0.0.1", 50051, 8)]

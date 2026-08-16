@@ -419,7 +419,7 @@ class PredictPage(QWidget):
         # 延迟到主线程添加表格行（传完整数据避免列错位）
         labels = ", ".join(result.labels) if result.labels else ""
         score = float(result.score or 0.0)
-        n = len(result.boxes) if result.boxes else 0
+        n = len(result.boxes) if result.boxes is not None else 0
         info = f"{n} {tr('框')}" if n else ""
         invoke_main(self, "_batch_add_row_main", img_path, labels, score, info)
 
@@ -500,7 +500,8 @@ class PredictPage(QWidget):
     @staticmethod
     def _draw_legacy(pm: QPixmap, result: DetectionResult) -> QPixmap:
         """旧版 QPainter 简化画法（supervision 缺失时的真实降级路径）。"""
-        if not result.boxes:
+        # 真引擎 boxes 为 numpy 数组——不得做真值判断（歧义异常，W7 修复）
+        if result.boxes is None or len(result.boxes) == 0:
             return pm
         painter = QPainter(pm)
         try:
@@ -536,7 +537,7 @@ class PredictPage(QWidget):
         self.table.setItem(row, 1, QTableWidgetItem(labels))
         score = f"{result.score:.4f}" if result.score else ""
         self.table.setItem(row, 2, QTableWidgetItem(score))
-        n = len(result.boxes) if result.boxes else 0
+        n = len(result.boxes) if result.boxes is not None else 0
         info = f"{n} {tr('框')}" if n else ""
         self.table.setItem(row, 3, QTableWidgetItem(info))
 
