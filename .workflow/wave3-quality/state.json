@@ -123,10 +123,71 @@
       }
     ]
   },
-  "verification": [],
+  "verification": [
+    {
+      "name": "TASK-001 labeling 语义恢复（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_labeling.py tests/test_gui.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED=移除 8 个 strict xfail 后 8 failed / 24 passed（逐绊线对应）；GREEN=实现后 32 passed / 0 failed"
+    },
+    {
+      "name": "TASK-001 全量回归（AC-001）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/ --ignore=tests/uia -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "281 passed / 0 failed / 1 skipped / 0 xfailed（对比 wave2 终态 273/0/1/8——8 个 xfail 全部转绿）；提交 44f014e"
+    },
+    {
+      "name": "TASK-002 sseg 真化（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_engine_sseg.py -v",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED=移植测试后 3 failed（模块不存在）；GREEN=真 load→infer（DeepLabV3Plus resnet18）+ arch 元信息 + 缺 smp 诚实 raise（monkeypatch builtins.__import__）3 passed"
+    },
+    {
+      "name": "TASK-002 引擎电池 + 全量回归（AC-002）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_engine_sseg.py tests/test_engine_m2_contracts.py tests/test_m2_matrix.py tests/test_m2_e2e.py -q && grep 残留检查",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "引擎电池 79 passed（m2_matrix SSEG=SsegSmpEngine 通过）；全量 284 passed / 0 failed / 1 skipped；活代码零残留（仅 build/ 陈旧打包警告文件，gitignore 内）；提交 492f39d"
+    },
+    {
+      "name": "TASK-003 主线程迁移（RED→GREEN）+ thread_bridge 修复",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_threaded_pages.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED=4 failed（内联执行/函数缺失）；GREEN=5 passed（4 页面迁移 + invoke_main 六类型回归）；AC-003 代码复核：data_manage 七项/label 预标注/predict 单张均 threading.Thread+invoke_main"
+    },
+    {
+      "name": "TASK-003 全量回归 + i18n（AC-003）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/ --ignore=tests/uia -q && PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe scripts/check_i18n.py",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "289 passed / 0 failed / 1 skipped；i18n All passed（新增 操作失败 键）；提交 0df3f35"
+    },
+    {
+      "name": "TASK-004 serving 补测（含两处真 bug 修复）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_serving_shm.py tests/test_serving_serialization.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "18 passed。过程中发现并修复：① Windows os.open 缺 O_BINARY→二进制 0x0A 被文本模式翻译（含 0x0A 的数组静默损坏，serving 在 Windows 从未真正可用）；② venv 缺 grpcio（requirements.txt 明列但 lock 缺失）→补装 1.83.0 并重新 freeze"
+    },
+    {
+      "name": "TASK-004 覆盖率门禁全量（AC-004）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "307 passed / 0 failed / 1 skipped，rc=0；11 非 GUI 包实测 64.19% ≥ fail-under=64（棘轮地板）；serving serialization 89% / shared_memory 82%（≥60% 目标）；快跑路径 --no-cov 验证可用；提交 1beb740"
+    }
+  ],
   "risks_open": [],
-  "deviations": [],
+  "deviations": [
+    "T3 实施中发现并修复 thread_bridge 真实缺陷（超出 FR-003 字面但为其前置）：旧 eval(QString) 链在 PySide6 下对 str 载荷必崩（NameError→QVariant ImportError），波及 deploy/eval_/flaw_gen/predict 批量四处既有调用（此前无测试覆盖、真实运行即崩）。修复=显式类型映射表（实验实测六类型经队列调用可靠送达），P2-8 的 eval 移除随之完成，比计划提前。",
+    "T4 补测过程实测揪出 serving 两处环境/平台真缺陷并修复（超出 FR-004 字面但为其前置）：① shared_memory._write_raw 的 os.open 在 Windows 未加 O_BINARY，CRT 文本模式把二进制流中 0x0A 翻译为 0x0D 0x0A，静默损坏所有含该字节的数组（float32 几乎必含）——serving 写出路径在 Windows 从未真正工作；② 迁移 venv 缺 grpcio（serving 包不可导入，即审查所记 0% 覆盖的真实原因之一），补装 1.83.0 并 pip freeze 重锁。",
+    "fail-under 先按预估 46 写入，实测 64.19% 后校正为 64（棘轮=实测地板，同变更集内完成，余量 0.19 已在 pytest.ini 注释标注风险与首要补测目标：training/generic_trainer 13%、serving/server 23%）。"
+  ],
   "request_evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'实施下一波候选（按架构审查 §11.5）：labeling 语义恢复（8 xfail 转绿）→ sseg 真化（兄弟树 sses_smp.py 现成）→ 主线程重活迁移 → 覆盖率门禁从兄弟树回归（serving 0% 优先补）'",
-  "final_summary": "",
-  "status": "in_progress"
+  "final_summary": "第三波四项全部落地：① labeling era-2 语义恢复——矩形误触丢弃/多边形 commit 闭合+吸附/画笔退化丢弃/canvas add_shape(Shape) 双契约/undo 浅快照引用语义/replace_all，8 个 strict xfail 全部转绿（全量从 273/0/8 → 281/0/0）；② sseg 真化——sseg_smp（smp DeepLabV3+）替换并删除 sseg_mmseg 桩，缺库诚实 raise，配套真 load→infer 功能测试；③ 主线程重活迁移——data_manage 七项/label AI 预标注/predict 单张推理全部 threading.Thread+invoke_main，顺带修复 thread_bridge 在 PySide6 下 str 载荷必崩的 P2-8 真 bug（eval(QString) 链，波及 deploy/eval/flaw_gen/predict 批量四处既有调用）；④ 覆盖率门禁回归——serving 补测 18 项（serialization 89%/shared_memory 82%），实测揪出并修复 Windows O_BINARY 数据损坏真 bug 与 venv 缺 grpcio，pytest.ini 棘轮地板 fail-under=64（实测 64.19%），pyproject 收敛单一真源。门禁全量终态：307 passed / 0 failed / 1 skipped，rc=0。提交 44f014e/492f39d/0df3f35/1beb740。",
+  "status": "complete"
 }
