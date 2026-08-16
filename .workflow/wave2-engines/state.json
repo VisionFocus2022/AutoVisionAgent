@@ -174,10 +174,55 @@
       }
     ]
   },
-  "verification": [],
+  "verification": [
+    {
+      "name": "TASK-001..004 引擎电池（RED=wave1 终态 10 红 → GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_engine_m2_contracts.py tests/test_m2_matrix.py tests/test_m2_e2e.py tests/test_engine_det_real.py tests/test_engine_abdet_real.py tests/test_engine_sgan.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "98 passed / 1 skipped / 0 failed；原 10 个引擎红（m2_matrix 7 + m2_e2e 3）全部转绿；RED 基线=wave1 终态（同命令曾 10 failed，提交历史留档）"
+    },
+    {
+      "name": "TASK-005 flaw_gen 接线（AC-005）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_tasks_ui.py tests/test_engine_sgan.py -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "全绿；flaw_gen 经 get_engine(SGAN) 取 SganBlendEngine（无直接构造），TypeError 路径已消除（代码 gui/pages/flaw_gen/page.py:160-215，页面级端到端留 UIA 用户运行）"
+    },
+    {
+      "name": "TASK-006 spec/docstring 双检（AC-006）",
+      "command": "grep -c \"models.supervised.engines\" autovisionagent.spec && grep -c \"9/9\" models/supervised/engines/__init__.py",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "spec hiddenimports 含全部 9 引擎模块（与磁盘一致）；engines docstring 为 9/9 全实装"
+    },
+    {
+      "name": "AC-002b i18n 校验",
+      "command": "PYTHONIOENCODING=utf-8 .venv/Scripts/python.exe scripts/check_i18n.py",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "All i18n checks passed（新增'OK 模板目录为空'键已入字典）"
+    },
+    {
+      "name": "TASK-007 全量终态（AC-003：0 failed）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/ --ignore=tests/uia -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "273 passed / 0 failed / 1 skipped / 8 xfailed（xfail=W2 labeling 语义绊线，属第三波）；对比 wave1 终态 240/10/8"
+    }
+  ],
   "risks_open": [],
-  "deviations": [],
+  "deviations": [
+    "契约适配（兄弟树→本树）：abdet 的 DetectionResult.anomaly_map 字段不存在→存 extra；score None→0.0（score: float 字段）；det_real 初始 _weights_path 断言 None→''（本树 base 约定）。对应测试断言同变更集适配。",
+    "契约翻转：m2_contracts 的 set_flaw_database——旧 mmedit 版静默存储任意路径，新 blend 版对不存在路径诚实 raise（2 用例翻转+1 新增）。",
+    "删除 sgan_mmedit.py/super_mmedit.py（git 可回滚）；引用方同步：m2_contracts 导入、m2_matrix 期望类名、flaw_gen、run_m3_verification COMPILE_TARGETS、spec hiddenimports。",
+    "修复被引擎红掩盖的测试 bug：m2_e2e test_register_all 用字符串集合与 TaskType 枚举集合直接相减（恒为全缺失）——改为取 .value 后比较。",
+    "W2 实验发现：import ultralytics 会使 cv2.imread 获得中文路径读取能力（裸进程/仅 anomalib 均失败，ultralytics 后成功）——中文路径对照测试改为子进程隔离。imread_unicode 修复不依赖该行为（两种状态下均正确）。",
+    "AC-004 措辞澄清：'score=1.0 无假结果路径'本意=无假数据回退；super_cv2 真实推理路径沿用 score=1.0 作为成功指示（兄弟树设计），假数据路径（INTER_NEAREST 放大/arr.copy）已消除、缺权重诚实 raise（契约测试覆盖）。",
+    "pseg_yolo 未并入 _yolo_seg_base（兄弟树 TD-01 去重重构不在本波范围）；sseg_mmseg/sess 真化（兄弟树 sses_smp.py）未纳入（用户未点名，留下一波）。",
+    "1 skipped：引擎测试中标记条件跳过的用例（原样保留）。"
+  ],
   "request_evidence": "用户原话（2026-08-16 /structured-dev-workflow 参数）：'根据你建议，实施第二波从兄弟树移植 det_yolo/seg_yolo/abdet_anomalib（10 红变绿）+ sgan_blend/super_cv2 真化 + flaw_gen TypeError 修复'",
-  "final_summary": "",
-  "status": "in_progress"
+  "final_summary": "第二波三项全部落地：① 移植 det_yolo/_yolo_seg_base+seg_yolo/abdet_anomalib（含 4 份反假绿引擎测试），注册矩阵 9/9 真实成立——wave1 遗留的 10 个引擎红全部转绿；② sgan/super 真化：sgan_blend（seamlessClone Poisson 融合）与 super_cv2（dnn_superres）替换并删除 mmedit 桩，缺库/缺权重诚实 raise，顺带移植 core/path_io（ASCII 路径拷贝）与 imwrite_unicode（中文路径写图）；③ flaw_gen 经注册表取引擎修复构造 TypeError，删除'复制占位图'假回退，缺缺陷库显式报错。附带修复 register_all 枚举比较 bug、发现并隔离 ultralytics 对 cv2 中文路径行为的影响。全量终态（排 uia）：273 passed / 0 failed / 1 skipped / 8 xfailed。",
+  "status": "complete"
 }
