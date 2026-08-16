@@ -226,21 +226,29 @@ class VisionModelDispatcher:
 
     @staticmethod
     def list_all_tasks() -> List[Dict[str, Any]]:
-        """列出全部 9 种任务 + 零样本。"""
-        tasks = []
-        # 零样本
-        tasks.append({
-            "task": "zero_shot",
-            "paradigm": "zero-shot",
-            "requires_training": False,
-        })
-        # 9 种有监督
-        for tt in TaskType:
-            tasks.append({
-                "task": tt.value,
-                "paradigm": "supervised",
-                "requires_training": True,
-            })
+        """列出零样本 + **实际已注册**的有监督任务（W4-T2 诚实宣称修复）。
+
+        注册表为空时先触发一次惰性注册（缺依赖的引擎记 warning 跳过），
+        绝不广告未注册任务（era-4 诚实宣称原则，P1-1 残留）。
+        """
+        tasks: List[Dict[str, Any]] = [
+            {"task": "zero_shot", "paradigm": "zero-shot",
+             "requires_training": False},
+        ]
+        try:
+            from models.supervised.registry import get_default_registry
+            reg = get_default_registry()
+            if not reg.list():
+                from models.supervised.engines import register_all_engines
+                register_all_engines()
+            for tt in reg.list():
+                tasks.append({
+                    "task": tt.value,
+                    "paradigm": "supervised",
+                    "requires_training": True,
+                })
+        except Exception:
+            logger.warning("任务枚举失败，仅返回零样本任务", exc_info=True)
         return tasks
 
 

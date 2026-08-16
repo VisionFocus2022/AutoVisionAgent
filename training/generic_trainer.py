@@ -148,23 +148,23 @@ class GenericTrainer:
                 except Exception:
                     logger.debug("LR 调度器 step 失败", exc_info=True)
 
-            # 更新最佳指标（loss 越小越好）
+            # 更新最佳指标（loss 越小越好；无条件追踪——best_metric 是训练
+            # 产物字段，不应依赖早停是否启用。W4-T1 RED→GREEN 修复）
             current_metric = metrics.get("loss", float("inf"))
-            if cfg.patience > 0:
-                if current_metric < self._best_metric:
-                    self._best_metric = current_metric
-                    self._best_epoch = epoch
-                    no_improve = 0
-                else:
-                    no_improve += 1
+            if current_metric < self._best_metric:
+                self._best_metric = current_metric
+                self._best_epoch = epoch
+                no_improve = 0
+            else:
+                no_improve += 1
 
-                # 早停
-                if no_improve >= cfg.patience:
-                    logger.info(
-                        "早停：连续 %d 轮无改善 (best=%.4f @epoch %d)",
-                        no_improve, self._best_metric, self._best_epoch,
-                    )
-                    break
+            # 早停
+            if cfg.patience > 0 and no_improve >= cfg.patience:
+                logger.info(
+                    "早停：连续 %d 轮无改善 (best=%.4f @epoch %d)",
+                    no_improve, self._best_metric, self._best_epoch,
+                )
+                break
 
             # 进度回调
             ratio = epoch / cfg.epochs
