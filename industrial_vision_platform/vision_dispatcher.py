@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections import OrderedDict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -47,6 +48,8 @@ class VisionModelDispatcher:
         self._engines: "OrderedDict[TaskType, ISupervisedTaskEngine]" = OrderedDict()
         self._max_loaded = max_loaded
         self._engine_registry_ready = False
+        # W1: gRPC ThreadPool 多工作线程并发调用，_engines 复合操作需互斥
+        self._lock = threading.RLock()
 
     def _ensure_registry(self) -> None:
         """惰性触发引擎注册。"""
@@ -96,11 +99,15 @@ class VisionModelDispatcher:
 
         engine = get_engine(task)
         engine.load(weights_path, device=device)
-        # R5-10: LRU 驱逐 — 超过上限时释放最久未用引擎的显存
-        if task in self._engines:
-            del self._engines[task]
-        while len(self._engines) >= self._max_loaded:
-            _evicted_task, _evicted_engine = self._engines.popitem(last=False)
+        # W1: 驱逐+插入为复合临界区（持锁）；释放显存可能含 GPU 同步，移到锁外
+        evicted: list = []
+        with self._lock:
+            if task in self._engines:
+                del self._engines[task]
+            while len(self._engines) >= self._max_loaded:
+                evicted.append(self._engines.popitem(last=False))
+            self._engines[task] = engine
+        for _evicted_task, _evicted_engine in evicted:
             _release = getattr(_evicted_engine, "release", None) or getattr(_evicted_engine, "unload", None)
             if callable(_release):
                 try:
@@ -108,7 +115,6 @@ class VisionModelDispatcher:
                 except (RuntimeError, OSError):
                     logger.warning("驱逐引擎 %s 时释放显存失败", _evicted_task.value, exc_info=True)
             logger.info("LRU 驱逐引擎: %s", _evicted_task.value)
-        self._engines[task] = engine
         logger.info("有监督引擎已加载: %s → %s", task.value, weights_path)
 
     def infer_supervised(
@@ -119,11 +125,15 @@ class VisionModelDispatcher:
         labels: Optional[List[str]] = None,
     ) -> DetectionResult:
         """有监督推理。"""
-        if task not in self._engines:
-            raise RuntimeError(f"任务 {task.value} 引擎未加载")
-        # R5-10: LRU touch — 标记为最近使用
-        self._engines.move_to_end(task)
-        return self._engines[task].infer(image, threshold=threshold, labels=labels)
+        # W1: check+touch+get 为复合临界区（防止并发驱逐穿插导致 KeyError）；
+        # engine.infer 长耗时，保持在锁外
+        with self._lock:
+            if task not in self._engines:
+                raise RuntimeError(f"任务 {task.value} 引擎未加载")
+            # R5-10: LRU touch — 标记为最近使用
+            self._engines.move_to_end(task)
+            engine = self._engines[task]
+        return engine.infer(image, threshold=threshold, labels=labels)
 
     # ---- 统一分发 ----
 
@@ -179,7 +189,8 @@ class VisionModelDispatcher:
     @property
     def loaded_tasks(self) -> List[str]:
         """已加载的有监督任务列表。"""
-        return [t.value for t in self._engines]
+        with self._lock:
+            return [t.value for t in self._engines]
 
     @property
     def zero_shot_ready(self) -> bool:
