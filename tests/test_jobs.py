@@ -320,19 +320,61 @@ class TestHandleConveniences:
         monkeypatch.setattr(threading, "Thread", RudeJoinThread)
         started = threading.Event()
 
-        def work(cancel):
+        def work(cancel):  # 参数名必须为 cancel（run_job 按名内省透传）
             started.set()
-            cancel.wait(5)
+            time.sleep(0.5)  # 不响应 cancel：确保 stop_all 快照时仍在册（时序确定）
 
         run_job(work, name="rude")
         assert started.wait(3)
         result = request_stop_all(timeout_s=0.2)  # join 抛 RuntimeError → 不得外泄
-        assert isinstance(result, list)
-        for _ in range(100):  # cancel 已置位 → 有界轮询等自摘除
+        assert result == ["rude"]  # join 失败且线程未退出 → 仍在册（收紧自 isinstance）
+        for _ in range(100):  # 0.5s sleep 到期 → 自摘除，注册表不泄漏
             if not active_jobs():
                 break
             time.sleep(0.05)
         assert active_jobs() == []
+
+    @pytest.mark.unit
+    def test_start_failure_rolls_back_registration(self, monkeypatch):
+        """thread.start() 自身抛异常（如 OS 线程耗尽）：异常上抛且注册表零泄漏。"""
+
+        class StartFailThread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+                self._t = target
+
+            def start(self):
+                raise RuntimeError("can't start new thread")
+
+        monkeypatch.setattr(threading, "Thread", StartFailThread)
+        with pytest.raises(RuntimeError, match="can't start new thread"):
+            run_job(lambda: None, name="doomed")
+        assert active_jobs() == []  # 登记条目必须随 start 失败回滚
+
+    @pytest.mark.unit
+    def test_stop_all_with_registered_no_join_replacement_thread(self, monkeypatch):
+        """在册（start 未执行 target）且无 join 属性的替换线程：跳过 join、如实上报仍在册。"""
+
+        class SilentThread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+                self._t = target
+
+            def start(self):  # 不执行 target → 任务永不完成 → 永在册
+                pass
+
+        monkeypatch.setattr(threading, "Thread", SilentThread)
+        run_job(lambda: None, name="silent")
+        try:
+            assert active_jobs() == ["silent"]
+            result = request_stop_all(timeout_s=0.1)  # 无 join 属性 → 跳过等待不炸
+            assert result == ["silent"]
+        finally:
+            # SilentThread 永不执行 target → 条目永不自摘除；手动清出模块级注册表
+            # 防污染后续用例（nested 用例断言注册表仅含自身）
+            import gui.core.jobs as jobs_mod
+            with jobs_mod._lock:
+                for jid, h in list(jobs_mod._jobs.items()):
+                    if h.name == "silent":
+                        jobs_mod._jobs.pop(jid)
 
     @pytest.mark.unit
     def test_nested_request_stop_all_from_inside_job_does_not_join_self(self):

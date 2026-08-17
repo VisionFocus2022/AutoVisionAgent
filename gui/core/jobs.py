@@ -150,7 +150,14 @@ def run_job(
         handle = JobHandle(job_id=job_id, name=name, cancel=cancel, thread=thread)
         _jobs[job_id] = handle  # 先登记后启动：start 返回即可被 active_jobs 观测
 
-    thread.start()
+    try:
+        thread.start()
+    except BaseException:
+        # start 自身失败（如 OS 线程耗尽）：回滚登记，否则条目永久泄漏且
+        # request_stop_all 将永远上报该名字（W15 验证员建议，W16 落地）
+        with _lock:
+            _jobs.pop(job_id, None)
+        raise
     return handle
 
 
