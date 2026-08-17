@@ -194,6 +194,13 @@
       "exit_code": 0,
       "status": "passed",
       "evidence": "94 个被跟踪构建产物（dll/pdb 等）出库，git ls-files 该目录归零；磁盘文件保留（本地 C# 调试不受影响）；.gitignore 既有规则自此生效。"
+    },
+    {
+      "name": "TASK-005 复跑（第三轮，负载消退后）——UIA 6/6 全绿，AC-004 终态达成",
+      "command": ".venv/Scripts/python.exe -m pytest tests/uia -o addopts= --timeout=300 --timeout-method=thread -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "6 passed / 0 failed in 239.76s（专用进程 + 19:50 重打包 exe，默认超时）。前置核实：机器未重启（LastBootUpTime 2026-08-12 22:35）但 COM 健康探针恢复（到窗 2.2s、控件枚举 0.0s 即中）——负载消退即恢复，坐实 W16 归因\"高负载相关劣化而非持久损坏\"。2.0.0 发版检查单第 3 步闭环；tag v2.0.0 无需移动（全程零生产修复）。"
     }
   ],
   "risks_open": [],
@@ -201,7 +208,8 @@
     "UIA 真窗复跑环境阻塞（详见 TASK-005 证据）：产品侧零异常、流程经 exe 日志实证健康（登录×5/标注保存/导入对话框前段），失败集中于 UIA COM 枚举/原生对话框驱动三形态且跨轮翻转——机器 ~14h 高负载后 COM 劣化（重启级）。按 AC-004 诚实路径归档为 blocked_environment，未修改任何 tests/uia 断言（可改处均属放宽=削弱）。重启后须按发版检查单第 3 步重跑方可宣称 UIA 通过。",
     "git tag v2.0.0 打在本波提交（发版检查单第 5 步版本一致性）；UIA 阻塞已写入 tag 注记，重启复跑后如有生产修复可移动 tag。",
     "冒烟清单人工项（发版检查单第 4 步）留置人工执行（UI 观感点检非自动化域）。",
-    "dotnet bin 下 94 个历史跟踪产物出库（磁盘保留）；tests/uia 与生产码零改动（本波生产改动仅 gui/core/jobs.py 回滚补丁 +2 用例）。"
+    "dotnet bin 下 94 个历史跟踪产物出库（磁盘保留）；tests/uia 与生产码零改动（本波生产改动仅 gui/core/jobs.py 回滚补丁 +2 用例）。",
+    "复跑终局：机器未重启、负载消退后 UIA 第三轮 6/6 全绿——环境归因最终成立（产品零改动的强证据）。发版检查单仅余第 4 步人工冒烟。"
   ],
   "request_evidence": "W15 交付总结列出的剩余项（发版检查单域：exe 重建+UIA 复跑+git tag+bin 产物出库+J1 三条非阻断建议）；本轮用户指令：继续实施剩余工作",
   "final_summary": "第十六波完成（发版收尾）：①J1 验证员三条非阻断建议全部落地（start 失败回滚注册表 RED→GREEN + silent 在册特征化 + rude 断言收紧，jobs 23 用例三连跑）；②门禁 837 passed/3 skipped rc=0（覆盖 ≥92）；③exe 重打包 19:50 含 W13-W16 全部改动（labeling PYZ 守卫 28 处成立）；④dotnet bin 94 个历史跟踪产物出库；⑤git tag v2.0.0（注记 UIA 待重启复跑）。⑥UIA 真窗复跑两轮（默认+加倍超时）5F/1P 与 4F/2P 失败集合跨轮翻转——经 exe 侧日志铁证归因：产品零异常、登录×5/标注保存等流程实际完成，失败全在 UIA COM 枚举/原生对话框驱动层（机器 ~14h 高负载后劣化，重启级），按 AC-004 诚实归档 blocked_environment，零测试断言修改。遗留：重启后重跑发版检查单第 3 步 + 冒烟人工项。validate_workflow 通过。",
