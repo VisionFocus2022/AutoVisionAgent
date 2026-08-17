@@ -118,8 +118,12 @@ class GenericTrainer:
 
         no_improve = 0
         artifact = TrainArtifact(task=cfg.task, config=cfg)
+        # W13-C2: resume 起点已越过 cfg.epochs 时循环体一次都不执行，
+        # 预置 completed = start_epoch，避免循环后引用未定义的 epoch（NameError）。
+        completed = start_epoch
 
         for epoch in range(start_epoch, cfg.epochs + 1):
+            completed = epoch  # 循环顶同步：中断/早停/正常完成的取值与旧实现一致
             # 中断检查
             if should_stop and should_stop():
                 logger.info("训练在 epoch %d 被用户中断", epoch)
@@ -153,12 +157,12 @@ class GenericTrainer:
 
         artifact.weights_path = final_path
         artifact.metrics = metrics_history[-1] if metrics_history else {}
-        artifact.epochs_completed = epoch
+        artifact.epochs_completed = completed
         artifact.best_metric = self._best_metric
 
         logger.info(
             "训练完成: %d epochs, best=%.4f, weights=%s",
-            epoch, self._best_metric, final_path,
+            completed, self._best_metric, final_path,
         )
         return artifact
 

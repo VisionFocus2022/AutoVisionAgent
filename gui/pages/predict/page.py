@@ -252,13 +252,15 @@ class PredictPage(QWidget):
 
             if reg.has(task):
                 self._engine = reg.get(task)
-                # 从配置读取设备，自动检测 GPU 可用性
+                # 设备解析（W13 C1）：设置页持久化的 user_settings.device 优先
+                # → 无则 "cuda" → cuda 时校验 torch.cuda.is_available()，
+                #   torch ImportError 回退 cpu（四分支链语义保持）
                 _device = "cpu"
                 try:
-                    from core.config import get_config
-                    _device = get_config().inference.device
-                except (ImportError, AttributeError):
-                    pass
+                    from gui.core.settings_io import get_device
+                    _device = get_device() or "cuda"
+                except (ImportError, OSError, ValueError):
+                    _device = "cuda"
                 if _device == "cuda":
                     try:
                         import torch
@@ -332,10 +334,12 @@ class PredictPage(QWidget):
         # R4-6: 记录审计日志 + 检测历史
         try:
             from core.audit_logger import log_detection_complete
+            from core.session import get_current_user
             from core.detection_history import get_history
             _task = self.cmb_task.currentData() or "det"
             _count = len(result.boxes) if result.boxes is not None else 0
             log_detection_complete(
+                user=get_current_user(),
                 task=_task, image=path, result_count=_count,
             )
             get_history().add_record(

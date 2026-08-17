@@ -212,10 +212,12 @@ class DeployPage(QWidget):
         # R4-6: 记录审计日志
         try:
             from core.audit_logger import log_model_export
+            from core.session import get_current_user
             _TASK_MAP = {0: "det", 1: "cls", 2: "seg", 3: "abdet"}
             _task = _TASK_MAP.get(self._task_combo.currentIndex(), "det")
             _fmt = ", ".join(results.keys())
             log_model_export(
+                user=get_current_user(),
                 task=_task,
                 format=_fmt,
                 path=files,

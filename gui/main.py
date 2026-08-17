@@ -15,6 +15,7 @@ import sys
 from PySide6.QtWidgets import QApplication
 
 from gui.core.i18n import current_language, set_language, tr
+from gui.core.settings_io import load_user_settings
 from gui.core.shell import MainWindow
 from gui.core.theme import ThemeManager
 from gui.pages import LabelPage
@@ -174,21 +175,12 @@ def build_window() -> MainWindow:
 
 
 def _load_user_settings() -> dict:
-    """从 configs/user_settings.json 加载持久化设置。
+    """从 configs/user_settings.json 加载持久化设置（W13 C1 收敛到 settings_io）。
 
     返回字典，可能包含 theme/language/device/precision 等键。
     文件不存在时返回空字典（使用代码默认值）。
     """
-    import json
-    import os
-    config_dir = os.path.join(os.path.dirname(os.path.dirname(
-        os.path.abspath(__file__))), "configs")
-    settings_path = os.path.join(config_dir, "user_settings.json")
-    try:
-        with open(settings_path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    return load_user_settings()
 
 
 def main() -> int:

@@ -1,8 +1,6 @@
 """设置页（FR-D3）— 主题/语言/设备/路径配置，持久化到 user_settings.json。"""
 from __future__ import annotations
 
-import json
-import os
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
@@ -19,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.i18n import tr
+from gui.core.settings_io import load_user_settings, save_user_settings
 from core.constants import CONFIG_DIR as _CONFIG_DIR
 
 
@@ -39,6 +38,7 @@ class SettingsPage(QWidget):
 
         使用内部 key (night/daytime, ch_CN/en_US) 匹配，
         而非翻译后的显示文本，确保切换语言后仍能正确恢复。
+        （W13 C1：JSON 读取收敛到 gui.core.settings_io）
         """
         # 内部 key → combo index 映射
         _theme_keys = {"night": 0, "daytime": 1, "auto": 2}
@@ -47,28 +47,24 @@ class SettingsPage(QWidget):
         _precision_keys = {"fp32": 0, "fp16": 1, "int8": 2}
 
         try:
-            config_dir = str(_CONFIG_DIR)
-            settings_path = os.path.join(config_dir, "user_settings.json")
-            if os.path.exists(settings_path):
-                with open(settings_path, "r", encoding="utf-8") as f:
-                    settings = json.load(f)
-                if "theme" in settings:
-                    idx = _theme_keys.get(settings["theme"], 0)
-                    self._theme_combo.setCurrentIndex(idx)
-                if "language" in settings:
-                    idx = _lang_keys.get(settings["language"], 0)
-                    self._lang_combo.setCurrentIndex(idx)
-                if "device" in settings:
-                    idx = _device_keys.get(settings["device"], 0)
-                    self._device_combo.setCurrentIndex(idx)
-                if "precision" in settings:
-                    idx = _precision_keys.get(settings["precision"], 0)
-                    self._precision_combo.setCurrentIndex(idx)
-                if "workspace" in settings:
-                    self._workspace_edit.setText(settings["workspace"])
-                if "cache_dir" in settings:
-                    self._cache_edit.setText(settings["cache_dir"])
-        except (OSError, json.JSONDecodeError, KeyError):
+            settings = load_user_settings(str(_CONFIG_DIR))
+            if "theme" in settings:
+                idx = _theme_keys.get(settings["theme"], 0)
+                self._theme_combo.setCurrentIndex(idx)
+            if "language" in settings:
+                idx = _lang_keys.get(settings["language"], 0)
+                self._lang_combo.setCurrentIndex(idx)
+            if "device" in settings:
+                idx = _device_keys.get(settings["device"], 0)
+                self._device_combo.setCurrentIndex(idx)
+            if "precision" in settings:
+                idx = _precision_keys.get(settings["precision"], 0)
+                self._precision_combo.setCurrentIndex(idx)
+            if "workspace" in settings:
+                self._workspace_edit.setText(settings["workspace"])
+            if "cache_dir" in settings:
+                self._cache_edit.setText(settings["cache_dir"])
+        except (OSError, KeyError, TypeError):
             import logging
             logging.getLogger(__name__).exception("加载用户设置失败")
 
@@ -225,11 +221,7 @@ class SettingsPage(QWidget):
             logging.getLogger(__name__).exception("应用语言失败")
 
         try:
-            config_dir = str(_CONFIG_DIR)
-            os.makedirs(config_dir, exist_ok=True)
-            settings_path = os.path.join(config_dir, "user_settings.json")
-            with open(settings_path, "w", encoding="utf-8") as f:
-                json.dump(settings, f, ensure_ascii=False, indent=2)
+            save_user_settings(settings, str(_CONFIG_DIR))
             self.status_changed.emit(tr("设置已保存"), "ok")
         except (OSError, TypeError) as exc:
             self.status_changed.emit(tr("保存失败"), str(exc)[:40])

@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "change_id": "wave13-config-resume-audit",
+  "title": "W13 config dedup + trainer resume fix + audit user attribution",
+  "created_at": "2026-08-17T05:47:32.178837+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：继续实施剩余未做的 W11 P1，同时修复trainer resume 边界 NameError（既有潜在 bug），需要我决策的列出选项。P1-2 方向经 AskUserQuestion 确认：删除收敛（推荐）。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（含 P1-2 方向的交互确认记录，删除收敛即执行授权）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave13-config-resume-audit.md",
+    "design": "",
+    "tasks": "docs/tasks-wave13-config-resume-audit.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005"
+    ],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-002"]},
+      {"id": "AC-003", "requirements": ["FR-003"]},
+      {"id": "AC-004", "requirements": ["FR-004"]},
+      {"id": "AC-005", "requirements": ["FR-005"]}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005"], "acceptance": ["AC-001", "AC-002", "AC-003", "AC-004", "AC-005"]},
+      {"id": "TASK-002", "requirements": ["FR-001", "FR-002"], "acceptance": ["AC-001", "AC-002"]},
+      {"id": "TASK-003", "requirements": ["FR-003"], "acceptance": ["AC-003"]},
+      {"id": "TASK-004", "requirements": ["FR-004"], "acceptance": ["AC-004"]},
+      {"id": "TASK-005", "requirements": ["FR-005"], "acceptance": ["AC-005"]},
+      {"id": "TASK-006", "requirements": ["FR-005"], "acceptance": ["AC-005"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-002 C1 config 删除收敛 + device 回灌（AC-001/002）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_config.py tests/test_gui_predict_tail.py tests/test_gui.py tests/test_gui_pages_more.py tests/test_gui_misc_pages.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "67 passed（验证员复跑 33+34 一致）。RED 双证：device 回灌 assert ['cuda'] == ['cpu']、删除收敛 '已删 API 复活: ConfigManager'（各经文件级 stash 复现）。core/config.py 545→95 行（≤200 达标，wc 实测）；configs/default.yaml 删除；gui/core/settings_io.py 82 行单一访问器（CONFIG_DIR 可注入）；全仓残余 grep ConfigManager/load_config/default.yaml 代码引用 = 0；core.config 生产消费者收敛为 1 处（gui/main.py:41 读 .logging，逐字节不变）。test_config.py 14→11 例：被删 8 类用例经对账全部只覆盖真死 API，存活面改挂新目标 + 13 API 防复活守卫 + validate 三分支。既有 test_load_model_device_resolution 四分支断言零改动全绿。"
+    },
+    {
+      "name": "TASK-003 C2 trainer resume 边界（AC-003）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_trainer_resume_edge.py tests/test_trainer_generic.py tests/test_trainer_save_fail.py tests/test_gui_train_page.py tests/test_m1_e2e.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "39 passed（新 3 + 回归）。RED：UnboundLocalError: cannot access local variable 'epoch' @ generic_trainer.py:156（stash 复现逐字一致）。修复 +6/-2：循环前 completed = start_epoch 预置、循环顶同步——验证员逐路径等价证明（正常完成/should_stop 中断/早停取值与旧实现逐位相同，唯一行为变化是旧崩溃路径转优雅收敛）。边界语义 epochs_completed == start_epoch（「下一轮编号」约定，验证员备注 UI 展示需知）。"
+    },
+    {
+      "name": "TASK-004 C3 审计用户归属 + 登录审计（AC-004）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_audit_and_history.py tests/test_gui_login_page.py tests/test_gui_deploy_page.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "39 passed（新 7，+0 删）。RED 两级复现（模块级 stash -u → ModuleNotFoundError；接线级 stash → 'system' != 'engineer' 与 kwargs 无 user 键）。core/session.py 33 行（threading.Lock，默认 system，空值回退，reset 供测试）；audit_logger 新增 log_login；login 页登录成功/离线模式两处 set_current_user + 审计（try/except 不阻断登录）；deploy/predict 审计传 user=get_current_user()。验证员子进程磁盘实证 3 条记录 user 正确（engineer/offline/system）；core 无反向 gui 依赖；predict/page.py 仅动审计块两行（设备段归 C1 未触碰，diff 复核）。"
+    },
+    {
+      "name": "TASK-006a 门禁全量 + 棘轮升门（AC-005）",
+      "command": ".venv/Scripts/python.exe -m pytest（fail-under=90）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "716 passed / 1 skipped（W12 706 → +10 净增：新增 24，随死 API 合法删除 14——对账见 C1），rc=0。覆盖率 90.47%（8062 语句/767 缺）——**过 90 门槛，棘轮 89→90**（地板惯例 floor(90.47)=90，余量 0.47pp）。pytest.ini 注释同步刷新（config 尾巴清除、settings_io 新增）。"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "P1-2 方向经 AskUserQuestion 用户选定「删除收敛（推荐）」——非默认方案，证据在 approvals。",
+    "config 测试合法删除：test_config.py 14→11 例，8 类被删用例经对账全部只覆盖真死 API（ConfigManager 加载器/update/save/to_dict/TrainingConfig），无误删活覆盖；删除是删除收敛方案的直接后果。",
+    "exe 未随 W13 重打包（当前 dist 为 W12 版）：本波 gui 改动（settings_io/predict/login/deploy）未经真窗复验，留发版检查单统一重建+UIA 回归；离屏 716 门禁为当前安全网。",
+    "执行方式（ultracode 沿用）：三簇 Workflow 扇出（C1+C2 并行 → C3 串行——predict/page.py 段落互斥约束）+ 三验证员并行，6 代理 0 错误。",
+    "验证员可选跟进（未做，非阻断）：test_load_model_device_resolution 的 core.config 死桩改注入 sio.CONFIG_DIR（铁律禁改既有断言，留下一波追加式处理）。"
+  ],
+  "request_evidence": "W12 总结列出的剩余项；本轮指令：继续实施剩余未做的 W11 P1，同时修复trainer resume 边界 NameError，需要我决策的列出选项；用户经 AskUserQuestion 选定 P1-2 方向=删除收敛（推荐）",
+  "final_summary": "第十三波完成（W11 审查 P1 全清 + W12 遗留 bug 修复）：①P1-2 删除收敛（用户 AskUserQuestion 拍板）——core/config.py 545→95 行，删 9 个零引用节+ConfigManager 全套+default.yaml，新增 gui/core/settings_io.py 单一访问器，**设置页 device 静默失效修复**（RED ['cuda']!=['cpu'] → user_settings 真源回灌，四分支回退链语义保持），test_config.py 重写含 13 API 防复活守卫；②trainer resume 边界 UnboundLocalError（NameError 子类）修复——completed=start_epoch 预置，验证员逐路径等价证明；③P1-4 用户归属收尾——core/session.py 会话通道（33 行线程安全）、登录成功/离线模式审计落盘（docstring 宣称兑现）、deploy/predict 审计记录真实用户（子进程磁盘实证 engineer/offline/system）。三簇 TDD 全 RED 先行 + 三验证员全 accept（文件级 stash 复现、predict/page.py 段落归属判定）。门禁 716 passed/1 skipped rc=0，覆盖 90.47% **棘轮 89→90**。W11 审查 P0/P1 至此全部闭环。",
+  "status": "complete"
+}

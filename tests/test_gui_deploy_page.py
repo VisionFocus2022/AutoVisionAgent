@@ -265,3 +265,40 @@ def test_export_finished_audit_failure_warns_not_silent(
     ]
     assert warns, "审计写入失败被静默吞掉：应记录 warning"
     assert any("disk full" in r.getMessage() for r in warns)
+
+
+# ==================== W13-C3 追加：审计用户归属 ==================== #
+@pytest.fixture
+def _session_user_cleanup():
+    from core.session import reset_current_user
+
+    yield
+    reset_current_user()
+
+
+@pytest.mark.unit
+def test_export_audit_records_logged_in_user(
+    deploy_page, fake_threads, fake_exporter, monkeypatch, qapp,
+    _session_user_cleanup,
+):
+    """W13-C3：登录后导出审计应记 user=登录名。
+
+    RED：_on_export_finished 此前调 log_model_export 不传 user，
+    审计记录恒为默认 "system"，无法归属到登录用户。
+    """
+    from core.session import set_current_user
+
+    set_current_user("engineer")
+    audit = []
+    monkeypatch.setattr(
+        "core.audit_logger.log_model_export", lambda **kw: audit.append(kw)
+    )
+
+    _fake_torch_load(monkeypatch, _Model())
+    deploy_page._do_export()
+    qapp.processEvents()
+
+    assert audit, "导出完成应记审计"
+    assert audit[0].get("user") == "engineer", (
+        "导出审计应归属当前登录用户，而非默认 system"
+    )

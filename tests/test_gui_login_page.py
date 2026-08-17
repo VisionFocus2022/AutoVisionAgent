@@ -227,3 +227,64 @@ def test_load_users_db_invalid_json_returns_empty(qapp, tmp_path, monkeypatch):
     (tmp_path / "users.json").write_text("{broken", encoding="utf-8")
     page = login_mod.LoginPage()
     assert page._load_users_db() == {}
+
+
+# ==================== W13-C3 追加：登录审计 + 会话用户接线 ==================== #
+def _audit_logins():
+    """读取真实 audit 单例缓冲中的 login 条目。"""
+    from core.audit_logger import get_audit_logger
+
+    return [e for e in get_audit_logger()._buffer if e["action"] == "login"]
+
+
+@pytest.mark.unit
+def test_login_success_sets_session_user_and_audits(qapp, tmp_path, monkeypatch):
+    """W13-C3：登录成功 → set_current_user(登录名) + 恰落一条 login 审计。
+
+    RED：login 页 docstring 宣称记录登录，但此前登录事件全程无审计
+    （0 条），且全仓无会话用户持有者（恒 "system"）。
+    """
+    from core.audit_logger import get_audit_logger
+    from core.session import get_current_user, reset_current_user
+
+    reset_current_user()
+    get_audit_logger()._buffer.clear()
+    try:
+        page = _make_page(tmp_path, monkeypatch, qapp)
+        _try_login(page)
+        assert page._logged == [(USER, "工程师")]
+        # 会话当前用户 = 登录名
+        assert get_current_user() == USER
+        # 恰落一条 login 审计，user=登录名
+        logins = _audit_logins()
+        assert len(logins) == 1
+        assert logins[0]["user"] == USER
+    finally:
+        reset_current_user()
+
+
+@pytest.mark.unit
+def test_offline_mode_sets_offline_user_and_audits(qapp, tmp_path, monkeypatch):
+    """W13-C3：离线模式确认进入 → 会话 "offline" + 恰落一条 login 审计。
+
+    RED：_do_offline 此前无 set_current_user、无审计。
+    """
+    from core.audit_logger import get_audit_logger
+    from core.session import get_current_user, reset_current_user
+
+    reset_current_user()
+    get_audit_logger()._buffer.clear()
+    try:
+        page = _make_page(tmp_path, monkeypatch, qapp)
+        # license.key 在场 → 无确认对话框，直接进入离线模式
+        (tmp_path / "license.key").write_text("LICENSE-XYZ", encoding="utf-8")
+        page._do_offline()
+        assert page._logged and page._logged[0][0] == "offline"
+        # 会话当前用户 = offline
+        assert get_current_user() == "offline"
+        # 恰落一条 login 审计，user=offline
+        logins = _audit_logins()
+        assert len(logins) == 1
+        assert logins[0]["user"] == "offline"
+    finally:
+        reset_current_user()

@@ -534,3 +534,107 @@ def test_retranslate_button_texts(pred_page):
     assert pred_page.btn_export_json.text() == "导出JSON"
     assert pred_page.btn_export_excel.text() == "导出Excel"
     assert pred_page.btn_stats.text() == "统计报表"
+
+
+# ============================== W13 C1：设备回灌 ============================== #
+@pytest.mark.unit
+def test_load_model_device_reads_user_settings(det_page, tmp_path, monkeypatch):
+    """W13 C1（RED→GREEN）：设置页持久化的 device 必须回灌 predict 设备解析。
+
+    写 user_settings.json {"device": "cpu"}（路径注入 gui.core.settings_io.CONFIG_DIR，
+    沿用 settings 页 _CONFIG_DIR 注入模式）→ 经生产设备解析路径应得 "cpu"。
+    修复前 predict 恒读 core.config 默认 "cuda"（cuda 可用时保持）→ 本用例必红。
+    """
+    pytest.importorskip("torch")
+    from gui.pages.predict import page as pred_mod
+
+    (tmp_path / "user_settings.json").write_text(
+        json.dumps({"device": "cpu"}), encoding="utf-8")
+    try:
+        import gui.core.settings_io as sio
+    except ImportError:  # 修复前模块不存在：跳过注入，用行为红证明 bug
+        sio = None
+    if sio is not None:
+        monkeypatch.setattr(sio, "CONFIG_DIR", tmp_path)
+
+    devices = []
+
+    class _Eng:
+        def load(self, path, device="cpu"):
+            devices.append(device)
+
+    _install_registry(monkeypatch, _Eng)
+    monkeypatch.setattr(pred_mod, "pick_open_file",
+                        lambda *a, **k: str(tmp_path / "m.pt"))
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+
+    det_page._load_model()
+    assert devices == ["cpu"]
+
+
+@pytest.mark.unit
+def test_load_model_device_user_settings_absent_keeps_chain(
+    det_page, tmp_path, monkeypatch
+):
+    """无 user_settings.json / 无 device 键 → 回退 cuda 链语义保持。"""
+    pytest.importorskip("torch")
+    from gui.pages.predict import page as pred_mod
+    import gui.core.settings_io as sio
+
+    empty = tmp_path / "no_settings"
+    empty.mkdir()
+    monkeypatch.setattr(sio, "CONFIG_DIR", empty)
+
+    devices = []
+
+    class _Eng:
+        def load(self, path, device="cpu"):
+            devices.append(device)
+
+    _install_registry(monkeypatch, _Eng)
+    monkeypatch.setattr(pred_mod, "pick_open_file",
+                        lambda *a, **k: str(tmp_path / "m.pt"))
+
+    # 无设置文件 → cuda；cuda 可用 → 保持 cuda
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    det_page._load_model()
+    assert devices == ["cuda"]
+
+    # 无设置文件 → cuda；cuda 不可用 → 回退 cpu
+    monkeypatch.setattr("torch.cuda.is_available", lambda: False)
+    det_page._load_model()
+    assert devices == ["cuda", "cpu"]
+
+    # 有设置文件但无 device 键 → 仍走 cuda 链（可用 → cuda）
+    (empty / "user_settings.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+    det_page._load_model()
+    assert devices == ["cuda", "cpu", "cuda"]
+
+
+@pytest.mark.unit
+def test_load_model_device_invalid_user_setting_ignored(
+    det_page, tmp_path, monkeypatch
+):
+    """手改出的非法 device 值按未设置处理（回退 cuda 链）。"""
+    pytest.importorskip("torch")
+    from gui.pages.predict import page as pred_mod
+    import gui.core.settings_io as sio
+
+    monkeypatch.setattr(sio, "CONFIG_DIR", tmp_path)
+    (tmp_path / "user_settings.json").write_text(
+        json.dumps({"device": "tpu999"}), encoding="utf-8")
+
+    devices = []
+
+    class _Eng:
+        def load(self, path, device="cpu"):
+            devices.append(device)
+
+    _install_registry(monkeypatch, _Eng)
+    monkeypatch.setattr(pred_mod, "pick_open_file",
+                        lambda *a, **k: str(tmp_path / "m.pt"))
+    monkeypatch.setattr("torch.cuda.is_available", lambda: True)
+
+    det_page._load_model()
+    assert devices == ["cuda"]  # 非法值忽略 → 默认链 → cuda 可用保持

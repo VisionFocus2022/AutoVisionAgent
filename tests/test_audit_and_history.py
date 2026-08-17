@@ -198,3 +198,100 @@ class TestAuditLoggerAtExitFlush:
         assert len(lines) == 2
         assert json.loads(lines[0])["action"] == "export"
         assert json.loads(lines[1])["action"] == "train"
+
+
+# ==================== W13-C3 追加：登录会话单例（core/session.py） ==================== #
+@pytest.mark.unit
+class TestSessionUser:
+    """core/session.py：模块级会话单例（默认 "system"）。
+
+    背景（v2 架构审查 P1-4）：全仓无当前用户持有者，audit 快捷函数
+    user 默认恒 "system"，登录后审计无法归属到人。
+    """
+
+    def test_default_user_is_system(self):
+        from core.session import get_current_user, reset_current_user
+
+        reset_current_user()
+        assert get_current_user() == "system"
+
+    def test_set_and_get_roundtrip(self):
+        from core.session import (
+            get_current_user,
+            reset_current_user,
+            set_current_user,
+        )
+
+        try:
+            set_current_user("engineer")
+            assert get_current_user() == "engineer"
+        finally:
+            reset_current_user()
+
+    def test_empty_user_falls_back_to_system(self):
+        from core.session import (
+            get_current_user,
+            reset_current_user,
+            set_current_user,
+        )
+
+        try:
+            set_current_user("")
+            assert get_current_user() == "system"
+        finally:
+            reset_current_user()
+
+
+# ==================== W13-C3 追加：predict 审计用户归属（GUI 集成） ==================== #
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+pytest.importorskip("PySide6")
+
+
+@pytest.fixture(scope="module")
+def predict_qapp():
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    yield app
+
+
+@pytest.mark.unit
+def test_single_done_audit_records_logged_in_user(predict_qapp, monkeypatch):
+    """W13-C3：登录后单张推理审计应记 user=登录名。
+
+    RED：predict _single_done 此前调 log_detection_complete 不传 user，
+    审计记录恒为默认 "system"，无法归属到登录用户。
+    """
+    from gui.pages.predict.page import PredictPage
+    from core.session import reset_current_user, set_current_user
+
+    class _FakeResult:
+        boxes = None
+        labels = []
+        score = 0.0
+
+    class _FakeHistory:
+        def add_record(self, **kw):
+            pass
+
+    audit = []
+    monkeypatch.setattr(
+        "core.audit_logger.log_detection_complete",
+        lambda **kw: audit.append(kw),
+    )
+    monkeypatch.setattr(
+        "core.detection_history.get_history", lambda: _FakeHistory()
+    )
+
+    page = PredictPage()
+    page._pending_single = ("missing.jpg", _FakeResult())
+    set_current_user("engineer")
+    try:
+        page._single_done("missing.jpg", 0.5)
+        assert audit, "单张推理完成应记审计"
+        assert audit[0].get("user") == "engineer", (
+            "推理审计应归属当前登录用户，而非默认 system"
+        )
+    finally:
+        reset_current_user()

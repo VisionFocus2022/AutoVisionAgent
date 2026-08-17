@@ -233,6 +233,16 @@ class LoginPage(QWidget):
             users_db[user] = record
             self._save_users_db(users_db)
 
+        # W13-C3: 会话用户 + 登录审计（docstring 宣称记录登录，此前 0 条）
+        try:
+            from core.audit_logger import log_login
+            from core.session import set_current_user
+
+            set_current_user(user)
+            log_login(user=user, role=stored_role, mode="local")
+        except (ImportError, OSError):
+            logger.exception("登录审计写入失败")
+
         self.login_success.emit(user, stored_role)
         self.status_changed.emit(tr("登录成功"), user)
 
@@ -298,6 +308,15 @@ class LoginPage(QWidget):
             )
             if reply != QMessageBox.Yes:
                 return
+        # W13-C3: 离线会话用户 + 审计（与登录成功同一审计通道）
+        try:
+            from core.audit_logger import log_login
+            from core.session import set_current_user
+
+            set_current_user("offline")
+            log_login(user="offline", role=tr("操作员"), mode="offline")
+        except (ImportError, OSError):
+            logger.exception("离线模式审计写入失败")
         self.login_success.emit("offline", tr("操作员"))
         self.status_changed.emit(tr("已进入离线模式"), "ok")
 

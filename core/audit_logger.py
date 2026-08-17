@@ -216,10 +216,31 @@ def log_train_complete(
     )
 
 
+def log_login(
+    user: str = "system",
+    role: str = "",
+    mode: str = "local",
+    **extra: Any,
+) -> None:
+    """记录登录事件（mode="offline" 表示离线模式进入）。
+
+    W13-C3：模块 docstring 宣称记录登录，此前 login 页零调用；
+    由登录页在登录成功与离线模式确认处调用。
+    """
+    get_audit_logger().log(
+        "login",
+        user=user,
+        role=role,
+        mode=mode,
+        **extra,
+    )
+
+
 __all__ = [
     "AuditLogger",
     "get_audit_logger",
     "log_detection_complete",
+    "log_login",
     "log_model_export",
     "log_train_complete",
 ]
