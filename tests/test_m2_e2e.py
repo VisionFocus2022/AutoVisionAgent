@@ -95,10 +95,10 @@ class TestVisionDispatcher:
         )
         d = get_dispatcher()
         tasks = d.list_all_tasks()
-        # 9 有监督 + 1 零样本 = 10
-        assert len(tasks) == 10
+        # 9 有监督；zero_shot 为预留注入点已摘除（W14 P2-8）
+        assert len(tasks) == 9
         task_names = {t["task"] for t in tasks}
-        assert "zero_shot" in task_names
+        assert "zero_shot" not in task_names
         assert "cls" in task_names
         assert "sgan" in task_names
         assert "super" in task_names

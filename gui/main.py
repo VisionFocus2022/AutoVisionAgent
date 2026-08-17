@@ -2,7 +2,8 @@
 
 运行：python -m gui.main
 
-组装：QApplication → 主题(night) → MainWindow → 注册 10 页（全实装）→ show。
+组装：单实例锁（P2-14）→ QApplication → 主题(night) → MainWindow →
+注册 11 页（全实装，页面导入一律经 gui.pages 注册表）→ show。
 所有页面 status_changed → 主壳状态栏；language_changed → retranslate()。
 """
 from __future__ import annotations
@@ -11,24 +12,61 @@ import logging
 import logging.handlers
 import os
 import sys
+import tempfile
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QLockFile
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gui.core.i18n import current_language, set_language, tr
 from gui.core.settings_io import load_user_settings
 from gui.core.shell import MainWindow
 from gui.core.theme import ThemeManager
-from gui.pages import LabelPage
-from gui.pages.data_manage import DataManagePage
-from gui.pages.train import TrainPage
-from gui.pages.predict import PredictPage
-from gui.pages.project import ProjectPage
-from gui.pages.login import LoginPage
-from gui.pages.home import HomePage
-from gui.pages.eval_ import EvalPage
-from gui.pages.deploy import DeployPage
-from gui.pages.flaw_gen import FlawGenPage
-from gui.pages.settings import SettingsPage
+from gui.pages import (
+    DataManagePage,
+    DeployPage,
+    EvalPage,
+    FlawGenPage,
+    HomePage,
+    LabelPage,
+    LoginPage,
+    PredictPage,
+    ProjectPage,
+    SettingsPage,
+    TrainPage,
+)
+
+SINGLE_INSTANCE_LOCK_FILENAME = "autovisionagent-single-instance.lock"
+
+# 进程生命周期内持有 QLockFile 引用，防止对象被回收导致锁提前释放
+_SINGLE_INSTANCE_LOCK: QLockFile | None = None
+
+
+def default_single_instance_lock_path() -> str:
+    """单实例锁文件路径：%TEMP% 下（Windows 按用户隔离，打包/源码运行均可写）。"""
+    return os.path.join(tempfile.gettempdir(), SINGLE_INSTANCE_LOCK_FILENAME)
+
+
+def acquire_single_instance_lock(lock_path: str | None = None) -> bool:
+    """尝试获取单实例互斥锁（QLockFile）。
+
+    QLockFile 自带陈旧锁恢复：持锁进程死亡（含 UIA taskkill）后，
+    其 PID 检测会判定锁陈旧并自动清除，新实例可正常启动。
+
+    Args:
+        lock_path: 锁文件路径（测试注入用）；默认 %TEMP% 下。
+
+    Returns:
+        True: 获取成功（本进程持锁至退出）。
+        False: 锁已被占用——已有另一实例在运行（同进程重复 acquire 亦为 False）。
+    """
+    global _SINGLE_INSTANCE_LOCK
+    path = lock_path or default_single_instance_lock_path()
+    lock = QLockFile(path)
+    # PySide6 tryLock 无默认参：0 = 不阻塞（与 C++ Qt 默认一致）
+    if lock.tryLock(0):
+        _SINGLE_INSTANCE_LOCK = lock
+        return True
+    return False
 
 
 def setup_logging() -> None:
@@ -192,6 +230,16 @@ def main() -> int:
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("AutoVisionAgent")
+
+    # 单实例互斥（P2-14）：双开会导致 user_settings.json 双写与
+    # RotatingFileHandler 同一日志文件轮转竞争
+    if not acquire_single_instance_lock():
+        QMessageBox.warning(
+            None,
+            tr("提示"),
+            tr("AutoVisionAgent 已在运行，请勿重复启动。"),
+        )
+        return 1
 
     theme_mgr = ThemeManager(app)
     theme_mgr.apply(settings.get("theme", "night"))

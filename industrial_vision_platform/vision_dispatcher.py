@@ -1,7 +1,9 @@
 """VisionModelSystem 双范式分发（FR-F）— T-AVA-14
 
 统一调度接口：
-- 零样本范式：DINOv3+CLIP 零样本检测器（无训练）
+- 零样本范式：可注入的零样本检测器（仅预留注入点 load_zero_shot，
+  当前无内置实现——DINOv3/CLIP 方案已随 W13 config 收敛移除——
+  亦无生产调用方，故 list_all_tasks 不再对外广告该能力，P2-8 诚实化）
 - 有监督范式：9 种任务引擎（cls/det/seg/pseg/pose/sseg/abdet/sgan/super）
 
 根据 task_type 自动选择范式并路由到正确的引擎实例。
@@ -226,15 +228,14 @@ class VisionModelDispatcher:
 
     @staticmethod
     def list_all_tasks() -> List[Dict[str, Any]]:
-        """列出零样本 + **实际已注册**的有监督任务（W4-T2 诚实宣称修复）。
+        """列出**实际已注册**的有监督任务（W4-T2 诚实宣称 + W14 P2-8 零样本摘除）。
 
         注册表为空时先触发一次惰性注册（缺依赖的引擎记 warning 跳过），
-        绝不广告未注册任务（era-4 诚实宣称原则，P1-1 残留）。
+        绝不广告未注册任务（era-4 诚实宣称原则）。零样本检测器为预留
+        注入点（无内置实现、无调用方），不再对外广告，避免 ListTasks
+        向 gRPC/C# 客户端宣称不可用能力（P2-8）。
         """
-        tasks: List[Dict[str, Any]] = [
-            {"task": "zero_shot", "paradigm": "zero-shot",
-             "requires_training": False},
-        ]
+        tasks: List[Dict[str, Any]] = []
         try:
             from models.supervised.registry import get_default_registry
             reg = get_default_registry()
@@ -248,7 +249,7 @@ class VisionModelDispatcher:
                     "requires_training": True,
                 })
         except Exception:
-            logger.warning("任务枚举失败，仅返回零样本任务", exc_info=True)
+            logger.warning("任务枚举失败，返回空任务清单", exc_info=True)
         return tasks
 
 

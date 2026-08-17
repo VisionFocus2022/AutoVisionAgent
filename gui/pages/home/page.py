@@ -1,6 +1,7 @@
 """主页/仪表盘（FR-D3）— 对标 SKolpha 主页：项目概览 + 快捷入口 + 系统状态。"""
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
@@ -17,6 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.i18n import tr
+
+logger = logging.getLogger(__name__)
 
 
 class _StatCard(QFrame):
@@ -168,6 +171,9 @@ class HomePage(QWidget):
                     f"{tr('平均置信度')}: {avg:.3f}  |  {task_str}"
                 )
         except Exception:
+            # W14-C3（P2-13）：UI 文案保持"暂无检测记录"，但真实原因
+            # （损坏 JSON / 权限问题等）必须进日志，否则真实历史被掩盖
+            logger.warning("检测历史加载失败，回退显示'暂无检测记录'", exc_info=True)
             self._history_label.setText(tr("暂无检测记录"))
 
     def _on_recent_clicked(self, item: QListWidgetItem) -> None:

@@ -80,6 +80,8 @@ def detection_result_to_proto(
         try:
             proto.extra[k] = str(v)
         except Exception:
+            # W14-C3（P2-13）：跳过不可字符串化键时留痕，避免静默丢字段难排查
+            logger.warning("extra[%r] 字符串化失败，跳过该键", k, exc_info=True)
             continue
 
     return proto
@@ -177,6 +179,9 @@ def _decode_image_bytes(raw: bytes) -> Optional["numpy.ndarray"]:
         img = Image.open(io.BytesIO(raw)).convert("RGB")
         return np.asarray(img)
     except Exception:
+        # W14-C3（P2-13）：解码失败由调用方上抛 ValueError，此处先留痕
+        # （字节长度/异常栈），便于区分"坏数据"与"缺 shape"
+        logger.warning("image_bytes 图像解码失败（%d 字节）", len(raw), exc_info=True)
         return None
 
 

@@ -14,7 +14,6 @@ from models.supervised.registry import (
     get_default_registry,
     get_engine,
     register_engine,
-    register_into_container,
 )
 
 __all__ = [
@@ -25,5 +24,4 @@ __all__ = [
     "register_engine",
     "get_engine",
     "get_default_registry",
-    "register_into_container",
 ]

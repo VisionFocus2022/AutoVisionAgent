@@ -112,9 +112,30 @@ def test_set_results_slot_builds_confusion_from_tp_fp_fn(qapp):
     assert page._table.rowCount() == 6  # 含 N/A 行（FID 不解析进混淆矩阵但占表行）
     assert page._table.item(0, 0).text() == "TP"
 
-    # 无 TP/FP/FN → 示例矩阵兜底
+    # 无 TP/FP/FN → 空态（P2-9 诚实化：原断言 [[1,0],[0,1]] 锁定的正是
+    # 审查文档 P2-9 判定的编造矩阵，随缺陷修复改为断言空态语义）
     page._set_results_slot([("mAP", "0.5", "n")])
-    assert page._confusion._matrix == [[1, 0], [0, 1]]
+    assert page._confusion._matrix == []
+
+
+@pytest.mark.unit
+def test_set_results_slot_without_tp_fp_fn_shows_empty_state(qapp):
+    """P2-9 诚实化（RED）：无 TP/FP/FN 行（seg/IoU 类指标）经生产展示路径
+    _set_results_slot 后，矩阵区必须进入空态（paintEvent 走"无混淆矩阵数据"
+    提示分支），不得展示编造的完美混淆矩阵 [[1,0],[0,1]]。"""
+    from gui.pages.eval_.page import EvalPage
+
+    page = EvalPage()
+    page._set_results_slot([
+        ("IoU (Segmentation)", "0.8500", "n"),
+        ("mIoU", "0.8200", "n"),  # 指标名不含 tp/fp/fn/tn 子串
+        ("Dice", "N/A", "n"),
+    ])
+    # 空态：_matrix 为空驱动 paintEvent 空分支，而非 [[1,0],[0,1]] 假矩阵
+    assert page._confusion._matrix == []
+    assert page._confusion._labels == []
+    assert not page._confusion.grab().isNull()  # offscreen 触发空态自绘不炸
+    assert page._table.rowCount() == 3  # 表格照常展示指标（有评估数据）
 
 
 @pytest.mark.unit
@@ -140,7 +161,7 @@ def test_confusion_widget_paint_offscreen(qapp):
 
     w.clear_matrix()
     assert w._matrix == []
-    assert not w.grab().isNull()  # 空矩阵 → "无评估数据" 分支
+    assert not w.grab().isNull()  # 空矩阵 → "无混淆矩阵数据" 分支
 
 
 @pytest.mark.unit

@@ -7,7 +7,10 @@
 启动::
 
     python -m serving                  # 默认 127.0.0.1:50051
-    python -m serving --host 0.0.0.0 --port 50051 --max-workers 8
+    python -m serving --host 127.0.0.1 --port 50051 --max-workers 8
+
+注意：本服务无 TLS/token（见 docs/adr/0001-serving-loopback.md），
+默认且推荐的监听地址是回环 127.0.0.1；跨机暴露需自行承担安全风险。
 """
 from __future__ import annotations
 
@@ -66,6 +69,9 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
         try:
             tasks = self._dispatcher.list_all_tasks()
         except Exception as e:
+            # W14-C3（P2-13）：整体失败返回空列表与"真无任务"在协议上不可区分，
+            # 必须落 ERROR 让服务端可辨识（客户端侧结合 Ping.dispatcher_ready 判别）。
+            logger.error("ListTasks 失败（返回空列表）: %s", e, exc_info=True)
             return pb.ListTasksResponse()
         resp = pb.ListTasksResponse()
         for t in tasks:
@@ -160,6 +166,11 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
             ok = self._shm.release(request.file_path)
             return pb.ReleaseSharedMemoryResponse(success=True)
         except Exception as e:
+            # W14-C3（P2-13）：共享内存泄漏排查依赖服务端日志（与客户端
+            # 空吞 catch 互为盲区），此处必须留痕。
+            logger.warning(
+                "ReleaseSharedMemory(%s) 失败: %s", request.file_path, e, exc_info=True
+            )
             return pb.ReleaseSharedMemoryResponse(success=False, error=str(e))
 
 

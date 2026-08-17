@@ -281,7 +281,7 @@ def test_list_all_tasks_advertises_only_registered(monkeypatch):
 
     monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _FakeReg())
     tasks = {t["task"] for t in VisionModelDispatcher.list_all_tasks()}
-    assert tasks == {"zero_shot", "det"}  # 只有零样本 + 已注册的 det
+    assert tasks == {"det"}  # 只有已注册的 det；zero_shot 已摘除（W14 P2-8）
 
 
 # ------------------------------- 入口与生命周期（W7-T2） ------------------------------- #
@@ -344,3 +344,51 @@ def test_main_entry_invokes_serve(monkeypatch):
     monkeypatch.setattr(sys, "argv", ["serving"])
     runpy.run_module("serving", run_name="__main__")
     assert calls == [("127.0.0.1", 50051, 8)]
+
+
+# ================ W14-C3 追加：静默 except 补日志（P2-13）+ P2-18 ================ #
+@pytest.mark.unit
+def test_list_tasks_dispatcher_failure_logs_error(servicer, caplog):
+    """RED（P2-13）：ListTasks 整体失败此前静默返回空列表——客户端把
+    故障当"无任务"；必须落 ERROR 日志（行为不变，仍返回空）。"""
+    import logging
+
+    servicer._dispatcher.fail_list = True
+    with caplog.at_level(logging.ERROR, logger="serving.server"):
+        resp = servicer.ListTasks(pb.ListTasksRequest(), _ctx())
+    assert len(resp.tasks) == 0
+    errs = [r for r in caplog.records
+            if r.levelno == logging.ERROR and "ListTasks" in r.getMessage()]
+    assert errs, "ListTasks 失败应落 ERROR（服务端可辨识故障 vs 真无任务）"
+
+
+@pytest.mark.unit
+def test_release_shared_memory_failure_logs_warning(servicer, monkeypatch, caplog):
+    """RED（P2-13）：Release 失败此前无服务端日志（与 P1-1 互为盲区）。"""
+    import logging
+
+    def _boom(path):
+        raise RuntimeError("release boom")
+
+    monkeypatch.setattr(servicer._shm, "release", _boom)
+    with caplog.at_level(logging.WARNING, logger="serving.server"):
+        resp = servicer.ReleaseSharedMemory(
+            pb.ReleaseSharedMemoryRequest(file_path="x.bin"), _ctx()
+        )
+    assert resp.success is False
+    assert "boom" in resp.error
+    warns = [r for r in caplog.records
+             if r.levelno == logging.WARNING and "ReleaseSharedMemory" in r.getMessage()]
+    assert warns
+
+
+@pytest.mark.unit
+def test_module_examples_stay_loopback():
+    """RED（P2-18）：模块 docstring 用法示例曾示范 --host 0.0.0.0
+    （无 TLS/token 下的暴露路径）；示例必须与 ADR-0001 回环锁定一致。"""
+    from pathlib import Path
+
+    src = Path(__import__("serving.server", fromlist=["__file__"]).__file__).read_text(
+        encoding="utf-8"
+    )
+    assert "0.0.0.0" not in src, "serving/server.py 不得示范非回环监听（ADR-0001）"

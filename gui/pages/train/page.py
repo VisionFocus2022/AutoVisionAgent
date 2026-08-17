@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
@@ -29,6 +30,8 @@ from gui.core.i18n import tr
 from gui.core.tasks_ui import populate_task_combo
 from gui.widgets.loss_chart import LossChartWidget
 from gui.pages.train.worker import TrainWorker
+
+logger = logging.getLogger(__name__)
 
 
 # 多规模配置预设（对标 SKolpha normal/small/large/ultra 变体）
@@ -383,6 +386,22 @@ class TrainPage(QWidget):
             tr("训练完成") + f": {artifact.epochs_completed} " + tr("轮")
         )
         self.status_changed.emit(tr("训练完成"), artifact.task.value)
+        # W14-C3（P2-11③）：训练完成审计接线——log_train_complete 此前
+        # 全仓 0 调用（docstring 宣称记录训练，实际无消费者）；user 取
+        # 会话当前用户（core.session，登录页写入），artifact 字段可得则传。
+        try:
+            from core.audit_logger import log_train_complete
+            from core.session import get_current_user
+
+            log_train_complete(
+                user=get_current_user(),
+                task=artifact.task.value,
+                epochs=int(getattr(artifact, "epochs_completed", 0) or 0),
+                best_metric=float(getattr(artifact, "best_metric", 0.0) or 0.0),
+                weights_path=str(getattr(artifact, "weights_path", "") or ""),
+            )
+        except (ImportError, OSError, TypeError, ValueError):
+            logger.exception("训练完成审计写入失败")
 
     def _on_failed(self, msg: str) -> None:
         """训练失败回调。"""

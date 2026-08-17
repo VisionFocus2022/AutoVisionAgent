@@ -71,7 +71,7 @@ class LoginPage(QWidget):
                 db["admin"] = {
                     "password_hash": h,
                     "salt": s,
-                    "role": "管理员",
+                    "role": tr("管理员"),
                     "iterations": iters,
                     "must_change": True,  # 首次登录强制改密
                 }
@@ -82,7 +82,8 @@ class LoginPage(QWidget):
                     os.chmod(db_path, 0o600)
                 except OSError:
                     pass
-                # 打印随机密码到控制台 + 日志（不硬编码 admin/admin）
+                # 随机密码仅记入日志文件（W14-C3：不打 stdout——明文密码
+                # 会进终端历史/重定向文件；不硬编码 admin/admin）
                 msg = (
                     "=" * 60 + "\n"
                     "首次启动：已创建默认管理员账户。\n"
@@ -92,7 +93,6 @@ class LoginPage(QWidget):
                     "=" * 60
                 )
                 logger.info(msg)
-                print(msg)
         except (OSError, json.JSONDecodeError):
             logger.exception("初始化默认管理员失败")
 

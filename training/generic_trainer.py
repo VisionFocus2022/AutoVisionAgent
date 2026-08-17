@@ -87,6 +87,8 @@ class GenericTrainer:
                 param_group["lr"] = warmup_lr
             logger.debug("预热 epoch %d: lr=%.6f", epoch, warmup_lr)
         except Exception:
+            # best-effort 决策（W14-C3 注）：预热只调整 LR 数值，属非关键
+            # 优化——失败时 LR 保持调度器原值继续训练，不应中断整轮。
             pass
 
     def fit(

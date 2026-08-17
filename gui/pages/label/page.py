@@ -102,9 +102,13 @@ def run_ai_prelabel(image_path: str) -> List:
                             )
                         )
                 return shapes
-            except (ImportError, RuntimeError, OSError, ValueError):
+            except (ImportError, RuntimeError, OSError, ValueError) as e:
                 import logging
-                logging.getLogger(__name__).exception("零样本检测回调失败")
+                # P2-8：零样本为预留注入点（无内置实现/无调用方），回退必失败——
+                # 以 WARNING 留下真实原因，避免静默吞掉（原仅 exception 级通用文案）
+                logging.getLogger(__name__).warning(
+                    "零样本 AI 预标注回退失败，跳过本次预标注: %s", e
+                )
                 return []
 
         from core.image_io import imread_unicode

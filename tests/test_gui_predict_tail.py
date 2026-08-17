@@ -20,7 +20,6 @@ import logging
 import os
 import sys
 import threading
-import types
 
 import pytest
 
@@ -202,10 +201,23 @@ def test_load_model_old_engine_unload_errors_swallowed(
 
 @pytest.mark.unit
 def test_load_model_device_resolution(det_page, tmp_path, monkeypatch):
-    """get_config 设备解析四分支：cuda 可用保持 / 不可用回退 /
-    torch ImportError 回退 / config ImportError 保持 cpu。"""
+    """设备解析四分支：cuda 可用保持 / 不可用回退 / torch ImportError 回退 /
+    设置层 ImportError 回退默认链。
+
+    W14-C4（W13 验证员跟进·打桩目标重构，断言语义零改动）：原打桩
+    core.config.get_config 在 W13 C1 设备回灌后已是死桩（生产链改读
+    gui.core.settings_io.get_device，page.py 无 core.config 引用；机械
+    证明：桩值改 "tpu-boom" 原测试仍绿）。现注入 sio.CONFIG_DIR + 真实
+    user_settings.json {"device": "cuda"} 驱动真读链；四分支预期值
+    ["cuda"]→["cuda","cpu"]→[...,"cpu"]→[...,"cpu"] 与原版逐项相同。
+    """
     pytest.importorskip("torch")
     from gui.pages.predict import page as pred_mod
+    import gui.core.settings_io as sio
+
+    monkeypatch.setattr(sio, "CONFIG_DIR", tmp_path)
+    (tmp_path / "user_settings.json").write_text(
+        json.dumps({"device": "cuda"}), encoding="utf-8")
 
     devices = []
 
@@ -217,28 +229,24 @@ def test_load_model_device_resolution(det_page, tmp_path, monkeypatch):
     monkeypatch.setattr(pred_mod, "pick_open_file",
                         lambda *a, **k: str(tmp_path / "m.pt"))
 
-    def _cfg(device):
-        return types.SimpleNamespace(
-            inference=types.SimpleNamespace(device=device))
-
-    # ① 配置 cuda + cuda 可用 → 保持 cuda
-    monkeypatch.setattr("core.config.get_config", lambda: _cfg("cuda"))
+    # ① 设置 cuda + cuda 可用 → 保持 cuda
     monkeypatch.setattr("torch.cuda.is_available", lambda: True)
     det_page._load_model()
     assert devices == ["cuda"]
 
-    # ② 配置 cuda + cuda 不可用 → 回退 cpu
+    # ② 设置 cuda + cuda 不可用 → 回退 cpu
     monkeypatch.setattr("torch.cuda.is_available", lambda: False)
     det_page._load_model()
     assert devices == ["cuda", "cpu"]
 
-    # ③ 配置 cuda + torch 缺失（ImportError）→ 回退 cpu
+    # ③ 设置 cuda + torch 缺失（ImportError）→ 回退 cpu
     monkeypatch.setitem(sys.modules, "torch", None)
     det_page._load_model()
     assert devices == ["cuda", "cpu", "cpu"]
 
-    # ④ core.config 不可用（ImportError）→ 保持默认 cpu
-    monkeypatch.setitem(sys.modules, "core.config", None)
+    # ④ 设置层不可达（settings_io ImportError）→ 回退默认 "cuda" 链；
+    #    torch 仍缺失（③ 桩未拆）→ cpu（预期值与旧四分支一致）
+    monkeypatch.setitem(sys.modules, "gui.core.settings_io", None)
     det_page._load_model()
     assert devices == ["cuda", "cpu", "cpu", "cpu"]
 

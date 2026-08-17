@@ -4,8 +4,11 @@
 执行顺序：
 1. py_compile 全部新增/修改模块
 2. pytest 全量测试（含覆盖率门禁）
-3. GUI 渲染预览
-4. 引擎注册完整性检查
+3. M2 e2e 集成测试（含离屏 GUI 全窗口构建与引擎注册完整性检查）
+
+注：原第 4 步 `python -m gui._render_preview` 引用的模块不存在
+（v2 架构审查 P2-11④，验证恒失败）；离屏 GUI 渲染覆盖由第 3 步
+M2 e2e（QT_QPA_PLATFORM=offscreen 下构建全窗口）承担，该步已删除。
 
 运行：python run_m3_verification.py
 """
@@ -59,7 +62,7 @@ def main() -> int:
     rc = 0
 
     # 1. 编译检查
-    print("\n[1/4] py_compile 编译检查...")
+    print("\n[1/3] py_compile 编译检查...")
     for target in COMPILE_TARGETS:
         path = PROJECT_ROOT / target
         if path.exists():
@@ -76,7 +79,7 @@ def main() -> int:
             print(f"  SKIP (不存在): {target}")
 
     # 2. 全量测试
-    print("\n[2/4] pytest 全量测试...")
+    print("\n[2/3] pytest 全量测试...")
     r = run_cmd(
         [sys.executable, "-m", "pytest",
          "tests/", "--tb=short", "-q"],
@@ -84,8 +87,8 @@ def main() -> int:
     )
     rc = max(rc, r)
 
-    # 3. M2 e2e
-    print("\n[3/4] M2 集成测试...")
+    # 3. M2 e2e（含离屏 GUI 渲染 + 引擎注册完整性）
+    print("\n[3/3] M2 集成测试...")
     env = os.environ.copy()
     env["QT_QPA_PLATFORM"] = "offscreen"
     r = run_cmd(
@@ -93,15 +96,6 @@ def main() -> int:
          "tests/test_m2_e2e.py", "-m", "e2e",
          "--no-cov", "-q"],
         "M2 e2e 测试",
-    )
-    rc = max(rc, r)
-
-    # 4. GUI 渲染预览
-    print("\n[4/4] GUI 渲染预览...")
-    r = run_cmd(
-        [sys.executable, "-m", "gui._render_preview",
-         "_m2_preview.png"],
-        "GUI 渲染",
     )
     rc = max(rc, r)
 

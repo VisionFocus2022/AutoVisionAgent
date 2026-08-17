@@ -351,3 +351,30 @@ def test_train_worker_failure_and_stop(qapp):
     w2.stop()
     w2.run()
     assert stop_seen == [True]
+
+
+# ================ W14-C3 追加：训练完成审计接线（P2-11③） ================ #
+@pytest.mark.unit
+def test_train_finished_writes_train_complete_audit(train_page, monkeypatch):
+    """RED（P2-11③）：core.audit_logger.log_train_complete 全仓 0 调用——
+    训练完成无审计（对照 log_detection_complete/log_model_export 均有消费者）。
+    _on_finished 成功分支应恰落一条 train_complete，user 取会话当前用户。"""
+    from core.audit_logger import get_audit_logger
+    from core.session import reset_current_user, set_current_user
+
+    reset_current_user()
+    set_current_user("tester")
+    audit = get_audit_logger()
+    audit._buffer.clear()
+    try:
+        monkeypatch.setattr(train_page, "_make_trainer", lambda cfg: object())
+        train_page._start_training()
+
+        dones = [e for e in audit._buffer if e["action"] == "train_complete"]
+        assert len(dones) == 1, "训练完成应恰落一条 train_complete 审计"
+        assert dones[0]["user"] == "tester"          # 归属会话当前用户
+        assert dones[0]["details"]["task"] == "det"  # _Artifact.task = TaskType.DET
+        assert dones[0]["details"]["epochs"] == 3    # _Artifact.epochs_completed
+    finally:
+        reset_current_user()
+        audit._buffer.clear()

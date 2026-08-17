@@ -138,8 +138,12 @@ class DeployPage(QWidget):
         fmt_idx = self._format_combo.currentIndex()
         precision = self._precision_combo.currentText().lower()
         do_trt = fmt_idx in (1, 2)  # TensorRT or ONNX+TRT
+        # W14-C2（P2-15）：task_value 与 fmt/precision 同法主线程预读——
+        # QComboBox 跨线程只读违 Qt 契约，worker 不得再触碰任何 QWidget
+        _TASK_MAP = {0: "det", 1: "cls", 2: "seg", 3: "abdet"}
+        task_value = _TASK_MAP.get(self._task_combo.currentIndex(), "det")
 
-        def _work():
+        def _work(task_value):
             try:
                 from exporter.supervised_exporter import SupervisedExporter
                 from core.exceptions import ModelExportError
@@ -158,9 +162,6 @@ class DeployPage(QWidget):
 
                 model.eval()
 
-                # R4-8: 从 UI 下拉框获取真实 TaskType
-                _TASK_MAP = {0: "det", 1: "cls", 2: "seg", 3: "abdet"}
-                task_value = _TASK_MAP.get(self._task_combo.currentIndex(), "det")
                 onnx_path = os.path.join(out_dir, f"{task_value}.onnx")
 
                 # 包装为引擎兼容接口（R4-8: 使用真实 TaskType）
@@ -188,7 +189,7 @@ class DeployPage(QWidget):
             except (OSError, RuntimeError, ValueError) as exc:
                 self._eval_failed_export(str(exc))
 
-        threading.Thread(target=_work, daemon=True).start()
+        threading.Thread(target=_work, args=(task_value,), daemon=True).start()
 
     def _set_progress_slot(self, pct: int) -> None:
         """槽：更新进度条（线程安全调用）。"""

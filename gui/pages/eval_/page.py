@@ -35,6 +35,9 @@ class ConfusionMatrixWidget(QFrame):
 
         widget = ConfusionMatrixWidget()
         widget.set_matrix([[50, 2], [3, 45]], labels=["缺陷", "正常"])
+
+    无 TP/FP/FN 数据（seg/IoU 类指标）时调用 clear_matrix() 进入空态，
+    paintEvent 绘制"无混淆矩阵数据"提示，而非编造矩阵（P2-9 诚实化）。
     """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
@@ -75,7 +78,7 @@ class ConfusionMatrixWidget(QFrame):
             if not self._matrix:
                 painter.setPen(QColor("#64748b"))
                 painter.setFont(QFont("", 11))
-                painter.drawText(self.rect(), Qt.AlignCenter, tr("无评估数据"))
+                painter.drawText(self.rect(), Qt.AlignCenter, tr("无混淆矩阵数据"))
                 return
 
             n = len(self._labels)
@@ -321,11 +324,9 @@ class EvalPage(QWidget):
                 [tr("缺陷"), tr("正常")],
             )
         else:
-            # 无 TP/FP/FN 时用示例数据展示
-            self._confusion.set_matrix(
-                [[max(tp, 1), max(fp, 0)], [max(fn, 0), max(tn, 1)]],
-                [tr("缺陷"), tr("正常")],
-            )
+            # P2-9 诚实化：无 TP/FP/FN/TN 行（seg/IoU 类指标）时不展示
+            # 编造的完美矩阵 [[1,0],[0,1]]，进入"无混淆矩阵数据"空态
+            self._confusion.clear_matrix()
 
         self.status_changed.emit(tr("评估完成"), f"{len(rows)} {tr('个指标')}")
 

@@ -71,13 +71,13 @@ class TestDispatcherMatrix:
 
     @pytest.mark.e2e
     def test_list_all_tasks_count(self):
-        """list_all_tasks 返回 9 有监督 + 1 零样本 = 10。"""
+        """list_all_tasks 返回 9 有监督；zero_shot 已摘除（W14 P2-8）。"""
         from industrial_vision_platform.vision_dispatcher import VisionModelDispatcher
 
         tasks = VisionModelDispatcher.list_all_tasks()
-        assert len(tasks) == 10
+        assert len(tasks) == 9
         task_values = {t["task"] for t in tasks}
-        assert "zero_shot" in task_values
+        assert "zero_shot" not in task_values
         for task in _ALL_9_TASKS:
             assert task.value in task_values
 

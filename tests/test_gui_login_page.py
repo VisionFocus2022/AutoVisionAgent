@@ -288,3 +288,46 @@ def test_offline_mode_sets_offline_user_and_audits(qapp, tmp_path, monkeypatch):
         assert logins[0]["user"] == "offline"
     finally:
         reset_current_user()
+
+
+# ============ W14-C3 追加：初始密码单通道（P2-17 部分）+ 角色 tr() 统一（P2-23） ============ #
+@pytest.mark.unit
+def test_default_admin_password_not_printed_to_stdout(qapp, tmp_path, monkeypatch, caplog):
+    """RED（P2-17 部分）：初始密码此前 logger.info + print 双通道——
+    msg 含明文初始密码，stdout 会进终端历史/重定向文件；只留 logger。"""
+    import builtins
+    import logging
+
+    from gui.pages.login import page as login_mod
+
+    monkeypatch.setattr(login_mod, "_CONFIG_DIR", tmp_path)
+    printed = []
+
+    def _capture_print(*args, **kwargs):
+        printed.append(" ".join(str(a) for a in args))
+
+    monkeypatch.setattr(builtins, "print", _capture_print)
+    with caplog.at_level(logging.INFO, logger="gui.pages.login.page"):
+        login_mod.LoginPage()  # 空库首启 → 生成随机初始密码
+
+    leaked = [c for c in printed if "初始密码" in c]
+    assert not leaked, "初始密码不得 print 到 stdout（仅 logger 通道）"
+    assert "初始密码" in caplog.text  # logger 通道保留
+
+
+@pytest.mark.unit
+def test_default_admin_role_unified_via_tr(qapp, tmp_path, monkeypatch):
+    """RED（P2-23）：注册写角色用中文字面量，与读取默认值 tr("操作员")
+    混用——en_US 下历史账户角色显示与比较错乱；持久层统一经 tr()。"""
+    from gui.core.i18n import set_language
+
+    from gui.pages.login import page as login_mod
+
+    monkeypatch.setattr(login_mod, "_CONFIG_DIR", tmp_path)
+    set_language("en_US")
+    try:
+        login_mod.LoginPage()  # 空库首启
+    finally:
+        set_language("ch_CN")
+    db = _read_db(tmp_path)
+    assert db["admin"]["role"] == "Admin"  # tr("管理员") 在 en_US 下的落库值

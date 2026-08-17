@@ -267,9 +267,9 @@ namespace VisionAgent.Shared.Tests.Vision
 
             public override Task<ListTasksResponse> ListTasks(ListTasksRequest request, ServerCallContext context)
             {
+                // 镜像 Python serving 诚实契约（W14 P2-8）：不再返回 zero_shot（无内置实现）
                 var resp = new ListTasksResponse();
                 resp.Tasks.Add(new TaskInfo { Task = "det", Paradigm = "supervised", RequiresTraining = true });
-                resp.Tasks.Add(new TaskInfo { Task = "zero_shot", Paradigm = "zero-shot", RequiresTraining = false });
                 return Task.FromResult(resp);
             }
 

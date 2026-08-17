@@ -1,0 +1,14 @@
+# 覆盖率配置（W14-C4 · v2 P2-24）
+#
+# protobuf 生成码 serving/proto/*_pb2*.py 剔出门禁分母：
+#   - pb2.py 52 stmts/40 miss：missing 33-72 为 _USE_C_DESCRIPTORS 纯 Python
+#     回退块，protobuf C/upb 实现生效时为环境性死代码；
+#   - pb2_grpc.py 78 stmts/38 miss：missing 44-74 为 Stub 客户端构造器，
+#     测试直调 Servicer 无 channel。
+#   两条合计 78 miss，占全仓 857 miss 的 9.1%（架构审查 v2 §8.2 P2-24），
+#   属生成码结构性噪声，无法由业务测试自然覆盖，故 omit 出报告，
+#   使门禁地板只反映手写码（omit 后 Total 语句数/miss 数同步下降，
+#   仅剔除该两文件，其余行数零变化——见 W14 报告实测对比）。
+[run]
+omit =
+    serving/proto/*_pb2*.py

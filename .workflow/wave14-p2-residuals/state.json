@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "change_id": "wave14-p2-residuals",
+  "title": "W14 P2 residuals + coverage tails",
+  "created_at": "2026-08-17T07:21:10.979323+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：继续实施优化 P2 级残留与依赖门控尾巴。范围=docs/AutoVisionAgent-架构解析与优化方案-v2.md P2 清单可离屏落地项 + pytest.ini 尾巴（W13 交付总结明示）。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（对已明示清单的执行授权）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave14-p2-residuals.md",
+    "design": "",
+    "tasks": "docs/tasks-wave14-p2-residuals.md"
+  },
+  "traceability": {
+    "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007"],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-002"]},
+      {"id": "AC-003", "requirements": ["FR-003"]},
+      {"id": "AC-004", "requirements": ["FR-004"]},
+      {"id": "AC-005", "requirements": ["FR-005"]},
+      {"id": "AC-006", "requirements": ["FR-006"]},
+      {"id": "AC-007", "requirements": ["FR-007"]}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007"], "acceptance": ["AC-001", "AC-002", "AC-003", "AC-004", "AC-005", "AC-006", "AC-007"]},
+      {"id": "TASK-002", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-003", "requirements": ["FR-002"], "acceptance": ["AC-002"]},
+      {"id": "TASK-004", "requirements": ["FR-003"], "acceptance": ["AC-003"]},
+      {"id": "TASK-005", "requirements": ["FR-004"], "acceptance": ["AC-004"]},
+      {"id": "TASK-006", "requirements": ["FR-005"], "acceptance": ["AC-005"]},
+      {"id": "TASK-007", "requirements": ["FR-006"], "acceptance": ["AC-006"]},
+      {"id": "TASK-008", "requirements": ["FR-007"], "acceptance": ["AC-007"]},
+      {"id": "TASK-009", "requirements": ["FR-007"], "acceptance": ["AC-007"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-002 C1 eval 展示诚实化（P2-9，AC-001）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_gui_eval_page.py tests/test_eval_flow.py tests/test_m2_e2e.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "13+11+3 passed。RED：无 TP/FP/FN 时断言空态实测 [[1,0],[0,1]]==[] 失败。修复后 ConfusionMatrixWidget 空态'无混淆矩阵数据'。验证员探针：空态 vs 编造像素差 30.5% 证可见状态真变；TN-only [[0,0],[0,5]] 真实数据保留；正常矩阵路径与既有断言零改动。"
+    },
+    {
+      "name": "TASK-003 C2 线程契约（P2-15/16，AC-002）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_thread_bridge_types.py tests/test_threaded_pages.py tests/test_gui_deploy_page.py tests/test_gui_core_tail.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "46 passed + 横向回归 106 passed。RED：deploy _work 签名零参数断言红→task_value 主线程预读传参；_to_qarg None/tuple/np.float32/np.int64 四载荷 TypeError 直调红→类型表补项（.item() 归一）；invokeMethod False → logger.warning。既有 object() 拒绝契约保留（双侧绿）。"
+    },
+    {
+      "name": "TASK-004 C3 静默 except + 死代码 + 杂修（P2-13/11/18/17/23，AC-003）",
+      "command": "pytest tests/test_serving_server.py tests/test_serving_serialization.py tests/test_p2_dead_code_guards.py + offscreen gui login/train/misc + m2 合并 -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "141 passed 合并扫。五处补日志纯增（ListTasks/Release/serialization×2/home 历史，返回值/协议/UI 文案不变且被断言）；register_into_container 断链删除全仓无引用；login print 删除（logger 保留断言）+ role tr() 化（ch_CN 落库值不变）；log_train_complete 接线（RED 0 条→审计 1 条）；ADR-0001 serving 回环决策落档。"
+    },
+    {
+      "name": "TASK-005 C4 覆盖尾巴（P2-24，AC-004）",
+      "command": "pytest tests/test_shm_tail.py tests/test_trainer_tail.py tests/test_generative_metrics_stubs.py tests/test_exporter_simplify_fp16.py -o addopts= -q + 覆盖实测",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "42 passed + predict_tail 22。shm 198/0/100%、generic_trainer 190/0/100%、generative_metrics 90/0/100%（并集）、exporter 145/28/81%（onnxsim+onnxconverter_common 3.x 真装真跑，-11 miss）。.coveragerc A/B 背靠背：Δ语句=130=pb2.py 52+pb2_grpc.py 78、Δmiss=78=40+38 严丝合缝只剔两生成文件（proto/__init__ 未误伤）——非棘轮作弊。W13 跟进：predict_tail 四分支预期值逐字不变，死桩换 sio.CONFIG_DIR 活链。零生产文件改动。"
+    },
+    {
+      "name": "TASK-006 C5 注册表+单实例+守卫（P2-12/14/10，AC-005）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_gui.py tests/test_dynamic_import_guard.py + gui 宽集 A/B/标注集 -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "99+152+63 passed。FlawGenPage 入注册表、main.py deep import 清零（守卫断言）；QLockFile 单实例 RED 先行（同进程二次 tryLock False 语义），UIA 兼容论证（锁随进程释放 + uia conftest 先杀残留）；动态导入五方守卫（modes/engines 列表↔目录↔spec hiddenimports）+ 探针用例证明守卫可红；canvas.py:220 改静态（同类同参，行为等价）。"
+    },
+    {
+      "name": "TASK-007 C6 跨语言（P2-4/P2-8，AC-006）",
+      "command": "pytest tests/test_w14_zero_shot_honesty.py + 回归 71+15 passed；cd serving/dotnet_client && dotnet test --nologo",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "python：ListTasks 不再广告 zero_shot（RED 仍含→移除；枚举失败也不再前置返回）、dispatcher docstring 诚实化、label 回退 warning。C#：49/49 全绿（Theory 展开 49 吻合）；启动清扫陈旧 ava_*.bin 真跑临时目录（3h 前时间戳+FileShare.None 独占句柄跳过）；File.Delete 空 catch 接 NLog（谓词收窄 IOException/UnauthorizedAccessException）。fake servicer 同步。注：dotnet test 须在主项目目录跑（Tests/ 子 csproj 指向不存在 serving/src/ 的基线遗留，非本簇引入）。"
+    },
+    {
+      "name": "TASK-009a 门禁全量 + 棘轮（AC-007）",
+      "command": ".venv/Scripts/python.exe -m pytest（fail-under=92）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "790 passed / 3 skipped，rc=0，51.6s；覆盖率 92.88%（7963 语句/567 缺）——棘轮 90→92（floor(92.88)=92，余量 0.88pp）。3 skip 归因：1 个 PatchCore 重依赖既有 + 2 个 exporter ImportError 分支跳过因依赖已装而合法反转。"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "P2 覆盖分母结构性调整：.coveragerc omit 仅两个 protobuf 生成文件（*_pb2*.py），A/B 背靠背实测 Δ语句=130、Δmiss=78 与两文件数字严丝合缝、proto/__init__ 未误伤——生产码零 omit，非棘轮作弊（v2 文档 P2-24 明文授权）。",
+    "环境变更：onnxsim + onnxconverter_common 装入 venv（exporter 门控行解锁，73→81%，仅剩 tensorrt 未装），exporter 两处 ImportError-skip 断言随依赖就位合法反转为真路径测试。",
+    "test_m2_e2e/test_m2_matrix/test_serving_server 的 zero_shot 相关既有断言随 C6 生产变更（ListTasks 摘除死线条目）合法翻转——语义变化随生产修复走，C6 验证员已复核（python 回归 86 例 + C# 49/49）。",
+    "C3 验证员移交的并行遗留临时文件 tests/_tmp_dead_stub_proof.py 已由驱动器删除（git status 确认不在提交内）。",
+    "非目标延期（PRD 已声明）：P2-1/2/3 线程模型收敛与退出守卫（专题波）、P2-19 gui 操作日志、P2-20 serving 文件日志、P2-21 setuptools CVE、P2-22 DataManagerExt 死代码裁决、P2-26 CI、P2-27 offscreen 集中兜底（防误伤 UIA）。",
+    "取证异象归因记录（非 W14 回归）：① `-o addopts=` 清掉 --ignore=tests/uia 的全量取证跑两次稳定 6 error（全部 tests/uia setup 40s 找窗超时，6×40s≈240s 与 287s 总时长吻合）；② 专用进程单跑 test_home_dashboard 窗口可找到（setup 过）但登录后状态 15s 超时失败；③ 裸探针（无 pytest）实测同一 exe 到窗仅 1.9s——exe 本体健康（时间戳 08-17 12:59 未变，W13/W14 未触碰 tests/uia 与 dist）。结论：混合大进程下 UIA COM 窗口枚举失效 + 专用进程登录状态层另有环境性超时；UIA 套件按 pytest.ini 设计排除于门禁（发版检查单专用进程执行）。遗留跟进：发版检查单重建 exe 后复跑 UIA 全套（必做）+ 专项排查登录状态层超时的运行时配置状态（license.key/users.json/user_settings）。"
+  ],
+  "request_evidence": "W13 交付总结列出的剩余项；本轮用户指令：继续实施优化 P2 级残留与依赖门控尾巴",
+  "final_summary": "第十四波完成（P2 级残留 9 项 + 覆盖尾巴，六簇扇出 12 代理全 accept 零 needs_fix）：①C1 eval 诚实化——无 TP/FP/FN 不再展示编造完美矩阵（空态'无混淆矩阵数据'，验证员像素差探针 30.5% 证真变）；②C2 线程契约——deploy task_value 主线程预读传参 + thread_bridge 支持 None/tuple/numpy 标量 + invokeMethod False 告警（v2 实测的 TypeError 崩溃面封堵）；③C3 静默 except 五处补日志 + register_into_container 断链删除 + login 初始密码 print 删除 + log_train_complete 接线 + ADR-0001 回环决策落档；④C4 覆盖尾巴——.coveragerc 剔 proto 生成码（A/B 实测 Δ130/Δ78 严丝合缝）、shm/generic_trainer/generative_metrics 并集 100%、exporter 73→81%（onnxsim/onnxconverter 真装真跑）、W13 跟进项闭环；⑤C5 注册表 11 页单源 + QLockFile 单实例 + 动态导入五方守卫（探针可红）+ canvas 静态化；⑥C6 跨语言——ListTasks 摘除 zero_shot 死线广告（C# 49/49 同步绿）+ C# 启动清扫陈旧 shm + NLog 接线。门禁 790 passed/3 skipped rc=0，覆盖率 92.88%（7963/567）棘轮 90→92。取证异象（-o addopts= 误收 tests/uia 的 6 error）已归因为环境性（混合进程 COM 失效 + 登录层超时；裸探针证 exe 1.9s 到窗健康），非本波回归，留发版检查单复跑（见 deviations）。validate_workflow 通过。",
+  "status": "complete"
+}

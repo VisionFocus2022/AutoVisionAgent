@@ -202,6 +202,51 @@ def test_invoke_main_delivers_all_primitive_types(qapp):
         "list": [("mAP", "0.9", "平均值")],
     }
 
+# ==================== W14-C2 追加（P2-15）：deploy 导出线程参数化 ==================== #
+@pytest.mark.unit
+def test_deploy_export_thread_receives_task_value(qapp, monkeypatch, tmp_path):
+    """P2-15 RED：task_value 必须主线程预读（同 fmt/precision :138-140），
+    经 Thread 参数传入导出 worker——QComboBox 跨线程只读违 Qt 契约，
+    当前 _work() 无参闭包在线程体内自读 currentIndex → RED。"""
+    import inspect
+
+    from gui.pages.deploy.page import DeployPage
+
+    class _RecordingThread:
+        """只记录创建形态、不执行 worker（本用例聚焦线程创建契约）。"""
+
+        created = []
+
+        def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+            self._t, self._a, self._k = target, args, kwargs or {}
+            _RecordingThread.created.append(self)
+
+        def start(self):
+            pass
+
+    _RecordingThread.created = []
+    monkeypatch.setattr(threading, "Thread", _RecordingThread)
+
+    page = DeployPage()
+    page._model_edit.setText(str(tmp_path / "m.pt"))
+    page._out_edit.setText(str(tmp_path / "out"))
+    page._task_combo.setCurrentIndex(3)  # abdet
+
+    page._do_export()
+
+    assert len(_RecordingThread.created) == 1, "导出必须分发到 worker 线程"
+    t = _RecordingThread.created[0]
+    sig = inspect.signature(t._t)
+    assert "task_value" in sig.parameters, (
+        "导出线程 target 应接收 task_value 参数（主线程预读后传入），"
+        "而非在线程体内读取 QComboBox"
+    )
+    bound = sig.bind(*t._a, **t._k)
+    assert bound.arguments["task_value"] == "abdet", (
+        "task_value 应为线程启动前主线程预读的下拉框映射值"
+    )
+
+
 # ============================== predict 单张推理 ============================== #
 @pytest.mark.unit
 def test_single_infer_runs_in_worker(qapp, fake_threads, monkeypatch):

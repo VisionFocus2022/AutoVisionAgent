@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional, Tuple
 
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import QPointF, Qt, Signal, QRectF
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -216,8 +216,8 @@ class AnnotationCanvas(QGraphicsScene):
             for pt in points:
                 self.addEllipse(pt[0] - 5, pt[1] - 5, 10, 10, pen, brush)
         else:
-            # 多边形/画笔 → QPolygonF
-            poly = QPolygonF([__import__("PySide6.QtCore", fromlist=["QPointF"]).QPointF(p[0], p[1]) for p in points])
+            # 多边形/画笔 → QPolygonF（W14 P2-10：QPointF 静态导入，行为等价）
+            poly = QPolygonF([QPointF(p[0], p[1]) for p in points])
             self.addPolygon(poly, pen, brush)
 
 

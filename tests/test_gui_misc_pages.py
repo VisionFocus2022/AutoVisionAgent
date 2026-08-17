@@ -342,3 +342,22 @@ def test_thumbnail_task_loaded_and_failed(qapp, tmp_path):
     bad.signals.failed.connect(failures.append)
     bad.run()
     assert failures == [str(tmp_path / "missing.png")]
+
+
+# ================ W14-C3 追加：home 历史加载异常补日志（P2-13） ================ #
+@pytest.mark.unit
+def test_home_refresh_history_failure_logs_real_reason(qapp, monkeypatch, caplog):
+    """RED（P2-13）：历史加载任何异常此前静默显示"暂无检测记录"——
+    真实历史被损坏 JSON/权限问题掩盖；文案保留，真实原因进日志。"""
+    from gui.pages.home.page import HomePage
+
+    page = HomePage()
+
+    def _boom():
+        raise OSError("history db locked")
+
+    monkeypatch.setattr("core.detection_history.get_history", _boom)
+    with caplog.at_level(logging.WARNING, logger="gui.pages.home.page"):
+        page.refresh_history()
+    assert page._history_label.text() == "暂无检测记录"  # UI 文案保留
+    assert "history db locked" in caplog.text, "异常真实原因应进 WARNING 日志"

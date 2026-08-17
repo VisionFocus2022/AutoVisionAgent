@@ -158,3 +158,44 @@ def test_decode_errors(tmp_path):
     # 字节不可解码
     with pytest.raises(ValueError, match="无法解码"):
         decode_request_image(pb.DetectRequest(image_bytes=b"garbage!"), shm)
+
+
+# ================ W14-C3 追加：静默 except 补日志（P2-13） ================ #
+class _EvilStr:
+    """__str__ 抛异常的载荷（模拟 extra 不可字符串化）。"""
+
+    def __str__(self):
+        raise RuntimeError("no string for you")
+
+
+@pytest.mark.unit
+def test_extra_stringify_failure_logs_warning(shm, caplog):
+    """RED（P2-13）：extra 字符串化失败此前 continue 静默吞掉。"""
+    import logging
+
+    result = DetectionResult(
+        task=TaskType.DET, score=0.5,
+        extra={"bad": _EvilStr(), "ok": 1},
+    )
+    with caplog.at_level(logging.WARNING, logger="serving.serialization"):
+        proto = detection_result_to_proto(result, shm)
+    assert dict(proto.extra).get("ok") == "1"   # 好键保留
+    assert "bad" not in dict(proto.extra)       # 坏键跳过
+    warns = [r for r in caplog.records
+             if r.levelno == logging.WARNING and "extra" in r.getMessage()]
+    assert warns, "extra 字符串化失败应落 WARNING"
+
+
+@pytest.mark.unit
+def test_decode_image_bytes_failure_logs_warning(tmp_path, caplog):
+    """RED（P2-13）：image_bytes 解码失败此前静默 return None（上抛
+    ValueError 前零痕迹）。"""
+    import logging
+
+    shm = SharedMemoryManager(base_dir=str(tmp_path))
+    with caplog.at_level(logging.WARNING, logger="serving.serialization"):
+        with pytest.raises(ValueError, match="无法解码"):
+            decode_request_image(pb.DetectRequest(image_bytes=b"garbage!"), shm)
+    warns = [r for r in caplog.records
+             if r.levelno == logging.WARNING and "解码" in r.getMessage()]
+    assert warns, "image_bytes 解码失败应落 WARNING"

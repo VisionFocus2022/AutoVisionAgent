@@ -67,3 +67,5 @@ htmlcov/
 # .NET 构建产物
 serving/dotnet_client/obj/
 serving/dotnet_client/bin/
+serving/dotnet_client/Tests/obj/
+serving/dotnet_client/Tests/bin/

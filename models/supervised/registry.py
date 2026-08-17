@@ -1,8 +1,8 @@
 """
 有监督任务引擎注册表
 
-提供 @register_engine 装饰器，将各任务引擎（实现 ISupervisedTaskEngine）按 TaskType
-注册到默认注册表，并支持挂载到 DI 容器（core.dependency_injection）。
+提供 @register_engine 装饰器，将各任务引擎（实现 ISupervisedTaskEngine）
+按 TaskType 注册到默认注册表。
 
 用法（M1+ 实现具体引擎时）::
 
@@ -21,7 +21,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from core.exceptions import UnsupportedTaskError
 from core.interfaces_supervised import ISupervisedTaskEngine, TaskType
@@ -135,23 +135,10 @@ def get_default_registry() -> EngineRegistry:
     return _default_registry
 
 
-def register_into_container(container: Any, registry: Optional[EngineRegistry] = None) -> None:
-    """
-    将注册表挂载到 DI 容器（单例），供 VisionModelSystem 等解析。
-
-    Args:
-        container: core.dependency_injection.DIContainer 实例。
-        registry: 可选注册表；默认全局表。
-    """
-    reg = registry if registry is not None else _default_registry
-    container.register_singleton(EngineRegistry, instance=reg)
-
-
 __all__ = [
     "EngineRegistry",
     "EngineFactory",
     "register_engine",
     "get_engine",
     "get_default_registry",
-    "register_into_container",
 ]
