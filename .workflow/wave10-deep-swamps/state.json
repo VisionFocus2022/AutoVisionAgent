@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "change_id": "wave10-deep-swamps",
+  "title": "第十波：非 gui 大洼地与 gui 尾巴填平 + 棘轮推进",
+  "created_at": "2026-08-17T00:54:17.510435+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "测试补齐 + 可能的最小生产修复（RED 先行）：全部可逆、失败测试即可见；组合覆盖率不得低于旧地板 82（棘轮只升不降）。执行用 Workflow 并行扇出（编写+对抗验证双层）。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：实施下一波候选。候选=W9 终态交付总结与 pytest.ini 注释明示：shell 83%/tasks_ui 82%/predict 85% 尾巴；分母内残留大洼地（exporter 12% 等）为同一棘轮系列的直接推论。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（对已明示候选清单的执行授权）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave10-deep-swamps.md",
+    "design": "",
+    "tasks": "docs/tasks-wave10-deep-swamps.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-004",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-005",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-006",
+        "requirements": [
+          "FR-005"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-002"
+        ],
+        "acceptance": [
+          "AC-002"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-003"
+        ]
+      },
+      {
+        "id": "TASK-004",
+        "requirements": [
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-004"
+        ]
+      },
+      {
+        "id": "TASK-005",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-005"
+        ]
+      },
+      {
+        "id": "TASK-006",
+        "requirements": [
+          "FR-005"
+        ],
+        "acceptance": [
+          "AC-006"
+        ]
+      }
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001 exporter 填平（AC-001）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_exporter_deep.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "21 passed（Workflow 编写代理交付，对抗验证员复跑一致）。覆盖 12%→73%（145 语句/39 缺）；缺口全部为依赖门控（tensorrt 真转换 141-182、onnxsim 202-206、onnxconverter_common 215-220 未装；onnx 已装故 193 不可达）——按纪律不伪造，验证员逐行核实。真路径：torch.onnx.export 真导出（动态轴断言）+ onnx.checker 真校验 + onnxruntime 真 int8 静态量化落盘 + 故障注入驱动动态量化回退。修复 1 真 bug：export_onnx:54 getattr(engine.task,...) 在无 task 引擎上 AttributeError 裸穿（export_supervised_engine 的 unknown 防御分支必经）——验证员 git stash 还原后机械复现 RED 逐字吻合，confirmed。"
+    },
+    {
+      "name": "TASK-002 引擎家族五文件（AC-002）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_engines_family_deep.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "51 passed（修复种子后 5 连跑全绿；验证员曾实测未固定种子 5 跑 1 翻车——seed=6 随机权重 0 框，已按其 fix_instructions 在两个 module fixture 构建前 torch.manual_seed(0)）。五文件覆盖（与 m2 契约测试并集）：super_cv2 36%→100%、cls_torchvision 39%→100%、_yolo_seg_base 39%→100%、pose_yolo 57%→100%、pseg_yolo 52%→100%。修复 2 真 bug（验证员 git checkout 回滚复现 RED confirmed）：① pose_yolo:57-60 labels 按 int(confidence)（恒 0）索引——类别 id 完全被忽略，所有实例永远映射 labels[0]；改为按 boxes.cls 映射+越界回退；② cls_torchvision:64/91 labels[pred] 无越界守卫——短标签表抛裸 IndexError（1000 类头常见），加 class_i 回退。"
+    },
+    {
+      "name": "TASK-003 controller + data_manager_ext（AC-003）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_labeling_controller_deep.py tests/test_data_manager_ext_deep.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "37 passed（17+20，验证员复跑一致，accept）。labeling/controller 62%→94%（deep 单跑；与既有套件并集≈100%）：三鼠标事件全链路、真实 Qt mapToScene 缩放+滚动条坐标转换（300x300 场景 scale 10 断言 x/10）、右键提交多边形、AUTO 队列双分支、cancel、非法模式降级。data_manager_ext 38%→96%。无真 bug（三家族模式均未命中）。验证员注 1 条与 test_sam_wiring 语义轻微重复的三态契约测试，保留作文档化。"
+    },
+    {
+      "name": "TASK-004 gui 尾巴 + predict（AC-004）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_core_tail.py tests/test_gui_predict_tail.py -q --no-cov",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "23+19 passed（验证员复跑一致，均 accept）。shell 83%→100%（单文件即达）、tasks_ui 82%→100%、theme 92%→95%（并集 100%）、thread_bridge 缺行 34 补齐；predict 85%→97%（两文件并跑；并集 99%，唯一缺 566 由套件他文件覆盖）：openpyxl 3.1.5 随波装入 venv——真 xlsx 分支 654-683 实测、W8 的 skip 自然转绿；设备解析四分支（cuda 可用/不可用回退/ImportError×2）、sv 渲染失败回退、_boxes_to_jsonable 兜底、批量逐张+取消。"
+    },
+    {
+      "name": "TASK-005 对抗验证（AC-005）",
+      "command": "Workflow wf_1307efa8-41f（5 编写 + 5 验证代理，10 agent 0 error）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "4 accept + 1 needs_fix；needs_fix 项（engines 两处未固定种子的随机权重测试 flaky）已按验证员 fix_instructions 修复并 5 连跑验证全绿。全部 3 个自报 bug 经验证员回滚生产代码后机械复现 RED 判 confirmed；假绿清单仅上述 flaky 两例与 1 条语义轻微重复（保留理由已注）；越界改动清单全部为并行兄弟簇产物，git status 终态核对无越界（3 生产文件+6 测试文件+工作流文档）。"
+    },
+    {
+      "name": "TASK-006 门禁全量 + 棘轮（AC-006）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "659 passed / 0 failed / 1 skipped（W9 为 507/2；skip-1 = openpyxl 装入后 W8 xlsx 测试转绿），rc=0；覆盖率 89.35%（8041 语句/857 未覆盖）≥ fail-under=89（自 W9 的 82 升门，三波累计 74.74→89.35）。"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "执行方式升级（ultracode）：本波用 Workflow 并行扇出 5 编写代理+逐簇对抗验证代理（10 agent）替代主会话串行——簇间文件互不相交，验证员独立复跑/回滚复现 RED/git 越界检查。",
+    "exporter 73% 未达 PRD 目标 80%：缺口 39 行全部为未装依赖（tensorrt/onnxsim/onnxconverter_common）门控分支，按诚实纪律不伪造覆盖（PRD AC-001 允许逐分支说明）。",
+    "环境变更：openpyxl 3.1.5 装入 venv（R3-11 功能的正当依赖，解除 predict 真 xlsx 分支永久 skip）。",
+    "验证员 needs_fix 项处理：engines 两处随机权重 fixture 未固定种子（12 种子实测 1 个 0 框）——按 fix_instructions 加 torch.manual_seed(0) 后 5 连跑全绿，未放宽断言。"
+  ],
+  "request_evidence": "用户原话（2026-08-17）：实施下一波候选",
+  "final_summary": "第十波完成（Workflow 双层扇出：5 编写 + 5 对抗验证，10 agent）：门禁分母内大洼地全部填平——exporter 12→73%（缺口均为未装依赖门控）、引擎家族五文件全部→100%、controller 62→94%（并集 100%）、data_manager_ext 38→96%、shell/tasks_ui→100%、predict 85→97%（openpyxl 装入，真 xlsx 分支实测）。151 个新测试；TDD RED 揪出并修复 3 个真 bug（export_onnx 无 task 引擎 AttributeError 裸穿、pose_yolo 标签按置信度而非类别 id 索引——类别映射从未生效、cls_torchvision 短标签表裸 IndexError），全部经验证员 git 回滚机械复现确认。对抗验证另揪出并修复 2 处随机权重测试 flaky（固定种子）。门禁终态：659 passed / 0 failed / 1 skipped，rc=0；组合覆盖 89.35%，棘轮 82→89（三波累计 74.74→89.35）。",
+  "status": "complete"
+}

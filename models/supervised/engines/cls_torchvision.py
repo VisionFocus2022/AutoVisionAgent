@@ -61,7 +61,9 @@ class ClsTorchvisionEngine(AbstractTaskEngine):
             probs = torch.softmax(logits, dim=1)
             conf, pred = probs.max(dim=1)
 
-        label = labels[int(pred.item())] if labels else f"class_{int(pred.item())}"
+        # W10-T3 修复：标签表短于类别数时回退 class_N（与 det/seg/pseg 的越界守卫对齐）
+        pred_i = int(pred.item())
+        label = labels[pred_i] if labels and pred_i < len(labels) else f"class_{pred_i}"
         return DetectionResult(
             task=TaskType.CLS,
             score=float(conf.item()),
@@ -88,7 +90,11 @@ class ClsTorchvisionEngine(AbstractTaskEngine):
 
         results = []
         for i in range(len(images)):
-            label = labels[int(preds[i].item())] if labels else f"class_{int(preds[i].item())}"
+            pred_i = int(preds[i].item())
+            label = (
+                labels[pred_i] if labels and pred_i < len(labels)
+                else f"class_{pred_i}"
+            )
             results.append(DetectionResult(
                 task=TaskType.CLS,
                 score=float(confs[i].item()),

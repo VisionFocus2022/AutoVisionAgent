@@ -49,9 +49,9 @@ class SupervisedExporter:
         """
         import torch
 
-        # 根据 task 自动选择默认 input_shape
+        # 根据 task 自动选择默认 input_shape（引擎可能无 task 属性，R-W10 防穿）
         if input_shape is None:
-            task_val = getattr(engine.task, "value", "")
+            task_val = getattr(getattr(engine, "task", None), "value", "")
             if task_val == "cls":
                 input_shape = (1, 3, 224, 224)
             elif task_val in ("det", "pseg", "pose"):

@@ -49,15 +49,19 @@ class PoseYoloEngine(AbstractTaskEngine):
         kpts = r.keypoints.data  # [N, K, 3] — x, y, conf
         xyxy = r.boxes.xyxy.cpu().numpy() if r.boxes is not None else None
         conf = r.boxes.conf.cpu().numpy() if r.boxes is not None else None
+        # W10-T3 修复：标签须按类别 id（cls）映射，并对短标签表越界回退 person_i
+        # （修复前误用 int(conf)——置信度取整恒为 0，labels 永远映射到 labels[0]）
+        cls = r.boxes.cls.cpu().numpy() if r.boxes is not None else None
 
         return DetectionResult(
             task=TaskType.POSE,
             boxes=tuple(tuple(float(v) for v in row) for row in xyxy) if xyxy is not None else (),
             scores=tuple(float(c) for c in conf) if conf is not None else (),
             labels=tuple(
-                labels[int(c)] if labels else f"person_{i}"
-                for i, c in enumerate(conf)
-            ) if conf is not None else (),
+                labels[int(k)] if labels and int(k) < len(labels)
+                else f"person_{i}"
+                for i, k in enumerate(cls)
+            ) if cls is not None else (),
             keypoints=kpts.cpu(),
         )
 
