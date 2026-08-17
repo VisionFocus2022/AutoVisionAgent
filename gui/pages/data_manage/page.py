@@ -83,6 +83,13 @@ class DataManagePage(QWidget):
         root.setSpacing(10)
 
         # ---- 顶部工具栏 ----
+        root.addWidget(self._build_toolbar())
+
+        # ---- 正文：缩略图 + 右侧统计 ----
+        root.addLayout(self._build_body(), 1)
+
+    def _build_toolbar(self) -> QFrame:
+        """顶部工具栏：数据组（目录/导入/划分/刷新）+ 标注工具/导出组。"""
         bar = QFrame(self)
         bar.setObjectName("toolbar")
         bar.setFixedHeight(48)
@@ -90,13 +97,18 @@ class DataManagePage(QWidget):
         h.setContentsMargins(8, 6, 8, 6)
         h.setSpacing(6)
 
+        self._build_toolbar_data_group(bar, h)
+        self._build_toolbar_label_group(bar, h)
+        return bar
+
+    def _build_toolbar_data_group(self, bar: QWidget, h: QHBoxLayout) -> None:
+        """工具栏数据组：选择目录/导入 + 划分比例/模式 + 划分/刷新。"""
         self.btn_open_dir = QPushButton(tr("选择目录"), bar)
         self.btn_open_dir.setProperty("role", "accent")
         h.addWidget(self.btn_open_dir)
 
         self.btn_import = QPushButton(tr("导入图像"), bar)
         h.addWidget(self.btn_import)
-
         sep = QFrame(bar)
         sep.setFixedWidth(1)
         sep.setStyleSheet("background-color: #3f4452;")
@@ -109,14 +121,12 @@ class DataManagePage(QWidget):
         self.spin_train.setSingleStep(0.05)
         self.spin_train.setValue(0.8)
         h.addWidget(self.spin_train)
-
         h.addWidget(QLabel(tr("验证"), bar))
         self.spin_val = QDoubleSpinBox(bar)
         self.spin_val.setRange(0.0, 1.0)
         self.spin_val.setSingleStep(0.05)
         self.spin_val.setValue(0.1)
         h.addWidget(self.spin_val)
-
         h.addWidget(QLabel(tr("测试"), bar))
         self.spin_test = QDoubleSpinBox(bar)
         self.spin_test.setRange(0.0, 1.0)
@@ -141,6 +151,8 @@ class DataManagePage(QWidget):
         self.btn_refresh = QPushButton(tr("刷新"), bar)
         h.addWidget(self.btn_refresh)
 
+    def _build_toolbar_label_group(self, bar: QWidget, h: QHBoxLayout) -> None:
+        """工具栏标注组：统计/替换/删除/翻转/切割 + 训练集导出。"""
         sep2 = QFrame(bar)
         sep2.setFixedWidth(1)
         sep2.setStyleSheet("background-color: #3f4452;")
@@ -166,9 +178,8 @@ class DataManagePage(QWidget):
         self.btn_export = QPushButton(tr("导出训练集"), bar)
         h.addWidget(self.btn_export)
 
-        root.addWidget(bar)
-
-        # ---- 正文：缩略图 + 右侧统计 ----
+    def _build_body(self) -> QHBoxLayout:
+        """正文：缩略图列表 + 右侧统计面板。"""
         body = QHBoxLayout()
         body.setSpacing(10)
 
@@ -209,7 +220,7 @@ class DataManagePage(QWidget):
 
         p.addStretch()
         body.addWidget(panel)
-        root.addLayout(body, 1)
+        return body
 
     @staticmethod
     def _caption(text: str) -> QLabel:

@@ -82,7 +82,12 @@ class TrainPage(QWidget):
         top = QHBoxLayout()
         top.setSpacing(12)
 
-        # 左：参数表单
+        top.addWidget(self._build_form_panel())
+        top.addLayout(self._build_chart_panel(), 1)
+        root.addLayout(top, 1)
+
+    def _build_form_panel(self) -> QFrame:
+        """左侧参数表单面板：标题 + 配置行 + 操作按钮 + 进度条。"""
         form_frame = QFrame(self)
         form_frame.setFixedWidth(300)
         form_frame.setStyleSheet(
@@ -100,6 +105,32 @@ class TrainPage(QWidget):
         form.setSpacing(6)
         form.setLabelAlignment(Qt.AlignRight)
 
+        self._build_form_basic_rows(form_frame, form)
+        self._build_form_train_rows(form_frame, form)
+        ff.addLayout(form)
+
+        # 操作按钮
+        btn_lay = QHBoxLayout()
+        self.btn_start = QPushButton(tr("开始训练"), form_frame)
+        self.btn_start.setProperty("role", "accent")
+        self.btn_stop = QPushButton(tr("强制结束"), form_frame)
+        self.btn_stop.setProperty("role", "danger")
+        self.btn_stop.setEnabled(False)
+        btn_lay.addWidget(self.btn_start)
+        btn_lay.addWidget(self.btn_stop)
+        ff.addLayout(btn_lay)
+
+        # 进度条
+        self.progress_bar = QProgressBar(form_frame)
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        ff.addWidget(self.progress_bar)
+
+        ff.addStretch()
+        return form_frame
+
+    def _build_form_basic_rows(self, form_frame: QWidget, form: QFormLayout) -> None:
+        """基础配置行：预设/任务/轮数/学习率/批大小/骨干/早停/设备。"""
         # 配置预设（对标 SKolpha 多规模变体）
         self.cmb_preset = QComboBox(form_frame)
         for name in _TRAIN_PRESETS:
@@ -147,6 +178,10 @@ class TrainPage(QWidget):
         self.cmb_device.addItem("cpu")
         form.addRow(tr("设备"), self.cmb_device)
 
+    def _build_form_train_rows(
+        self, form_frame: QWidget, form: QFormLayout
+    ) -> None:
+        """训练增强行（R5-4）：图像尺寸/LR 调度/预热/混合精度/加载线程。"""
         # R5-4: 补全 TrainConfig 缺失字段
         self.spin_img_size = QSpinBox(form_frame)
         self.spin_img_size.setRange(64, 4096)
@@ -174,29 +209,8 @@ class TrainPage(QWidget):
         self.spin_workers.setValue(4)
         form.addRow(tr("加载线程"), self.spin_workers)
 
-        ff.addLayout(form)
-
-        # 操作按钮
-        btn_lay = QHBoxLayout()
-        self.btn_start = QPushButton(tr("开始训练"), form_frame)
-        self.btn_start.setProperty("role", "accent")
-        self.btn_stop = QPushButton(tr("强制结束"), form_frame)
-        self.btn_stop.setProperty("role", "danger")
-        self.btn_stop.setEnabled(False)
-        btn_lay.addWidget(self.btn_start)
-        btn_lay.addWidget(self.btn_stop)
-        ff.addLayout(btn_lay)
-
-        # 进度条
-        self.progress_bar = QProgressBar(form_frame)
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        ff.addWidget(self.progress_bar)
-
-        ff.addStretch()
-        top.addWidget(form_frame)
-
-        # 右：Loss 曲线
+    def _build_chart_panel(self) -> QVBoxLayout:
+        """右侧训练曲线图 + 日志区。"""
         right = QVBoxLayout()
         right.setSpacing(8)
         lbl_chart = QLabel(tr("训练曲线"), self)
@@ -217,9 +231,7 @@ class TrainPage(QWidget):
         )
         self.lbl_log.setWordWrap(True)
         right.addWidget(self.lbl_log)
-
-        top.addLayout(right, 1)
-        root.addLayout(top, 1)
+        return right
 
     # ============================== 接线 ============================== #
     def _wire(self) -> None:

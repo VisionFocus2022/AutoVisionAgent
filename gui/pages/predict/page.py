@@ -83,6 +83,13 @@ class PredictPage(QWidget):
         root.setSpacing(10)
 
         # ---- 顶部工具栏 ----
+        root.addWidget(self._build_toolbar())
+
+        # ---- 正文：预览 + 结果表 ----
+        root.addLayout(self._build_body(), 1)
+
+    def _build_toolbar(self) -> QFrame:
+        """顶部工具栏：推理组（任务/模型/单张/批量）+ 导出/统计组。"""
         bar = QFrame(self)
         bar.setObjectName("toolbar")
         bar.setFixedHeight(48)
@@ -90,6 +97,12 @@ class PredictPage(QWidget):
         h.setContentsMargins(8, 6, 8, 6)
         h.setSpacing(6)
 
+        self._build_toolbar_infer_group(bar, h)
+        self._build_toolbar_export_group(bar, h)
+        return bar
+
+    def _build_toolbar_infer_group(self, bar: QWidget, h: QHBoxLayout) -> None:
+        """工具栏推理组：任务下拉 + 模型加载 + 单张/批量 + 取消/进度。"""
         self.cmb_task = QComboBox(bar)
         # W1: 推理页只列已注册引擎的任务（旧下拉恰好只含缺失的 det/seg/abdet）
         from gui.core.tasks_ui import populate_task_combo
@@ -127,6 +140,8 @@ class PredictPage(QWidget):
         self._progress.setVisible(False)
         h.addWidget(self._progress)
 
+    def _build_toolbar_export_group(self, bar: QWidget, h: QHBoxLayout) -> None:
+        """工具栏导出组：CSV/JSON/Excel 导出 + 统计报表。"""
         sep2 = QFrame(bar)
         sep2.setFixedWidth(1)
         sep2.setStyleSheet("background-color: #3f4452;")
@@ -149,9 +164,9 @@ class PredictPage(QWidget):
         h.addWidget(self.btn_stats)
 
         h.addStretch()
-        root.addWidget(bar)
 
-        # ---- 正文：预览 + 结果表 ----
+    def _build_body(self) -> QHBoxLayout:
+        """正文：左预览 + 右结果表。"""
         body = QHBoxLayout()
         body.setSpacing(10)
 
@@ -190,8 +205,7 @@ class PredictPage(QWidget):
         rl.setContentsMargins(0, 0, 0, 0)
         rl.addLayout(right)
         body.addWidget(right_frame)
-
-        root.addLayout(body, 1)
+        return body
 
     # ============================== 接线 ============================== #
     def _wire(self) -> None:

@@ -107,14 +107,34 @@ def fid_score(
 
 
 def _sqrtm(mat: np.ndarray, eps: float = 1e-6) -> Tuple[np.ndarray, bool]:
-    """numpy 版矩阵开方（替代 scipy.linalg.sqrtm）。"""
-    from numpy.linalg import eigvals, eigh
+    """numpy 版矩阵开方（替代 scipy.linalg.sqrtm）。
 
-    # 对称矩阵
-    w, v = eigh(mat)
-    w = np.maximum(w, 0)  # 裁剪负值
-    sqrt_w = np.sqrt(w + eps)
-    return v @ np.diag(sqrt_w) @ v.T, True
+    - 对称矩阵：eigh 快路径（含 eps 地板，行为与历史版本一致）。
+    - 非对称矩阵（FID 中 P = Σ_g·Σ_r 的积即此类）：np.linalg.eig 真矩阵
+      平方根 P = V·diag(λ)·V⁻¹ → √P = V·diag(√λ)·V⁻¹。两个 PSD 之积与
+      A^{1/2}BA^{1/2} 相似，特征值实非负，故 λ 取实部、微负 clip 0 后
+      结果与 scipy.linalg.sqrtm 数值一致（不可用 eigh：其只读下三角，
+      对非对称输入等价偷换矩阵，W11 实测 FID 恒偏差且可为负）。
+    """
+    from numpy.linalg import eig, eigh, inv
+
+    scale = float(np.abs(mat).max()) if mat.size else 0.0
+    if np.allclose(mat, mat.T, rtol=1e-10, atol=1e-12 * max(1.0, scale)):
+        # 对称矩阵
+        w, v = eigh(mat)
+        w = np.maximum(w, 0)  # 裁剪负值
+        sqrt_w = np.sqrt(w + eps)
+        return v @ np.diag(sqrt_w) @ v.T, True
+
+    # 非对称：真（非对称）矩阵平方根
+    w, v = eig(mat)
+    w = np.clip(w.real, 0.0, None)  # 特征值取实部、微负 clip 0
+    root = v @ np.diag(np.sqrt(w)) @ inv(v)
+    if np.iscomplexobj(root) and np.allclose(
+        root.imag, 0.0, atol=1e-8 * max(1.0, scale)
+    ):
+        root = root.real  # 虚部为数值残差时回落实矩阵
+    return root, True
 
 
 def perceptual_loss(

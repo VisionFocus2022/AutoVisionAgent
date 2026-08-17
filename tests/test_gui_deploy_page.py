@@ -230,3 +230,38 @@ def test_retranslate_refresh_texts(deploy_page):
     assert deploy_page._title.text() == "模型发布"
     assert deploy_page._export_btn.text() == "导出"
     assert "(seg)" in deploy_page._task_combo.itemText(2)
+
+
+# ==================== W11-P1 追加：审计失败不静默 ==================== #
+@pytest.mark.unit
+def test_export_finished_audit_failure_warns_not_silent(
+    deploy_page, fake_threads, fake_exporter, monkeypatch, qapp, caplog
+):
+    """W11-P1：导出完成回调中审计写入失败不得静默吞。
+
+    RED：_on_export_finished 此前 ``except (OSError, ImportError): pass``，
+    审计失败零痕迹；应记录 warning（含异常信息）且回调不崩。
+    """
+    import logging as logging_mod
+
+    _fake_torch_load(monkeypatch, _Model())
+
+    def _audit_boom(**kw):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("core.audit_logger.log_model_export", _audit_boom)
+
+    with caplog.at_level(logging_mod.WARNING, logger="gui.pages.deploy.page"):
+        deploy_page._do_export()
+        qapp.processEvents()
+
+    # 完成回调不崩：完成状态照常发出、按钮恢复可用
+    assert deploy_page._msgs[-1][0] == "导出完成"
+    assert deploy_page._export_btn.isEnabled() is True
+    # 审计失败必须留下 warning 痕迹
+    warns = [
+        r for r in caplog.records
+        if r.levelno == logging_mod.WARNING and "审计" in r.getMessage()
+    ]
+    assert warns, "审计写入失败被静默吞掉：应记录 warning"
+    assert any("disk full" in r.getMessage() for r in warns)

@@ -233,6 +233,13 @@ class LabelPage(QWidget):
         root.setSpacing(10)
 
         # 顶部工具栏
+        root.addWidget(self._build_toolbar())
+
+        # 正文：左侧文件列表 + 画布 + 右侧面板
+        root.addWidget(self._build_body_splitter(), 1)
+
+    def _build_toolbar(self) -> QFrame:
+        """顶部工具栏：打开/翻页/模式组 + 编辑/AI 预标注/保存组。"""
         bar = QFrame(self)
         bar.setObjectName("toolbar")
         bar.setFixedHeight(48)
@@ -240,6 +247,12 @@ class LabelPage(QWidget):
         h.setContentsMargins(8, 6, 8, 6)
         h.setSpacing(6)
 
+        self._build_toolbar_nav_group(bar, h)
+        self._build_toolbar_action_group(bar, h)
+        return bar
+
+    def _build_toolbar_nav_group(self, bar: QWidget, h: QHBoxLayout) -> None:
+        """工具栏导航组：打开文件/文件夹 + 翻页 + 标注模式按钮。"""
         self.btn_open_folder = QPushButton(tr("打开文件夹"), bar)
         self.btn_open_folder.setProperty("role", "accent")
         h.addWidget(self.btn_open_folder)
@@ -273,6 +286,8 @@ class LabelPage(QWidget):
             self._mode_btns[mode] = btn
             h.addWidget(btn)
 
+    def _build_toolbar_action_group(self, bar: QWidget, h: QHBoxLayout) -> None:
+        """工具栏编辑组：撤销/重做/删除/清空 + AI 预标注/显隐 + 保存。"""
         sep2 = self._sep(bar)
         h.addWidget(sep2)
 
@@ -298,9 +313,9 @@ class LabelPage(QWidget):
         self.btn_save = QPushButton(tr("保存标注"), bar)
         self.btn_save.setProperty("role", "accent")
         h.addWidget(self.btn_save)
-        root.addWidget(bar)
 
-        # 正文：左侧文件列表 + 画布 + 右侧面板
+    def _build_body_splitter(self) -> QSplitter:
+        """正文三栏：图像文件列表 + 画布 + 右侧标签面板。"""
         body_splitter = QSplitter(Qt.Horizontal, self)
 
         # 左侧图像文件列表
@@ -343,8 +358,7 @@ class LabelPage(QWidget):
 
         body_splitter.addWidget(panel)
         body_splitter.setStretchFactor(2, 0)
-
-        root.addWidget(body_splitter, 1)
+        return body_splitter
 
     @staticmethod
     def _sep(parent: QWidget) -> QFrame:

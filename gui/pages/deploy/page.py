@@ -221,7 +221,9 @@ class DeployPage(QWidget):
                 path=files,
             )
         except (OSError, ImportError) as exc:
-            pass
+            # W11-P1: 审计写入失败不静默——留 warning 痕迹便于排查
+            import logging
+            logging.getLogger(__name__).warning("模型导出审计写入失败: %s", exc)
 
     @Slot(str)
     def _on_export_failed(self, msg: str) -> None:

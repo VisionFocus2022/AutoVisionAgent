@@ -23,6 +23,9 @@ gRPC 消息仅携带 ``SharedMemoryHandle``（路径/偏移/长度/dtype/shape�
   避免多区域共享一文件带来的偏移对齐与并发回收复杂度。
 - 文件由创建方拥有，``release`` 时删除；进程退出时未释放的文件由
   ``atexit`` 钩子兜底清理。
+- 进程崩溃/强杀残留的 ava_*.bin 由下次启动清扫（mtime 年龄超 2 小时，
+  W11 v2 P1-1）；区域登记数量有上限（默认 64，``AVA_SHM_MAX_REGIONS``
+  或构造参数可调），写满即 RuntimeError，防静默泄漏。
 """
 from __future__ import annotations
 
@@ -30,6 +33,7 @@ import logging
 import mmap
 import os
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +49,15 @@ _DTYPE_MAP: Dict[str, str] = {
     "bool": "|b1",
 }
 _NAME_TO_NP: Dict[str, str] = {v: k for k, v in _DTYPE_MAP.items()}
+
+# ---- 生命周期守护常量（W11 v2 P1-1）----
+# 启动清扫的陈旧判定阈值：ava_*.bin 的 mtime 年龄超过该值即视为上次进程
+# 崩溃/强杀的残留（区域是请求级短生命周期对象，正常路径由 release/atexit
+# 回收，存活超过 2 小时的必然是泄漏）。
+_STALE_FILE_MAX_AGE_SECONDS = 2 * 60 * 60
+# 区域登记上限（防忘 release 的静默泄漏）；可经构造参数或环境变量注入。
+_MAX_REGIONS_ENV = "AVA_SHM_MAX_REGIONS"
+_DEFAULT_MAX_REGIONS = 64
 
 
 @dataclass(frozen=True)
@@ -100,7 +113,11 @@ class SharedMemoryManager:
     创建的），因此 Python 服务既能写出结果掩码，也能读入 C# 送来的大图。
     """
 
-    def __init__(self, base_dir: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        base_dir: Optional[str] = None,
+        max_regions: Optional[int] = None,
+    ) -> None:
         # 默认放到系统临时目录下的 autovisionagent_shm 子目录，便于统一清理
         if base_dir is None:
             base_dir = os.path.join(
@@ -109,6 +126,8 @@ class SharedMemoryManager:
             )
         self._base_dir = Path(base_dir)
         self._base_dir.mkdir(parents=True, exist_ok=True)
+        self._max_regions = _resolve_max_regions(max_regions)
+        self._sweep_stale_files()
 
         self._lock = threading.Lock()
         # file_path -> (fd, mmap_obj)：仅记录本进程创建的区域，用于回收
@@ -116,6 +135,38 @@ class SharedMemoryManager:
 
         import atexit
         atexit.register(self.cleanup)
+
+    # ---------- 启动清扫 ----------
+
+    def _sweep_stale_files(self) -> int:
+        """删除本目录下陈旧的 ava_*.bin 残留（进程崩溃/强杀的兜底清扫）。
+
+        仅按「ava_ 前缀 + .bin 后缀 + mtime 年龄超阈值」判定，其他文件一律
+        不动（C# 客户端侧的文件清扫不在本模块职责内，属各自进程自理）。
+
+        Returns:
+            删除的文件数。
+        """
+        now = time.time()
+        removed = 0
+        for entry in self._base_dir.glob("ava_*.bin"):
+            try:
+                age = now - entry.stat().st_mtime
+            except OSError:
+                continue
+            if age < _STALE_FILE_MAX_AGE_SECONDS:
+                continue
+            try:
+                entry.unlink()
+                removed += 1
+            except OSError:
+                # Windows 下被他进程占用的文件无法删除，留给下次启动再扫
+                logger.warning("启动清扫陈旧共享内存文件失败: %s", entry, exc_info=True)
+        if removed:
+            logger.info(
+                "启动清扫: 删除 %d 个陈旧共享内存文件 (目录=%s)", removed, self._base_dir
+            )
+        return removed
 
     # ---------- 写出 ----------
 
@@ -189,7 +240,17 @@ class SharedMemoryManager:
             raise
 
         with self._lock:
-            self._regions[path] = (fd, mm)
+            limit_hit = len(self._regions) >= self._max_regions
+            if not limit_hit:
+                self._regions[path] = (fd, mm)
+        if limit_hit:
+            # 上限命中：回滚刚创建的映射与文件，拒绝分配（不得静默继续泄漏）
+            self._discard_mapping(fd, mm, path)
+            raise RuntimeError(
+                f"共享内存区域登记已达上限: 当前 {len(self._regions)} 个 / "
+                f"上限 {self._max_regions} 个，请先 release 未使用区域，"
+                f"或调大环境变量 {_MAX_REGIONS_ENV}"
+            )
         logger.debug("共享内存写出: %s (%d bytes, %s, shape=%s)", path, length, dtype, shape)
         return SharedMemoryHandle(
             file_path=path, offset=0, length=length, dtype=dtype, shape=shape
@@ -245,6 +306,22 @@ class SharedMemoryManager:
 
     # ---------- 回收 ----------
 
+    @staticmethod
+    def _discard_mapping(fd: int, mm: mmap.mmap, path: str) -> None:
+        """尽力关闭映射/描述符并删除文件（release 与上限拒绝路径共用）。"""
+        try:
+            mm.close()
+        except (BufferError, OSError):
+            pass
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
     def release(self, file_path: str) -> bool:
         """释放指定区域（关闭映射并删除文件）。
 
@@ -260,18 +337,7 @@ class SharedMemoryManager:
             return False
 
         fd, mm = entry
-        try:
-            mm.close()
-        except (BufferError, OSError):
-            pass
-        try:
-            os.close(fd)
-        except OSError:
-            pass
-        try:
-            os.unlink(file_path)
-        except OSError:
-            pass
+        self._discard_mapping(fd, mm, file_path)
         logger.debug("共享内存已回收: %s", file_path)
         return True
 
@@ -287,6 +353,24 @@ class SharedMemoryManager:
 
 
 # ------------------------------ 模块级辅助 ------------------------------ #
+
+def _resolve_max_regions(explicit: Optional[int]) -> int:
+    """解析区域登记上限：构造参数 > 环境变量 AVA_SHM_MAX_REGIONS > 默认 64。"""
+    if explicit is not None:
+        if explicit < 1:
+            raise ValueError(f"max_regions 必须 >= 1，收到 {explicit}")
+        return int(explicit)
+    raw = os.environ.get(_MAX_REGIONS_ENV)
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            logger.warning(
+                "环境变量 %s=%r 不是整数，回退默认值 %d",
+                _MAX_REGIONS_ENV, raw, _DEFAULT_MAX_REGIONS,
+            )
+    return _DEFAULT_MAX_REGIONS
+
 
 def _np_dtype_name(np_dtype) -> str:
     """numpy.dtype -> 契约字符串。"""

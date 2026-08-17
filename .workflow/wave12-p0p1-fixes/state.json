@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "change_id": "wave12-p0p1-fixes",
+  "title": "W12 P0-1 monolith split + six P1 fixes",
+  "created_at": "2026-08-17T03:48:59.657205+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：实施下一波候选。候选=W11 交付总结明示：P0-1 拆巨石函数；P1 修复清单（shm reaper、训练保存失败上抛、审计 flush、FID sqrtm 对称化、lock 补 index-url+README、RCE 回退 3 用例）。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（对已明示候选清单的执行授权）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave12-p0p1-fixes.md",
+    "design": "",
+    "tasks": "docs/tasks-wave12-p0p1-fixes.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005",
+      "FR-006",
+      "FR-007",
+      "FR-008"
+    ],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-002"]},
+      {"id": "AC-003", "requirements": ["FR-003"]},
+      {"id": "AC-004", "requirements": ["FR-004"]},
+      {"id": "AC-005", "requirements": ["FR-005"]},
+      {"id": "AC-006", "requirements": ["FR-006"]},
+      {"id": "AC-007", "requirements": ["FR-007", "FR-008"]},
+      {"id": "AC-008", "requirements": ["FR-001", "FR-008"]}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007", "FR-008"], "acceptance": ["AC-001", "AC-002", "AC-003", "AC-004", "AC-005", "AC-006", "AC-007", "AC-008"]},
+      {"id": "TASK-002", "requirements": ["FR-001", "FR-003"], "acceptance": ["AC-001", "AC-003"]},
+      {"id": "TASK-003", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-004", "requirements": ["FR-001", "FR-004"], "acceptance": ["AC-001", "AC-004"]},
+      {"id": "TASK-005", "requirements": ["FR-002"], "acceptance": ["AC-002"]},
+      {"id": "TASK-006", "requirements": ["FR-005"], "acceptance": ["AC-005"]},
+      {"id": "TASK-007", "requirements": ["FR-004"], "acceptance": ["AC-004"]},
+      {"id": "TASK-008", "requirements": ["FR-006", "FR-007"], "acceptance": ["AC-006", "AC-007"]},
+      {"id": "TASK-009", "requirements": ["FR-008"], "acceptance": ["AC-008"]},
+      {"id": "TASK-010", "requirements": ["FR-008"], "acceptance": ["AC-001", "AC-008"]},
+      {"id": "TASK-011", "requirements": ["FR-008"], "acceptance": ["AC-008"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-002 R1 trainer（fit 拆分 + 最终 save 失败上抛，AC-001/003）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_trainer_save_fail.py tests/test_trainer_generic.py tests/test_gui_train_page.py tests/test_m1_e2e.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "36 passed（新 3 + 既有全绿）。RED：save 失败测试 'DID NOT RAISE RuntimeError' + 日志 '保存最终权重失败 ... OSError: disk full' 被吞。修复：final save 失败 raise RuntimeError（含路径与原因）；best-checkpoint 保留 best-effort 注释决策。TrainWorker failed 路由已有测试（test_gui_train_page.py 两处）。fit 118→72，新抽 5 私有方法 13/13/25/22/22 行。验证员 accept：AST 复测一致、stash 回滚 RED 复现 2 failed 逐字吻合、行为逐行保持（唯一删除死变量 base_lr）。"
+    },
+    {
+      "name": "TASK-003 R2 eval_ 页业务抽层（AC-001）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_eval_page.py tests/test_eval_flow.py tests/test_m2_e2e.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "23+15 passed（既有 eval 页 12 用例零改动全绿 + 新 11 直测）。_run_eval 141→39、_work 115→17；evaluation/eval_flow.py 231 行 11 纯函数全 ≤30 行（无 Qt，回调注入进度/警告/文案）。验证员 accept：AST 复测一致、stash -u 移除模块后新测试 ModuleNotFoundError 证明真调生产非复制品。"
+    },
+    {
+      "name": "TASK-004 R3 gui 机械拆 + shell 审计 flush（AC-001/004）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_gui*.py + theme/threaded/shell 相关 19 文件 -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "189 passed（136+53）。四个 _build_ui 147/133/118/115→12/10/10/10（子方法全 <50）、_build_qss 109→20（8 区块）、_build_shell 103→12（5 段）；QSS 拆前后 night/daytime 各 5537 字节逐字节等价；closeEvent 在 accept 前显式 flush 审计（异常仅 warning 不阻断退出）——RED 复现 2 failed 吻合。验证员 accept：AST/QSS 等价/accept 分支真走（无 worker 直达）均核实。"
+    },
+    {
+      "name": "TASK-005 F1 shm 清扫+上限（AC-002）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_shm_lifecycle.py tests/test_serving_shm.py tests/test_serving_server.py tests/test_serving_serialization.py tests/test_mask_codec.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "56 passed（新 6 + 既有 50）。启动清扫陈旧 ava_*.bin（mtime≥2h，新鲜/非前缀不动，占用仅告警）；max_regions 构造参>AVA_SHM_MAX_REGIONS 环境变量>默认 64，_write_raw 持锁原子检查，超限回滚 mmap/fd/文件并 RuntimeError（含当前数/上限）。RED 复现 5 failed 吻合（stash 文件级）。release 复用新抽 _discard_mapping，异常吞并与顺序逐字节等价。C# 侧清扫不在本簇（各进程自理，注释已写）。"
+    },
+    {
+      "name": "TASK-008a F4 RCE 用例 + lock + README（AC-006/007）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_interfaces_safe_extract.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "3 passed（直调 staticmethod；恶意 pickle 经 find_class 白名单拒绝——独立探针证 GLOBAL 操作码正常分发、拒绝确由白名单触发）。lock 仅 +1 行 --extra-index-url；README 命令/链接逐条核对一致。附带发现 persistent_load 缺口 → F5 簇修复（TASK-008b）。"
+    },
+    {
+      "name": "TASK-006 F2 FID sqrtm 对称化修复（AC-005）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_fid_sqrtm_fix.py tests/test_m2_matrix.py tests/test_eval_flow.py tests/test_m2_e2e.py tests/test_gui_eval_page.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "71 passed（新 5 含 3 参数化）。RED：旧代码同分布 FID 实测 -0.127（负值）、trace 项 vs scipy rel err 16-26%。修复：对称阵保留 eigh 快路径，非对称积走 np.linalg.eig 真平方根。验证员 accept：stash 回滚 RED 5/5 复现；自选新种子 3 组 PSD 对 rel err 2.5e-15~4.0e-15；奇异积（n<d, d=512/2048）rel err ~5e-8 亦成立；打桩点在 FID 公式之外无假绿；旧公式复刻与 HEAD 逐行一致。"
+    },
+    {
+      "name": "TASK-007 F3 audit atexit + deploy 告警（AC-004）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_audit_and_history.py tests/test_gui_deploy_page.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "22 passed（既有 19 无回归 + 新 3）。audit 单例首创路径 atexit.register(flush)（懒式、_initialized 守卫防重复注册）；deploy except-pass → logger.warning。验证员 accept：双 RED 文件级 stash 复现逐字吻合；patch 目标经核实为生产符号（调用期 from-import 解析同一属性）；单例/atexit 注册表零污染。可选加固备注：flush 内 mkdir 在 try 外（atexit 回调冒泡仅打 stderr 回溯，不阻塞验收）。"
+    },
+    {
+      "name": "TASK-008b F5 persistent_load 安全实现（AC-007 扩展）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_interfaces_safe_extract.py tests/test_engines_family_deep.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "64 passed（13 含真实 tensor 提取 + 51 回归）。RED：'no persistent_load function' 逐字复现。实现依据 torch/serialization.py:1080/:1794-1816（pid 五元组 + data/<key> 条目名）。安全验证员全项通过：白名单类对象身份比对（绕过探针 torchvision/torch.storage/嵌套名全拒）、2GiB 累计读前上限（多次小 storage 不可绕过）、字节长度严格绑定、location 白名单零副作用、os.system 旧攻击仍拒、路径穿越 key 纯档内查找。"
+    },
+    {
+      "name": "TASK-008c F5 追加：先在 CRITICAL RCE 修复（find_class 名级白名单）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_interfaces_safe_extract.py tests/test_engines_family_deep.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "17+51=68 passed（13+4 新增含 RCE 回归负例）。安全验证员 needs_fix 指证（双端复现）：find_class 对 torch.* 通配放行，GLOBAL('torch','save')+REDUCE 经 _safe_torch_load 回退分支实际落盘（RCE，先在缺陷非 F5 回归）。修复：名级精确白名单 _safe_globals 16 项（pickletools.dis 枚举自真实 torch.save 产物：OrderedDict/_rebuild_tensor_v2/_rebuild_parameter/12 storage 类），删除 getattr 通配与 super().find_class() 兜底；另补 data.pkl 256MiB 读侧上限与不可哈希 storage_type 异常归一。RED：marker 落盘=True 实证。复核 accept：验证员自构探针独立重现攻击——修复后直调与生产入口两端均拒且文件不落盘；七路绕过 GLOBAL 全拒；真实产物 11 个唯一 GLOBAL 对零假阴性；8 dtype/Parameter/nn.Linear.state_dict 提取兼容无误伤。"
+    },
+    {
+      "name": "TASK-009 对抗验证层（AC-008）",
+      "command": "Workflow wf_84256ff4-0a4（7 编写+5 验证代理）+ 3 重试编写 + 3 验证 + 1 RCE 修复 + 1 复核（共 16 代理）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "8 簇全 accept：R1/R2/R3/F1/F4 由 Workflow 验证员（RED 文件级 stash 复现、AST 复测、QSS 逐字节等价、真调生产核验）；F2（自选种子 rel err ~1e-15 + 奇异域 ~5e-8）、F3（双 RED 复现 + patch 目标生产符号核实）单代理验证 accept；F5 先 needs_fix（persistent_load 本体全过 + 挖出先在 RCE）→ 修复 → 同验证员复核 accept。F2/F3 首轮编写撞 429（0 工具调用即亡）按 W11 惯例单代理重试成功。假绿清单各簇为空；越界改动经所有权地图全部正确归属并行兄弟。"
+    },
+    {
+      "name": "TASK-010a 门禁全量 + 棘轮（AC-001/008）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "706 passed / 1 skipped（W11 659 → +47：R1×3 R2×11 R3×2 F1×6 F2×5 F3×3 safe_extract×17），rc=0，41s。覆盖率 89.94%（8284 语句/833 缺）≥ fail-under=89——按地板惯例（89.94 → 89）维持 89 不升（升 90 将假红）。模块跃升：interfaces_supervised 78→91%、generative_metrics 37→53%、新增 eval_flow 96%。pytest.ini 尾巴注释已同步刷新。既有断言零修改（AC-001 的 git diff 约束由各验证员核验）。"
+    },
+    {
+      "name": "TASK-010b exe 重打包 + UIA 真窗回归（AC-008）",
+      "command": "PyInstaller autovisionagent.spec --noconfirm && pytest tests/uia -o addopts= --timeout=300",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "exe 2026-08-17 12:59 重打包（含 W12 全部重构与修复）；UIA 6 用例真窗 6 passed / 0 failed（5:08，含极柱 5 用例与既有全流程）——行为保持重构在打包真窗环境复验通过。"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "执行方式（ultracode 沿用）：Workflow 双层扇出（7 编写簇文件互斥 → 逐簇对抗验证），验证员 RED 复现只允许文件级 git stash push -- <file>。",
+    "F2/F3 两编写簇在启动瞬间撞 API 速率限制 429（0 工具调用即亡）——降并发改单代理重试（与 W11 同法）。",
+    "范围扩展 F5 簇：F4 实测发现 _RestrictedUnpickler 缺 persistent_load（真实 tensor checkpoint 的安全回退永远失败）——这是 P1-7『RCE 回退零测试』背后的更深一层同一缺陷（回退不可用），补 persistent_load 安全实现属 P1 修复精神的直接延伸；core/interfaces_supervised.py 原属无主文件，指定 F5 独占。",
+    "R1 重构中发现既有潜在 bug 未修（超范围记录）：resume 得到 start_epoch > cfg.epochs 时 fit 的 artifact.epochs_completed 引用未定义变量 epoch 会 NameError——原代码即如此，重构行为保持未改变，留 backlog。",
+    "P1-2（config 双体系 82% 死区）本轮不做：实装还是删除需用户决策（v2 文档建议二选一）。"
+  ],
+  "request_evidence": "W11 交付总结明示下一波候选：P0-1 拆巨石函数；P1 修复清单（shm reaper、训练保存失败上抛、审计 flush、FID sqrtm 对称化、lock 补 index-url+README、RCE 回退 3 用例）。本轮用户指令：实施下一波候选",
+  "final_summary": "第十二波完成（W11 审查 v2 的 P0-1 + 六项 P1 全部落地，另揪出并修复一个先在 CRITICAL RCE）。①P0-1 巨石函数清零：9 个 >100 行函数全部拆分（fit 118→72、_run_eval 141→39、_work 115→17、四个 _build_ui 147/133/118/115→12/10/10/10、_build_qss 109→20、_build_shell 103→12），AST 复测 9/9，行为保持（QSS 逐字节等价 5537/5537×2、既有断言零修改、UIA 真窗复绿）。②六项 P1：shm 启动清扫陈旧文件+区域上限 64（RED 复现 5 失败）、训练最终权重保存失败上抛（RED：'DID NOT RAISE'+日志吞异常实证）、审计 atexit flush+closeEvent flush+deploy 告警（双 RED）、FID sqrtm 修复（旧代码同分布 FID 实测 -0.127 负值、trace 误差 16-26% → 修复后 vs scipy rel err ~1e-15、奇异域 ~5e-8）、lock 补 --extra-index-url+新建 README、RCE 回退补测 17 用例。③F5 追加修复（对抗验证员双端复现的先在 CRITICAL）：_RestrictedUnpickler 缺 persistent_load 致安全回退对真实 tensor 永远失败（已修，依据 torch 源码实现五元组校验+2GiB 上限）+ find_class torch.* 通配放行构成实际 RCE（GLOBAL('torch','save')+REDUCE 落盘实证 → 名级白名单 16 项，复核：独立探针两端均拒、七路绕过全拒、8 dtype/Parameter/nn.Linear 兼容零假阴性）。④验证：16 代理两轮（7+5 Workflow、3 重试编写、3 验证、1 RCE 修复、1 复核），全 accept；F2/F3 编写首撞 429 单代理重试。门禁终态 706 passed/1 skipped rc=0，覆盖 89.94%（棘轮按地板惯例维持 89）；exe 重打包后 UIA 6/6 真窗绿。validate_workflow 通过。",
+  "status": "complete"
+}

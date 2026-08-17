@@ -18,6 +18,10 @@ from core.exceptions import SupervisedEngineError
 
 logger = logging.getLogger(__name__)
 
+# W12 安全加固：data.pkl 单条目解压后字节上限（256 MiB），
+# 防 pickle 流经高压缩比 zip 条目炸弹式膨胀。
+_MAX_DATA_PKL_BYTES = 256 * 1024 ** 2
+
 
 class TaskType(Enum):
     """支持的视觉任务类型。"""
@@ -180,28 +184,161 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
         """R4-7: 使用 RestrictedUnpickler 安全提取 state_dict。
 
         只允许反序列化 tensor 和 OrderedDict 等安全类型。
+        W12-F4: 覆写 persistent_load，从同一 zip 容器的 data/<key>
+        条目按白名单 storage 类型回填 tensor 存储（绝不执行任意代码）。
         """
         import io
         import pickle
+        import warnings
         import zipfile
         from collections import OrderedDict
 
-        # 只允许安全的类用于反序列化
-        _SAFE_CLASSES = {
-            "collections.OrderedDict": OrderedDict,
-            "torch._utils._rebuild_tensor_v2": None,  # 占位，实际由 torch 重建
+        import torch
+
+        # zip 炸弹防护：单次提取的存储总解压字节上限（2 GiB）
+        _MAX_STORAGE_TOTAL_BYTES = 2 * 1024 ** 3
+
+        # 名级精确白名单（W12 安全修复）：真实 torch.save 产 data.pkl 经
+        # pickletools.dis 实测枚举出的 GLOBAL/STACK_GLOBAL 对（torch 2.5.1）：
+        # ('collections','OrderedDict')、('torch._utils','_rebuild_tensor_v2')、
+        # （保存 Parameter 时）('torch._utils','_rebuild_parameter')，以及
+        # ('torch','<X>Storage') 各存储类名（含旧版 _rebuild_tensor 重建器）。
+        # 白名单外的任何 (module, name) 一律 UnpicklingError——严禁
+        # startswith('torch')+getattr 通配（GLOBAL 'torch' 'save' 经 REDUCE
+        # 即任意落盘）与 super().find_class 无限制导入兜底。
+        _safe_globals: Dict[Tuple[str, str], Any] = {
+            ("collections", "OrderedDict"): OrderedDict,
+            ("torch._utils", "_rebuild_tensor_v2"): (
+                torch._utils._rebuild_tensor_v2
+            ),
         }
+        for _rname in ("_rebuild_parameter", "_rebuild_tensor"):
+            _rfn = getattr(torch._utils, _rname, None)
+            if _rfn is not None:
+                _safe_globals[("torch._utils", _rname)] = _rfn
+        # 个别旧版 torch 把重建器挂在顶层命名空间的写法（存在才生效）
+        for _rname in ("_rebuild_tensor_v2", "_rebuild_parameter", "_rebuild_tensor"):
+            _rfn = getattr(torch, _rname, None)
+            if _rfn is not None:
+                _safe_globals[("torch", _rname)] = _rfn
+
+        # 存储类型白名单：torch 以 GLOBAL 'torch <X>Storage' 持久化
+        # （如 'torch FloatStorage'），按类对象身份命中；本版 torch
+        # 不存在的类型自动跳过。UntypedStorage 按 torch 语义视作 uint8
+        # （参考 torch/serialization.py 加载侧 persistent_load）。
+        _storage_dtypes: Dict[type, Any] = {}
+        # 访问 torch 浮点存储类型会触发 TypedStorage 弃用 UserWarning，
+        # 属预期形态探测，静默之。
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            for _name in (
+                "FloatStorage", "DoubleStorage", "HalfStorage", "LongStorage",
+                "IntStorage", "ShortStorage", "ByteStorage", "BoolStorage",
+                "BFloat16Storage", "ComplexFloatStorage", "ComplexDoubleStorage",
+            ):
+                _stype = getattr(torch, _name, None)
+                _dtype = getattr(_stype, "dtype", None)
+                if isinstance(_stype, type) and _dtype is not None:
+                    _storage_dtypes[_stype] = _dtype
+                    _safe_globals[("torch", _name)] = _stype
+            _untyped_type = getattr(torch, "UntypedStorage", None)
+            if isinstance(_untyped_type, type):
+                _storage_dtypes[_untyped_type] = torch.uint8
+                _safe_globals[("torch", "UntypedStorage")] = _untyped_type
 
         class _RestrictedUnpickler(pickle.Unpickler):
+            def __init__(self, file: Any, zf: Any, data_prefix: str) -> None:
+                super().__init__(file)
+                self._zf = zf
+                self._data_prefix = data_prefix
+                self._storage_bytes_read = 0
+
             def find_class(self, module: str, name: str) -> Any:
-                # 只允许 torch tensor 重建相关类
-                if module.startswith("torch"):
-                    import torch
-                    return getattr(torch, name, super().find_class(module, name))
-                if module == "collections" and name == "OrderedDict":
-                    return OrderedDict
-                raise pickle.UnpicklingError(
-                    f"不安全的反序列化: {module}.{name}"
+                # 名级精确白名单直查：未命中即拒绝（含 'torch' 'save' 等
+                # 任意 torch 顶层属性；杜绝 getattr 通配与 super().find_class
+                # 无限制导入兜底——后者曾作为第三参默认值被急切求值）。
+                obj = _safe_globals.get((module, name))
+                if obj is None:
+                    raise pickle.UnpicklingError(
+                        f"不安全的反序列化: {module}.{name}"
+                    )
+                return obj
+
+            def persistent_load(self, pid: Any) -> Any:
+                """torch zip 格式持久 ID: ('storage', storage_type, key,
+                location, numel)（torch/serialization.py:1080 保存侧）。
+
+                仅从同一 zip 的 data/<key> 条目读原始字节回填 storage；
+                location 只做白名单校验（cpu/'')，绝不 eval/动态调用。
+                """
+                if not (isinstance(pid, tuple) and len(pid) == 5):
+                    raise pickle.UnpicklingError("不安全的持久 ID 形态（非五元组）")
+                typename = pid[0]
+                if isinstance(typename, bytes):
+                    typename = typename.decode("ascii", errors="replace")
+                if typename != "storage":
+                    raise pickle.UnpicklingError(
+                        f"不安全的持久 ID 类型: {typename!r}"
+                    )
+                storage_type, key, location, numel = pid[1:]
+                try:
+                    dtype = _storage_dtypes.get(storage_type)
+                except TypeError:
+                    # 不可哈希 storage_type（如 list 字面量）归一为拒绝，
+                    # 不外泄 TypeError
+                    raise pickle.UnpicklingError(
+                        f"不安全的存储类型（不可哈希）: {storage_type!r}"
+                    ) from None
+                if dtype is None:
+                    raise pickle.UnpicklingError(
+                        f"不安全的存储类型（非白名单）: {storage_type!r}"
+                    )
+                if not isinstance(key, str):
+                    raise pickle.UnpicklingError("不安全的存储键（非字符串）")
+                if isinstance(location, bytes):
+                    location = location.decode("ascii", errors="replace")
+                if location not in ("", "cpu"):
+                    raise pickle.UnpicklingError(
+                        f"不安全的存储位置: {location!r}"
+                    )
+                if type(numel) is not int or numel < 0:
+                    raise pickle.UnpicklingError("不安全的存储元素数（numel）")
+
+                nbytes = numel * torch._utils._element_size(dtype)
+                if self._storage_bytes_read + nbytes > _MAX_STORAGE_TOTAL_BYTES:
+                    raise pickle.UnpicklingError(
+                        "超出安全加载的存储总字节上限"
+                        f"（{_MAX_STORAGE_TOTAL_BYTES} 字节）"
+                    )
+                entry = f"{self._data_prefix}data/{key}"
+                try:
+                    raw = self._zf.read(entry)
+                except KeyError:
+                    if numel == 0:
+                        raw = b""
+                    else:
+                        raise pickle.UnpicklingError(
+                            f"存储数据条目缺失: {entry}"
+                        ) from None
+                if len(raw) != nbytes:
+                    raise pickle.UnpicklingError(
+                        f"存储数据长度与声明不符: {entry} "
+                        f"期望 {nbytes} 字节，实际 {len(raw)} 字节"
+                    )
+                self._storage_bytes_read += nbytes
+
+                if nbytes:
+                    # clone() 确保 storage 拥有 torch 自管的内存
+                    # （frombuffer 视图随临时缓冲一同销毁）
+                    untyped_storage = (
+                        torch.frombuffer(bytearray(raw), dtype=torch.uint8)
+                        .clone()
+                        .untyped_storage()
+                    )
+                else:
+                    untyped_storage = torch.UntypedStorage(0)
+                return torch.storage.TypedStorage(
+                    wrap_storage=untyped_storage, dtype=dtype, _internal=True
                 )
 
         # 尝试以 zip 格式读取 PyTorch checkpoint
@@ -215,8 +352,20 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
                         break
                 if pkl_name is None:
                     raise RuntimeError("checkpoint 中未找到 data.pkl")
-                data = zf.read(pkl_name)
-                obj = _RestrictedUnpickler(io.BytesIO(data)).load()
+                # W12 加固：单条目解压字节上限（pickle 流炸弹面）——
+                # 只读 limit+1 字节探测超限，绝不整体解压超大条目。
+                with zf.open(pkl_name) as pkl_fh:
+                    data = pkl_fh.read(_MAX_DATA_PKL_BYTES + 1)
+                if len(data) > _MAX_DATA_PKL_BYTES:
+                    raise pickle.UnpicklingError(
+                        "data.pkl 超出单文件字节上限"
+                        f"（{_MAX_DATA_PKL_BYTES} 字节）"
+                    )
+                # 存储数据条目与 data.pkl 同前缀：<archive>/data/<key>
+                data_prefix = pkl_name[: -len("data.pkl")]
+                obj = _RestrictedUnpickler(
+                    io.BytesIO(data), zf, data_prefix
+                ).load()
                 # 如果是 dict 且含 state_dict/model
                 if isinstance(obj, dict):
                     for key in ("state_dict", "model_state_dict", "model"):

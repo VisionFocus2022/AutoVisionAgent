@@ -115,7 +115,6 @@ class GenericTrainer:
 
         # R4-9: 构建 LR 调度器 + 预热
         scheduler = self._build_scheduler(cfg)
-        base_lr = cfg.lr
 
         no_improve = 0
         artifact = TrainArtifact(task=cfg.task, config=cfg)
@@ -129,41 +128,16 @@ class GenericTrainer:
             # R4-9: 预热学习率（线性从 0 到 base_lr）
             self._apply_warmup_lr(epoch, cfg)
 
-            # 执行一个 epoch
-            t0 = time.time()
-            metrics = self._strategy.train_epoch(epoch, cfg)
-            dt = time.time() - t0
-
-            metrics["epoch"] = epoch
-            metrics["time"] = round(dt, 2)
+            # 执行一个 epoch（前向/损失反传在 strategy.train_epoch 内）
+            metrics = self._train_one_epoch(epoch, cfg)
             metrics_history.append(metrics)
+            self._step_scheduler(scheduler, cfg, metrics)
 
-            # R4-9: LR 调度器 step
-            if scheduler is not None:
-                try:
-                    if cfg.lr_scheduler == "plateau":
-                        scheduler.step(metrics.get("loss", float("inf")))
-                    else:
-                        scheduler.step()
-                except Exception:
-                    logger.debug("LR 调度器 step 失败", exc_info=True)
-
-            # 更新最佳指标（loss 越小越好；无条件追踪——best_metric 是训练
-            # 产物字段，不应依赖早停是否启用。W4-T1 RED→GREEN 修复）
-            current_metric = metrics.get("loss", float("inf"))
-            if current_metric < self._best_metric:
-                self._best_metric = current_metric
-                self._best_epoch = epoch
-                no_improve = 0
-            else:
-                no_improve += 1
-
-            # 早停
-            if cfg.patience > 0 and no_improve >= cfg.patience:
-                logger.info(
-                    "早停：连续 %d 轮无改善 (best=%.4f @epoch %d)",
-                    no_improve, self._best_metric, self._best_epoch,
-                )
+            # 更新最佳指标 + 早停判定
+            no_improve, early_stop = self._track_best_and_check_early_stop(
+                epoch, metrics, no_improve, cfg
+            )
+            if early_stop:
                 break
 
             # 进度回调
@@ -171,31 +145,11 @@ class GenericTrainer:
             if progress:
                 progress(ratio, metrics)
 
-            # R5-11: 定期保存 checkpoint（每 checkpoint_every epoch 或最后一轮）
-            ckpt_interval = getattr(cfg, "checkpoint_every", 5)
-            if epoch % ckpt_interval == 0 or epoch == cfg.epochs:
-                ckpt_dir = os.path.join(cfg.output_dir, "checkpoints")
-                os.makedirs(ckpt_dir, exist_ok=True)
-                ckpt_path = os.path.join(ckpt_dir, f"epoch_{epoch}.pt")
-                try:
-                    self._strategy.save(ckpt_path)
-                    # 保存元数据 sidecar（epoch / best_metric / best_epoch）
-                    self._save_meta(ckpt_path, epoch, cfg,
-                                    best_metric=self._best_metric,
-                                    best_epoch=self._best_epoch)
-                    logger.debug("checkpoint 已保存: %s", ckpt_path)
-                    # 滚动清理旧 checkpoint（只保留最近 max_checkpoints 个）
-                    self._cleanup_checkpoints(ckpt_dir, getattr(cfg, "max_checkpoints", 3))
-                except Exception:
-                    logger.exception("保存 checkpoint 失败")
+            # R5-11: 定期保存 checkpoint
+            self._save_epoch_checkpoint(epoch, cfg)
 
-        # 保存最终权重
-        final_path = os.path.join(cfg.output_dir, f"{cfg.task.value}_final.pt")
-        os.makedirs(cfg.output_dir, exist_ok=True)
-        try:
-            self._strategy.save(final_path)
-        except Exception:
-            logger.exception("保存最终权重失败")
+        # 保存最终权重（失败抛 RuntimeError，不吞异常）
+        final_path = self._save_final_weights(cfg)
 
         artifact.weights_path = final_path
         artifact.metrics = metrics_history[-1] if metrics_history else {}
@@ -207,6 +161,106 @@ class GenericTrainer:
             epoch, self._best_metric, final_path,
         )
         return artifact
+
+    def _train_one_epoch(self, epoch: int, cfg: TrainConfig) -> Dict[str, Any]:
+        """执行单个 epoch 的前向/损失/反传（strategy.train_epoch 内）并计时。
+
+        Returns:
+            本轮 metrics（含 epoch/time 标注）。
+        """
+        t0 = time.time()
+        metrics = self._strategy.train_epoch(epoch, cfg)
+        dt = time.time() - t0
+
+        metrics["epoch"] = epoch
+        metrics["time"] = round(dt, 2)
+        return metrics
+
+    def _step_scheduler(
+        self, scheduler: Optional[Any], cfg: TrainConfig, metrics: Dict[str, Any]
+    ) -> None:
+        """R4-9: 步进 LR 调度器（plateau 监控 loss；失败仅 debug 不中断）。"""
+        if scheduler is None:
+            return
+        try:
+            if cfg.lr_scheduler == "plateau":
+                scheduler.step(metrics.get("loss", float("inf")))
+            else:
+                scheduler.step()
+        except Exception:
+            logger.debug("LR 调度器 step 失败", exc_info=True)
+
+    def _track_best_and_check_early_stop(
+        self, epoch: int, metrics: Dict[str, Any], no_improve: int, cfg: TrainConfig
+    ) -> "tuple[int, bool]":
+        """更新最佳指标并推进早停计数（loss 越小越好；无条件追踪——
+        best_metric 是训练产物字段，不应依赖早停是否启用。W4-T1 RED→GREEN 修复）。
+
+        Returns:
+            (新的 no_improve 计数, 是否触发早停)。
+        """
+        current_metric = metrics.get("loss", float("inf"))
+        if current_metric < self._best_metric:
+            self._best_metric = current_metric
+            self._best_epoch = epoch
+            no_improve = 0
+        else:
+            no_improve += 1
+
+        # 早停
+        if cfg.patience > 0 and no_improve >= cfg.patience:
+            logger.info(
+                "早停：连续 %d 轮无改善 (best=%.4f @epoch %d)",
+                no_improve, self._best_metric, self._best_epoch,
+            )
+            return no_improve, True
+        return no_improve, False
+
+    def _save_epoch_checkpoint(self, epoch: int, cfg: TrainConfig) -> None:
+        """R5-11: 定期保存 checkpoint（每 checkpoint_every epoch 或最后一轮）。"""
+        ckpt_interval = getattr(cfg, "checkpoint_every", 5)
+        if epoch % ckpt_interval != 0 and epoch != cfg.epochs:
+            return
+
+        ckpt_dir = os.path.join(cfg.output_dir, "checkpoints")
+        os.makedirs(ckpt_dir, exist_ok=True)
+        ckpt_path = os.path.join(ckpt_dir, f"epoch_{epoch}.pt")
+        try:
+            self._strategy.save(ckpt_path)
+            # 保存元数据 sidecar（epoch / best_metric / best_epoch）
+            self._save_meta(ckpt_path, epoch, cfg,
+                            best_metric=self._best_metric,
+                            best_epoch=self._best_epoch)
+            logger.debug("checkpoint 已保存: %s", ckpt_path)
+            # 滚动清理旧 checkpoint（只保留最近 max_checkpoints 个）
+            self._cleanup_checkpoints(ckpt_dir, getattr(cfg, "max_checkpoints", 3))
+        except Exception:
+            # best-effort：周期 checkpoint 只是断点恢复的加速手段，
+            # 失败不中断训练（最终权重保存失败才致命，见 _save_final_weights）。
+            logger.exception("保存 checkpoint 失败")
+
+    def _save_final_weights(self, cfg: TrainConfig) -> str:
+        """保存最终权重，返回落盘路径。
+
+        W11-R1 修复（v2 P1-3）：最终权重是训练产物本体，保存失败必须让
+        调用方知道——原先吞掉后仍上报 weights_path，UI 显示训练完成但
+        磁盘无权重。TrainWorker 会把该异常路由到 failed 信号。
+
+        Returns:
+            最终权重文件路径。
+
+        Raises:
+            RuntimeError: 保存失败（消息含路径与原因）。
+        """
+        final_path = os.path.join(cfg.output_dir, f"{cfg.task.value}_final.pt")
+        os.makedirs(cfg.output_dir, exist_ok=True)
+        try:
+            self._strategy.save(final_path)
+        except Exception as exc:
+            raise RuntimeError(
+                f"保存最终权重失败: {final_path} ({exc})"
+            ) from exc
+        return final_path
 
     def _cleanup_checkpoints(self, ckpt_dir: str, max_keep: int = 3) -> None:
         """滚动清理旧 checkpoint，只保留最近 max_keep 个 epoch_*.pt。"""

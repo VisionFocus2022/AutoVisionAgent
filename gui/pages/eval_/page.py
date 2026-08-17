@@ -2,7 +2,7 @@
 """
 from __future__ import annotations
 
-import math
+import threading
 from typing import List, Optional, Tuple
 
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF, Slot
@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from evaluation.eval_flow import run_eval_task
 from gui.core.i18n import tr
 from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_open_file, pick_directory
@@ -261,123 +262,21 @@ class EvalPage(QWidget):
         self._eval_progress.setVisible(True)
         self._eval_progress.setValue(0)
 
-        import os
-        import json
-        import threading
-
         metric_idx = self._metric_combo.currentIndex()
         metric_map = {0: "det", 1: "seg", 2: "abdet", 3: "fid", 4: "lpips"}
         task_key = metric_map.get(metric_idx, "det")
 
         def _work():
+            # 业务逻辑（扫描/引擎/推理/指标）在 evaluation.eval_flow 纯函数中
             try:
-                rows = []
-                if task_key in ("fid", "lpips"):
-                    from evaluation.generative_metrics import fid_score, perceptual_loss
-                    img_exts = (".jpg", ".jpeg", ".png", ".bmp", ".tif")
-                    gen_imgs = [
-                        os.path.join(r, f)
-                        for r, _, fs in os.walk(model)
-                        for f in fs if f.lower().endswith(img_exts)
-                    ] if os.path.isdir(model) else [model]
-                    real_imgs = [
-                        os.path.join(r, f)
-                        for r, _, fs in os.walk(gt)
-                        for f in fs if f.lower().endswith(img_exts)
-                    ]
-                    if task_key == "fid" and gen_imgs and real_imgs:
-                        val = fid_score(gen_imgs[:20], real_imgs[:20])
-                        rows.append(("FID", f"{val:.2f}", tr("生成质量")))
-                    elif task_key == "lpips" and gen_imgs and real_imgs:
-                        val = perceptual_loss(gen_imgs[:20], real_imgs[:20])
-                        rows.append(("LPIPS", f"{val:.4f}", tr("感知损失")))
-                else:
-                    from evaluation.metrics_supervised import evaluate_supervised
-                    json_files = [
-                        os.path.join(gt, f) for f in os.listdir(gt)
-                        if f.endswith(".json")
-                    ] if os.path.isdir(gt) else []
-                    if json_files:
-                        # 加载模型引擎进行真实推理
-                        import logging
-                        _eval_logger = logging.getLogger(__name__)
-                        preds_data, gts_data = [], []
-                        engine = None
-                        try:
-                            from models.supervised.registry import get_engine
-                            from core.interfaces_supervised import TaskType
-                            task_to_enum = {
-                                "det": TaskType.DET,
-                                "seg": TaskType.SEG,
-                                "abdet": TaskType.ABDET,
-                            }
-                            enum_val = task_to_enum.get(task_key)
-                            if enum_val:
-                                engine = get_engine(enum_val)
-                                engine.load(model, device="cpu")
-                                _eval_logger.info("评估引擎已加载: %s", model)
-                        except (ImportError, RuntimeError, OSError, FileNotFoundError):
-                            _eval_logger.exception("加载评估引擎失败，回退到 GT 自比较")
-                            engine = None
-                            # W1: 假指标路径显式警告（GT 当预测，指标无意义）
-                            self.status_changed.emit(
-                                tr("评估引擎不可用，退化为 GT 自比较（指标仅供参考）"),
-                                "warn",
-                            )
-
-                        import cv2
-                        total_files = len(json_files)
-                        for idx, jf in enumerate(json_files):
-                            # R5-8: 定期 emit 进度（每5个文件或首尾）
-                            if idx % 5 == 0 or idx == total_files - 1:
-                                pct = int((idx + 1) / total_files * 100)
-                                invoke_main(self, "_eval_progress_slot", pct)
-                            with open(jf, "r", encoding="utf-8") as fh:
-                                ann = json.load(fh)
-                            shapes = ann.get("shapes", [])
-                            boxes = [
-                                [s["points"][0][0], s["points"][0][1],
-                                 s["points"][1][0] if len(s["points"]) > 1 else s["points"][0][0],
-                                 s["points"][1][1] if len(s["points"]) > 1 else s["points"][0][1]]
-                                for s in shapes if s.get("shape_type") == "rectangle"
-                            ]
-                            labels = [0] * len(boxes)
-                            gts_data.append({"boxes": boxes, "labels": labels})
-
-                            # 真实推理：用加载的引擎对图像推理
-                            if engine is not None:
-                                img_path = ann.get("imagePath", "")
-                                if img_path and not os.path.isabs(img_path):
-                                    img_path = os.path.join(gt, img_path)
-                                if img_path and os.path.exists(img_path):
-                                    try:
-                                        result = engine.infer(img_path)
-                                        p_boxes = result.boxes if result.boxes is not None else boxes
-                                        # 真引擎 boxes 为 numpy 数组——不得做真值判断（歧义异常）
-                                        n_pred = len(p_boxes) if p_boxes is not None else 0
-                                        p_scores = [result.score] * n_pred
-                                        p_labels = labels[:n_pred] if n_pred else labels
-                                        preds_data.append({"boxes": p_boxes, "scores": p_scores, "labels": p_labels})
-                                    except (ImportError, RuntimeError, OSError, FileNotFoundError):
-                                        _eval_logger.exception("推理失败: %s", img_path)
-                                        preds_data.append({"boxes": boxes, "scores": [0.5]*len(boxes), "labels": labels})
-                                else:
-                                    preds_data.append({"boxes": boxes, "scores": [0.5]*len(boxes), "labels": labels})
-                            else:
-                                # 引擎不可用时回退：用 GT 作为预测（标注为低置信度）
-                                preds_data.append({"boxes": boxes, "scores": [0.5]*len(boxes), "labels": labels})
-
-                        results = evaluate_supervised(task_key, preds_data, gts_data)
-                        for k, v in sorted(results.items()):
-                            note = tr("平均值") if k in ("mAP", "mIoU", "AUROC") else tr("单类")
-                            # R5-8: NaN/Inf 校验
-                            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                                rows.append((k, "N/A", note))
-                            else:
-                                rows.append((k, f"{v:.4f}", note))
-                    else:
-                        rows.append(("-", "N/A", tr("无标注数据")))
-
+                rows = run_eval_task(
+                    model, gt, task_key,
+                    on_progress=lambda pct: invoke_main(
+                        self, "_eval_progress_slot", pct
+                    ),
+                    translate=tr,
+                    on_warn=lambda msg: self.status_changed.emit(msg, "warn"),
+                )
                 invoke_main(self, "_set_results_slot", rows)
             except (ImportError, RuntimeError, OSError, ValueError,
                     TypeError) as exc:

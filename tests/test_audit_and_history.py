@@ -144,3 +144,57 @@ class TestDetectionHistory:
             entry = json.loads(f.readline())
         assert entry["task"] == "det"
         assert entry["image_path"] == "/a.jpg"
+
+
+# ==================== W11-P1 追加：退出刷盘钩子 ==================== #
+@pytest.mark.unit
+class TestAuditLoggerAtExitFlush:
+    """W11-P1：audit 单例首次创建时注册 atexit flush。
+
+    背景：flush() 此前全仓零调用方（仅 shell.closeEvent 一处 GUI 退出路径），
+    非正常退出/崩溃会丢最多 _buffer_max-1（99）条缓冲尾记录。
+    """
+
+    def test_singleton_creation_registers_atexit_flush(self, monkeypatch):
+        """首次创建单例时经 atexit.register 注册 flush（RED：此前无任何注册）。"""
+        import atexit
+
+        from core.audit_logger import AuditLogger, get_audit_logger
+
+        registered = []
+        monkeypatch.setattr(
+            atexit, "register", lambda func, *a, **k: registered.append(func)
+        )
+        # 重置单例，模拟进程内首次创建（monkeypatch 结束后自动还原）
+        monkeypatch.setattr(AuditLogger, "_instance", None)
+
+        audit = get_audit_logger()
+
+        assert audit.flush in registered, (
+            "audit 单例首次创建时应 atexit.register(self.flush)，"
+            "否则进程退出/崩溃会丢最多 _buffer_max-1 条尾记录"
+        )
+
+    def test_flush_persists_buffer_and_clears(self, tmp_path):
+        """flush 落盘且清空缓冲（atexit 钩子所依赖的行为）。"""
+        from core.audit_logger import AuditLogger
+
+        logger = AuditLogger(log_dir=tmp_path)
+        # 单例模式：手动隔离写入目录（同既有测试做法）
+        logger._log_dir = tmp_path
+        logger._buffer.clear()
+        logger.log("export", user="u1", path="a.onnx")
+        logger.log("train", user="u2", epochs=3)
+        assert len(logger._buffer) == 2
+
+        logger.flush()
+
+        # 缓冲清空
+        assert logger._buffer == []
+        # 两条均落盘
+        files = list(tmp_path.glob("audit_*.jsonl"))
+        assert len(files) == 1
+        lines = files[0].read_text(encoding="utf-8").strip().splitlines()
+        assert len(lines) == 2
+        assert json.loads(lines[0])["action"] == "export"
+        assert json.loads(lines[1])["action"] == "train"

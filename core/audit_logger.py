@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
@@ -55,6 +56,9 @@ class AuditLogger:
         self._lock = threading.Lock()
         self._buffer: List[Dict[str, Any]] = []
         self._buffer_max = 100  # 缓冲区满后刷盘
+        # W11-P1: 首次创建单例时注册退出钩子，退出/崩溃兜底刷盘，
+        # 否则缓冲尾记录（最多 _buffer_max-1 条）随进程一起丢失。
+        atexit.register(self.flush)
 
     def log(
         self,

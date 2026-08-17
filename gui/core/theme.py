@@ -5,7 +5,7 @@ ThemeManager 负责在 QApplication 上应用/切换主题。
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Dict, Literal
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
@@ -60,16 +60,9 @@ _DAYTIME_VARS = {
 }
 
 
-def _build_qss(theme: ThemeName) -> str:
-    """按主题变量拼装完整 QSS。"""
-    v = _NIGHT_VARS if theme == "night" else _DAYTIME_VARS
-
-    def sub(text: str) -> str:
-        for k, val in v.items():
-            text = text.replace(f"${k}", val)
-        return text
-
-    qss = f"""
+def _qss_base(v: Dict[str, str]) -> str:
+    """QSS 区块：QWidget 默认样式 + 主容器 + 标题栏 + 窗口控制按钮。"""
+    return f"""
     QWidget {{
         background-color: {v['BG_CHILD']}; color: {v['TEXT']};
         font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px;
@@ -87,7 +80,12 @@ def _build_qss(theme: ThemeName) -> str:
         background: transparent; border: none; border-radius: 0px; padding: 12px 16px;
     }}
     QPushButton#btn_close:hover {{ background-color: {v['DANGER']}; }}
-    QPushButton#btn_min:hover, QPushButton#btn_max:hover {{ background-color: {v['BG_RAISED']}; }}
+    QPushButton#btn_min:hover, QPushButton#btn_max:hover {{ background-color: {v['BG_RAISED']}; }}"""
+
+
+def _qss_nav(v: Dict[str, str]) -> str:
+    """QSS 区块：侧边导航容器 + 导航按钮（hover/选中态）。"""
+    return f"""
     /* 侧边导航 */
     QFrame#leftMenu {{
         background-color: {v['BG_CHILD']}; border-right: 1px solid {v['BG_DEEP']};
@@ -101,12 +99,22 @@ def _build_qss(theme: ThemeName) -> str:
     QPushButton[nav="true"][selected="true"] {{
         background-color: {v['BG_RAISED']}; border-left: 3px solid {v['ACCENT']};
         color: {v['ACCENT2']}; font-weight: bold;
-    }}
+    }}"""
+
+
+def _qss_pages(v: Dict[str, str]) -> str:
+    """QSS 区块：页面栈与正文标题/提示。"""
+    return f"""
     /* 页面栈与正文 */
     QStackedWidget#pagesContainer {{ background-color: {v['BG_APP']}; }}
     QFrame#pageBody {{ background-color: {v['BG_APP']}; border-top-right-radius: 10px; border-bottom-right-radius: 10px; }}
     QLabel#pageTitle {{ color: {v['TEXT']}; font-size: 18px; font-weight: bold; }}
-    QLabel#pageHint {{ color: {v['TEXT_DIM']}; font-size: 12px; }}
+    QLabel#pageHint {{ color: {v['TEXT_DIM']}; font-size: 12px; }}"""
+
+
+def _qss_buttons(v: Dict[str, str]) -> str:
+    """QSS 区块：通用按钮 + accent 角色按钮。"""
+    return f"""
     /* 通用按钮 */
     QPushButton {{
         background-color: {v['BG_RAISED']}; color: {v['TEXT']};
@@ -119,7 +127,12 @@ def _build_qss(theme: ThemeName) -> str:
         background-color: {v['ACCENT']}; color: #ffffff; border: none; border-radius: 6px;
     }}
     QPushButton[role="accent"]:hover {{ background-color: #6d28d9; }}
-    QPushButton[role="accent"]:pressed {{ background-color: #5b21b6; }}
+    QPushButton[role="accent"]:pressed {{ background-color: #5b21b6; }}"""
+
+
+def _qss_inputs(v: Dict[str, str]) -> str:
+    """QSS 区块：输入控件 + 列表。"""
+    return f"""
     /* 输入控件 */
     QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit, QPlainTextEdit {{
         background-color: {v['BG_CHILD']}; color: {v['TEXT']};
@@ -138,7 +151,12 @@ def _build_qss(theme: ThemeName) -> str:
         border-radius: 6px; outline: 0;
     }}
     QListWidget::item {{ padding: 6px 8px; border-bottom: 1px solid {v['BG_RAISED']}; }}
-    QListWidget::item:selected {{ background-color: {v['ACCENT']}; color: #ffffff; }}
+    QListWidget::item:selected {{ background-color: {v['ACCENT']}; color: #ffffff; }}"""
+
+
+def _qss_toolbar(v: Dict[str, str]) -> str:
+    """QSS 区块：工具栏/工具按钮 + 画布。"""
+    return f"""
     /* 工具栏与工具按钮 */
     QFrame#toolbar {{ background-color: {v['BG_RAISED']}; border-radius: 8px; }}
     QPushButton[tool="true"] {{
@@ -150,7 +168,12 @@ def _build_qss(theme: ThemeName) -> str:
         background-color: {v['ACCENT']}; border: 1px solid {v['ACCENT']}; color: #ffffff;
     }}
     /* 画布 */
-    QGraphicsView {{ background-color: {v['BG_DEEP']}; border: 1px solid {v['BORDER']}; border-radius: 6px; }}
+    QGraphicsView {{ background-color: {v['BG_DEEP']}; border: 1px solid {v['BORDER']}; border-radius: 6px; }}"""
+
+
+def _qss_groups(v: Dict[str, str]) -> str:
+    """QSS 区块：分组框 + 标签页。"""
+    return f"""
     /* 分组与标签页 */
     QGroupBox {{
         background-color: {v['BG_CHILD']}; border: 1px solid {v['BORDER']};
@@ -162,12 +185,38 @@ def _build_qss(theme: ThemeName) -> str:
         background: {v['BG_CHILD']}; color: {v['TEXT_DIM']}; padding: 8px 16px;
         border: 1px solid {v['BORDER']}; border-bottom: none; border-top-left-radius: 6px; border-top-right-radius: 6px;
     }}
-    QTabBar::tab:selected {{ background: {v['BG_RAISED']}; color: {v['ACCENT2']}; }}
+    QTabBar::tab:selected {{ background: {v['BG_RAISED']}; color: {v['ACCENT2']}; }}"""
+
+
+def _qss_statusbar(v: Dict[str, str]) -> str:
+    """QSS 区块：底部状态栏（末块，保留结尾换行与缩进）。"""
+    return f"""
     /* 状态栏 */
     QFrame#statusBar {{ background-color: {v['BG_CHILD']}; border-bottom-left-radius: 10px; border-bottom-right-radius: 10px; border-top: 1px solid {v['BG_DEEP']}; }}
     QLabel#statusText {{ color: {v['TEXT_DIM']}; padding: 4px 12px; }}
     QLabel#statusAccent {{ color: {v['ACCENT2']}; padding: 4px 12px; font-weight: bold; }}
     """
+
+
+def _build_qss(theme: ThemeName) -> str:
+    """按主题变量拼装完整 QSS（区块拼接顺序即原选择器顺序）。"""
+    v = _NIGHT_VARS if theme == "night" else _DAYTIME_VARS
+
+    def sub(text: str) -> str:
+        for k, val in v.items():
+            text = text.replace(f"${k}", val)
+        return text
+
+    qss = (
+        _qss_base(v)
+        + _qss_nav(v)
+        + _qss_pages(v)
+        + _qss_buttons(v)
+        + _qss_inputs(v)
+        + _qss_toolbar(v)
+        + _qss_groups(v)
+        + _qss_statusbar(v)
+    )
     return sub(qss) + sub(_BASE_WIDGETS)
 
 

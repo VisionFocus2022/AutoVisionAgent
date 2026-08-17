@@ -53,14 +53,20 @@ class MainWindow(QMainWindow):
     # ============================== UI ============================== #
 
     def _build_shell(self, title: str) -> None:
-        """构建无边框外壳。"""
+        """构建无边框外壳（侧边栏 + 标题栏 + 页面栈 + 状态栏）。"""
         central = QWidget(self)
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # 侧边导航
+        left_lay = self._build_left_menu(title)
+        self._build_top_bar()
+        self._build_sidebar_nav(left_lay, root)
+        self._build_right_panel(root)
+
+    def _build_left_menu(self, title: str) -> QVBoxLayout:
+        """侧边导航容器 + LOGO（返回侧栏布局，供导航区续接）。"""
         self._left_menu = QFrame()
         self._left_menu.setObjectName("leftMenu")
         self._left_menu.setFixedWidth(200)
@@ -73,8 +79,10 @@ class MainWindow(QMainWindow):
         logo.setObjectName("titleLogo")
         logo.setFixedHeight(48)
         left_lay.addWidget(logo)
+        return left_lay
 
-        # ---- 顶部窗口控制栏（关闭/最小化/最大化）----
+    def _build_top_bar(self) -> None:
+        """顶部窗口控制栏（关闭/最小化/最大化）。"""
         self._top_bar = QFrame()
         self._top_bar.setFixedHeight(32)
         self._top_bar.setObjectName("topBar")
@@ -84,25 +92,27 @@ class MainWindow(QMainWindow):
         tb_lay.addStretch()
 
         btn_min = QPushButton("–")
-        btn_min.setToolTip("\u6700\u5c0f\u5316")
+        btn_min.setToolTip("最小化")
         btn_min.setStyleSheet(_BTN_STYLE)
         btn_min.clicked.connect(self.showMinimized)
         tb_lay.addWidget(btn_min)
 
         btn_max = QPushButton("□")
-        btn_max.setToolTip("\u6700\u5927\u5316/\u8fd8\u539f")
+        btn_max.setToolTip("最大化/还原")
         btn_max.setStyleSheet(_BTN_STYLE)
         btn_max.clicked.connect(self._toggle_maximize)
         self._btn_max = btn_max
         tb_lay.addWidget(btn_max)
 
         btn_close = QPushButton("✕")
-        btn_close.setToolTip("\u5173\u95ed")
+        btn_close.setToolTip("关闭")
         btn_close.setObjectName("btn_close")
         btn_close.setStyleSheet(_BTN_STYLE)
         btn_close.clicked.connect(self.close)
         tb_lay.addWidget(btn_close)
 
+    def _build_sidebar_nav(self, left_lay: QVBoxLayout, root: QHBoxLayout) -> None:
+        """侧边栏下半部：导航按钮容器 + 语言/主题切换，并挂到主布局。"""
         # 导航按钮容器（动态添加）
         self._nav_container = QWidget()
         self._nav_lay = QVBoxLayout(self._nav_container)
@@ -126,7 +136,8 @@ class MainWindow(QMainWindow):
 
         root.addWidget(self._left_menu)
 
-        # 右侧：页面栈 + 状态栏
+    def _build_right_panel(self, root: QHBoxLayout) -> None:
+        """右侧面板：标题栏 + 页面栈 + 状态栏。"""
         right = QFrame()
         right.setObjectName("bgApp")
         right_lay = QVBoxLayout(right)
@@ -139,7 +150,12 @@ class MainWindow(QMainWindow):
         self._stack.setObjectName("pagesContainer")
         right_lay.addWidget(self._stack, 1)
 
-        # 状态栏
+        self._build_status_bar(right_lay)
+
+        root.addWidget(right, 1)
+
+    def _build_status_bar(self, right_lay: QVBoxLayout) -> None:
+        """底部状态栏：状态文本 + 强调文本。"""
         self._status_bar = QFrame()
         self._status_bar.setObjectName("statusBar")
         self._status_bar.setFixedHeight(32)
@@ -153,8 +169,6 @@ class MainWindow(QMainWindow):
         sb_lay.addStretch()
         sb_lay.addWidget(self._status_accent)
         right_lay.addWidget(self._status_bar)
-
-        root.addWidget(right, 1)
 
     # ============================== 公开接口 ============================== #
 
@@ -278,6 +292,13 @@ class MainWindow(QMainWindow):
             get_default_registry().clear_cache()
         except Exception:
             _logger.debug("清理引擎缓存时出错", exc_info=True)
+
+        # 退出前显式刷盘审计日志（缓冲未满 _buffer_max 时不落盘 → 必须显式 flush）
+        try:
+            from core.audit_logger import get_audit_logger
+            get_audit_logger().flush()
+        except Exception:
+            _logger.warning("退出前刷写审计日志失败", exc_info=True)
 
         _logger.info("应用正常退出")
         event.accept()
