@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
-import threading
 import time
 from typing import Any, List, Optional
 
@@ -29,10 +29,13 @@ from PySide6.QtWidgets import (
 
 from core.interfaces_supervised import DetectionResult, TaskType
 from gui.core.i18n import tr
+from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
 
 from core.constants import IMG_EXTS as _IMG_EXTS
+
+logger = logging.getLogger(__name__)
 
 # R5-2: CSV/Excel 公式注入防护（CWE-1236）
 _CSV_INJECTION_CHARS = frozenset("=+-\t\r@")
@@ -314,7 +317,7 @@ class PredictPage(QWidget):
                     SupervisedEngineError) as exc:
                 invoke_main(self, "_single_failed", str(exc)[:40])
 
-        threading.Thread(target=_work, daemon=True).start()
+        run_job(_work, name="predict_single")
 
     @Slot(str, float)
     def _single_done(self, basename: str, score: float) -> None:
@@ -378,6 +381,7 @@ class PredictPage(QWidget):
             self.status_changed.emit(tr("目录无图像"), "!")
             return
 
+        logger.info("批量推理开始: %s（%d 张）", d, len(images))
         self.table.setRowCount(0)
         self._results.clear()
         self._batch_cancel = False
@@ -394,14 +398,11 @@ class PredictPage(QWidget):
         )
         os.makedirs(save_dir, exist_ok=True)
 
-        import threading
         engine = self._engine
         total = len(images)
 
         def _work():
             _BATCH_SIZE = 16
-            import logging
-            _batch_logger = logging.getLogger(__name__)
             for i in range(0, total, _BATCH_SIZE):
                 if self._batch_cancel:
                     break
@@ -422,20 +423,24 @@ class PredictPage(QWidget):
                             result = engine.infer(img)
                             self._batch_add_row(img_path, result)
                 except (RuntimeError, OSError, ValueError):
-                    _batch_logger.exception("批量推理失败 (batch %d-%d)", i, i + len(batch_paths))
+                    logger.exception(
+                        "批量推理失败 (batch %d-%d)", i, i + len(batch_paths)
+                    )
                 # 更新进度
                 done = min(i + _BATCH_SIZE, total)
                 invoke_main(self, "_batch_set_progress", done, total)
 
-            # 保存批量结果
+            # 保存批量结果（P2-2：temp+os.replace 原子落盘——直写会在写入
+            # 中途截断既有文件，退出杀线程时旧结果即损坏）
             out_path = os.path.join(save_dir, "batch_results.json")
-            with open(out_path, "w", encoding="utf-8") as f:
+            tmp_path = out_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
                 json.dump(self._results, f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, out_path)
 
             invoke_main(self, "_batch_done", len(self._results), total)
 
-        t = threading.Thread(target=_work, daemon=True)
-        t.start()
+        run_job(_work, name="predict_batch")
 
     def _batch_add_row(self, img_path: str, result: DetectionResult) -> None:
         """线程安全地添加结果行（通过 invokeMethod）。"""
@@ -473,6 +478,7 @@ class PredictPage(QWidget):
 
     @Slot(int, int)
     def _batch_done(self, count: int, total: int) -> None:
+        logger.info("批量推理完成: %d/%d", count, total)
         self.btn_batch.setEnabled(True)
         self.btn_batch.setText(tr("批量推理"))
         if hasattr(self, "_btn_cancel_batch"):
@@ -592,6 +598,7 @@ class PredictPage(QWidget):
                     r.get("score", ""),
                     _sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
                 ])
+        logger.info("导出CSV: %s", path)
         self.status_changed.emit(tr("已导出"), os.path.basename(path))
 
     def _show_stats(self) -> None:
@@ -667,6 +674,7 @@ class PredictPage(QWidget):
                         _sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
                     ])
             self.status_changed.emit(tr("已导出CSV"), os.path.basename(csv_path))
+            logger.info("导出Excel回退CSV: %s", csv_path)
             return
 
         wb = Workbook()
@@ -698,6 +706,7 @@ class PredictPage(QWidget):
         ws2.append([tr("缺陷率"), f"{defect_rate:.1f}%"])
 
         wb.save(path)
+        logger.info("导出Excel: %s", path)
         self.status_changed.emit(tr("已导出"), os.path.basename(path))
 
     def _export_json(self) -> None:
@@ -712,6 +721,7 @@ class PredictPage(QWidget):
             return
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self._results, f, ensure_ascii=False, indent=2)
+        logger.info("导出JSON: %s", path)
         self.status_changed.emit(tr("已导出"), os.path.basename(path))
 
     def retranslate(self) -> None:

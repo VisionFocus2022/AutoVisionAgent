@@ -2,7 +2,7 @@
 """
 from __future__ import annotations
 
-import threading
+import logging
 from typing import List, Optional, Tuple
 
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF, Slot
@@ -24,8 +24,11 @@ from PySide6.QtWidgets import (
 
 from evaluation.eval_flow import run_eval_task
 from gui.core.i18n import tr
+from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_open_file, pick_directory
+
+logger = logging.getLogger(__name__)
 
 
 class ConfusionMatrixWidget(QFrame):
@@ -268,6 +271,8 @@ class EvalPage(QWidget):
         metric_idx = self._metric_combo.currentIndex()
         metric_map = {0: "det", 1: "seg", 2: "abdet", 3: "fid", 4: "lpips"}
         task_key = metric_map.get(metric_idx, "det")
+        # P2-19：关键操作留痕（评估开始）
+        logger.info("评估开始：model=%s，gt=%s，task=%s", model, gt, task_key)
 
         def _work():
             # 业务逻辑（扫描/引擎/推理/指标）在 evaluation.eval_flow 纯函数中
@@ -280,6 +285,8 @@ class EvalPage(QWidget):
                     translate=tr,
                     on_warn=lambda msg: self.status_changed.emit(msg, "warn"),
                 )
+                # P2-19：关键操作留痕（评估完成，一次一条）
+                logger.info("评估完成：%d 个指标（task=%s）", len(rows), task_key)
                 invoke_main(self, "_set_results_slot", rows)
             except (ImportError, RuntimeError, OSError, ValueError,
                     TypeError) as exc:
@@ -287,7 +294,9 @@ class EvalPage(QWidget):
                 # TypeError——不收则裸穿线程、按钮永久卡禁用（W8 实测）
                 invoke_main(self, "_eval_failed_slot", str(exc))
 
-        threading.Thread(target=_work, daemon=True).start()
+        # W15-J2（P2-1 批次 A）：经 gui.core.jobs 统一调度——注册表登记 +
+        # 协作取消 + 异常路由（_work 内 except 元组含 TypeError 的 W8 语义不变）
+        run_job(_work, name="eval.run")
 
     @Slot(int)
     def _eval_progress_slot(self, pct: int) -> None:

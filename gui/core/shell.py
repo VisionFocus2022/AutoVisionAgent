@@ -30,6 +30,13 @@ QPushButton:hover { background: #3f4452; color: #e2e8f0; }
 QPushButton#btn_close:hover { background: #ef4444; color: #ffffff; }
 """
 
+# 退出停机预算（W15-J4 / P2-3）：确认退出后全部等待有界——正常路径毫秒级
+# 返回，最坏情况合计 3s 量级上限（1.0s 注册表 join 总预算 + 1.5s 单个
+# TrainWorker wait + 0.5s×2 缩略图池 waitForDone），任何一路都不得无限等。
+_EXIT_JOBS_TIMEOUT_S = 1.0
+_EXIT_WORKER_WAIT_MS = 1500
+_EXIT_POOL_WAIT_MS = 500
+
 
 class MainWindow(QMainWindow):
     """主窗口：无边框 + 侧边导航 + 页面栈 + 状态栏。"""
@@ -254,37 +261,84 @@ class MainWindow(QMainWindow):
     # ============================== 优雅退出 ============================== #
 
     def closeEvent(self, event) -> None:
-        """窗口关闭事件：检查活动线程 + 释放资源。"""
+        """窗口关闭事件：检查活动任务 + 有界停机 + 释放资源。
+
+        W15-J4（P2-2/P2-3）：活跃检测以 gui.core.jobs 注册表为真相源
+        （run_job 统一调度的全部后台任务可观测，不再依赖逐页猜属性名），
+        兼容 TrainWorker(QThread) isRunning 与批量按钮禁用两条既有约定
+        （未迁移页面过渡期）；确认退出后 stop/wait 全部有界（见模块头
+        _EXIT_* 常量），随后按原顺序清引擎缓存 → 刷审计日志。
+        """
         import logging
+
         from gui.core.i18n import tr
         _logger = logging.getLogger(__name__)
 
-        # 检查是否有活动的训练 / 推理线程
-        has_active = False
+        from gui.core import jobs
+
+        # ---- 活跃检测（三路并集）----
+        registry_names = jobs.active_jobs()  # ① 注册表：run_job 任务真相源
+        running_worker_keys = []             # ② TrainWorker(QThread) 页
+        batch_keys = []                      # ③ 批量按钮禁用约定页（未迁移）
         for key, widget in self._pages.items():
             worker = getattr(widget, "_worker", None)
             if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
-                has_active = True
-                break
-            # 检查 batch 线程
+                running_worker_keys.append(key)
             if hasattr(widget, "_batch_cancel"):
-                # 如果有正在进行的批量推理
-                batch_btn = getattr(widget, "_btn_batch", None)
-                if batch_btn is not None and not batch_btn.isEnabled():
-                    has_active = True
-                    break
+                # 批量推理进行中的既有约定：按钮禁用。P2-2：predict 页
+                # 按钮名实为 btn_batch（无下划线），旧探测只认 _btn_batch
+                # → getattr 恒 None → 批量中退出无确认；两个名字都认。
+                for attr in ("_btn_batch", "btn_batch"):
+                    batch_btn = getattr(widget, attr, None)
+                    if batch_btn is not None and not batch_btn.isEnabled():
+                        batch_keys.append(key)
+                        break
 
-        if has_active:
+        if registry_names or running_worker_keys or batch_keys:
             from PySide6.QtWidgets import QMessageBox
+
+            names = "、".join(dict.fromkeys(registry_names))
+            if names:
+                detail = tr("有正在进行的后台任务：") + names + "\n"
+            else:
+                detail = tr("有正在进行的操作（训练/推理）。\n")
             reply = QMessageBox.question(
                 self, tr("确认退出"),
-                tr("有正在进行的操作（训练/推理）。\n确定要退出吗？未保存的数据可能丢失。"),
+                detail + tr("确定要退出吗？未保存的数据可能丢失。"),
                 QMessageBox.Yes | QMessageBox.No,
                 QMessageBox.No,
             )
             if reply != QMessageBox.Yes:
                 event.ignore()
                 return
+
+            # ---- 确认退出：有界停机（P2-3）----
+            still = jobs.request_stop_all(timeout_s=_EXIT_JOBS_TIMEOUT_S)
+            if still:
+                _logger.warning(
+                    "退出停机超时，未退出的后台任务：%s", "、".join(still)
+                )
+
+            for key in running_worker_keys:
+                worker = getattr(self._pages.get(key), "_worker", None)
+                if worker is None or not worker.isRunning():
+                    continue  # stop 期间已自行退出
+                stop = getattr(worker, "stop", None)
+                if callable(stop):
+                    stop()
+                do_wait = getattr(worker, "wait", None)
+                if callable(do_wait):
+                    do_wait(_EXIT_WORKER_WAIT_MS)
+
+            for widget in self._pages.values():
+                pool = getattr(widget, "_thumb_pool", None)
+                if pool is None:
+                    continue
+                try:
+                    pool.clear()  # 丢弃仍在排队的缩略图任务
+                    pool.waitForDone(_EXIT_POOL_WAIT_MS)
+                except Exception:
+                    _logger.debug("等待缩略图线程池退出时出错", exc_info=True)
 
         # 释放引擎缓存（GPU 显存）
         try:

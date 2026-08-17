@@ -4,6 +4,8 @@
 """
 from __future__ import annotations
 
+import functools
+import logging
 import os
 from typing import Optional
 
@@ -23,8 +25,11 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.i18n import tr
+from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_open_file, pick_directory
+
+logger = logging.getLogger(__name__)
 
 
 class DeployPage(QWidget):
@@ -132,9 +137,6 @@ class DeployPage(QWidget):
         self._export_btn.setEnabled(False)
         self._progress.setValue(10)
 
-        import os
-        import threading
-
         fmt_idx = self._format_combo.currentIndex()
         precision = self._precision_combo.currentText().lower()
         do_trt = fmt_idx in (1, 2)  # TensorRT or ONNX+TRT
@@ -142,6 +144,11 @@ class DeployPage(QWidget):
         # QComboBox 跨线程只读违 Qt 契约，worker 不得再触碰任何 QWidget
         _TASK_MAP = {0: "det", 1: "cls", 2: "seg", 3: "abdet"}
         task_value = _TASK_MAP.get(self._task_combo.currentIndex(), "det")
+        logger.info(
+            "模型导出开始: model=%s out=%s task=%s fmt=%s precision=%s",
+            model_path, out_dir, task_value,
+            self._format_combo.currentText(), precision,
+        )
 
         def _work(task_value):
             try:
@@ -189,7 +196,12 @@ class DeployPage(QWidget):
             except (OSError, RuntimeError, ValueError) as exc:
                 self._eval_failed_export(str(exc))
 
-        threading.Thread(target=_work, args=(task_value,), daemon=True).start()
+        # W15-J3（P2-1）：经 gui.core.jobs.run_job 分发——注册表登记 +
+        # 协作取消 + 异常路由；task_value 主线程预读值经 partial 随 worker
+        # 入参捕获（W14-C2 形态保持，worker 仍不触碰任何 QWidget）
+        run_job(
+            functools.partial(_work, task_value), name="deploy_export"
+        )
 
     def _set_progress_slot(self, pct: int) -> None:
         """槽：更新进度条（线程安全调用）。"""
@@ -208,6 +220,7 @@ class DeployPage(QWidget):
         """导出完成回调。"""
         self._export_btn.setEnabled(True)
         files = ", ".join(os.path.basename(v) for v in results.values())
+        logger.info("模型导出完成: %s", files)
         self.status_changed.emit(tr("导出完成"), files)
 
         # R4-6: 记录审计日志

@@ -4,8 +4,8 @@
 """
 from __future__ import annotations
 
+import logging
 import os
-import threading
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, QTimer, Slot
@@ -29,11 +29,14 @@ from core.exceptions import AnnotationIOError
 from labeling.canvas import AnnotationCanvas
 from labeling.controller import AnnotationController
 from gui.core.i18n import tr
+from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
 
 from core.constants import IMG_EXTS as _IMG_EXTS
+
+logger = logging.getLogger(__name__)
 
 # 模式定义：(mode, 按钮文本键, 快捷键)
 _MODES = [
@@ -571,6 +574,7 @@ class LabelPage(QWidget):
         if not self._image_path:
             self.status_changed.emit(tr("请先打开图像"), "!")
             return
+        logger.info("AI 预标注开始: %s", self._image_path)
         self.btn_ai_prelabel.setEnabled(False)
         self._pending_prelabel = []
 
@@ -578,13 +582,12 @@ class LabelPage(QWidget):
             try:
                 shapes = run_ai_prelabel(self._image_path)
             except (ImportError, RuntimeError, OSError, ValueError):
-                import logging
-                logging.getLogger(__name__).exception("AI 预标注失败")
+                logger.exception("AI 预标注失败")
                 shapes = []
             self._pending_prelabel = shapes
             invoke_main(self, "_prelabel_done", len(shapes))
 
-        threading.Thread(target=_work, daemon=True).start()
+        run_job(_work, name="label_ai_prelabel")
 
     @Slot(int)
     def _prelabel_done(self, count: int) -> None:
@@ -669,7 +672,7 @@ class LabelPage(QWidget):
                 return
             invoke_main(self, "_sam_warmed")
 
-        threading.Thread(target=_work, daemon=True).start()
+        run_job(_work, name="label_sam_load")
 
     @Slot()
     def _sam_warmed(self) -> None:
@@ -701,7 +704,7 @@ class LabelPage(QWidget):
             self._pending_sam_image = img
             invoke_main(self, "_sam_attach")
 
-        threading.Thread(target=_work, daemon=True).start()
+        run_job(_work, name="label_sam_warm")
 
     @Slot()
     def _sam_attach(self) -> None:
@@ -742,6 +745,7 @@ class LabelPage(QWidget):
             # AppError 子类（非 OSError）——漏收则裸穿 Qt 槽（W9 实测）
             self.status_changed.emit(str(exc), "ERROR")
             return
+        logger.info("保存标注: %s（%d 个形状）", path, len(shapes))
         self.status_changed.emit(tr("已保存"), f"{len(shapes)} {tr('标注数')}")
         # 保存后自动切换下一张（R3-14），提升批量标注效率。
         # 延迟 600ms 切换：让"已保存"状态在状态栏停留片刻，便于 UIA 自动化

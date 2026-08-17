@@ -155,23 +155,6 @@ class TestM1E2E:
         recent.remove_recent(base, "proj_B_SEG_00001_1700000001")
         assert recent.recent_list(base) == ["proj_A_DET_00001_1700000000"]
 
-    def test_data_manager_ext(self, tmp_path):
-        """DataManagerExt 项目 CRUD。"""
-        from industrial_vision_platform.data_manager_ext import DataManagerExt
-
-        ext = DataManagerExt(None, str(tmp_path))
-        dirname, layout = ext.create_project("test", "det")
-        assert os.path.isdir(layout.root)
-        assert os.path.isdir(layout.images_dir)
-        assert os.path.isdir(layout.annotations_dir)
-
-        stats = ext.get_project_stats(layout.root)
-        assert stats["total_images"] == 0
-
-        projects = ext.list_projects()
-        assert len(projects) >= 1
-        assert projects[0]["name"] == "test"
-
     def test_language_switch(self, qapp):
         """切换语言后 tr() 生效。"""
         from gui.core.i18n import set_language, tr, current_language

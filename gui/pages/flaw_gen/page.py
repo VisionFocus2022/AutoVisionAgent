@@ -5,8 +5,8 @@
 """
 from __future__ import annotations
 
+import logging
 import os
-import threading
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, Slot
@@ -25,8 +25,11 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.i18n import tr
+from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_directory
+
+logger = logging.getLogger(__name__)
 
 
 class FlawGenPage(QWidget):
@@ -156,6 +159,11 @@ class FlawGenPage(QWidget):
         self._progress.setValue(0)
         self._log_label.setText(tr("生成中..."))
         self.status_changed.emit(tr("缺陷生成中..."), "info")
+        # P2-19：关键操作留痕（生成开始）
+        logger.info(
+            "缺陷生成开始：ok=%s，flaw=%s，out=%s，count=%d",
+            ok_dir, flaw_dir, out_dir, count,
+        )
 
         def _work():
             try:
@@ -197,17 +205,20 @@ class FlawGenPage(QWidget):
                     pct = int((i + 1) / count * 100)
                     invoke_main(self, "_progress_slot", pct)
 
+                # P2-19：关键操作留痕（生成完成，一次一条；逐图仅进度无日志）
+                logger.info("缺陷生成完成：%d 张 → %s", generated, out_dir)
                 self._on_done(generated)
 
             except SupervisedEngineError as exc:
                 # 诚实失败：引擎/缺陷库问题 → 明确报错（W2 删除"复制占位图"假回退）
-                import logging
-                logging.getLogger(__name__).warning("缺陷生成失败: %s", exc)
+                logger.warning("缺陷生成失败: %s", exc)
                 invoke_main(self, "_failed_slot", str(exc))
             except (ImportError, RuntimeError, OSError, ValueError) as exc:
                 invoke_main(self, "_failed_slot", str(exc))
 
-        threading.Thread(target=_work, daemon=True).start()
+        # W15-J2（P2-1 批次 A）：经 gui.core.jobs 统一调度——注册表登记 +
+        # 协作取消 + 异常路由（_work 内两段 except 路由/文案不变）
+        run_job(_work, name="flaw_gen.generate")
 
     @Slot(int)
     def _progress_slot(self, pct: int) -> None:

@@ -1,12 +1,14 @@
 """数据管理页：图像导入、浏览、划分、统计（FR-D4 / FR-E4）。
 
-对接 industrial_vision_platform.DataManager 做数据集 CRUD 与划分；
-对接 project/ 做项目目录绑定。
+数据操作经 gui.pages.data_manage.workers 纯函数（导入/划分/标注批量
+工具）与 dataset.format_export（YOLO/COCO 训练集导出）完成，重活统一在
+gui.core.jobs 后台任务执行；项目目录绑定经 set_project_dir() 探测
+images/annotations 布局（P2-22：撤销原文失实宣称，按实际依赖重写）。
 """
 from __future__ import annotations
 
+import logging
 import os
-import threading
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, Slot
@@ -25,12 +27,15 @@ from PySide6.QtWidgets import (
 )
 
 from gui.core.i18n import tr
+from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main
 from gui.widgets.file_dialog import pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
 
 # 支持的图像扩展名
 from core.constants import IMG_EXTS as _IMG_EXTS
+
+logger = logging.getLogger(__name__)
 
 # 操作标识 → 完成消息标题（emit 时经 tr() 翻译，语言切换后仍正确）
 _OP_TITLES = {
@@ -374,9 +379,14 @@ class DataManagePage(QWidget):
             except (OSError, ValueError, RuntimeError) as exc:
                 invoke_main(self, "_op_failed", op, str(exc))
                 return
+            if op in ("import", "split"):
+                # P2-19：关键数据操作留痕（一次一条，无逐图刷屏）
+                logger.info("%s：%s", _OP_TITLES.get(op, op), result)
             invoke_main(self, "_op_done", op, fmt(result))
 
-        threading.Thread(target=_wrapper, daemon=True).start()
+        # W15-J2（P2-1 批次 A）：经 gui.core.jobs 统一调度——注册表登记 +
+        # 协作取消 + 异常路由（wrapper 内 expected 异常元组/时序/文案不变）
+        run_job(_wrapper, name=f"data_manage.{op}")
 
     @Slot(str, str)
     def _op_done(self, op: str, msg: str) -> None:
@@ -482,7 +492,8 @@ class DataManagePage(QWidget):
                 return
             invoke_main(self, "_stats_done", stats if stats else {})
 
-        threading.Thread(target=_work, daemon=True).start()
+        # W15-J2（P2-1 批次 A）：同上，经 jobs 统一调度
+        run_job(_work, name="data_manage.stats")
 
     @Slot(dict)
     def _stats_done(self, stats: dict) -> None:

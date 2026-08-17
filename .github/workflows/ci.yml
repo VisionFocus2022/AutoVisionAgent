@@ -1,0 +1,35 @@
+# CI（架构审查 P2-26 落地）——与本地 .venv 构建方式一致的全量门禁。
+# 待命：本仓当前无 git 远程，推送后生效；torch+cu121 轮子 ~2.5GB，如需提速
+# 可后续换 cpu 索引（requirements.lock.txt 的 torch 行同步改 PyPI 版本号）。
+#
+# 说明：
+# - requirements.lock.txt 第 1 行已含 --extra-index-url cu121 索引（W12 P1-6 落地）；
+#   下方 CLI 同名参数为冗余双保险，保留无害。
+# - 门禁不另传覆盖率参数：fail-under=92 由 pytest.ini addopts 生效。
+# - windows-latest 无交互桌面：QT_QPA_PLATFORM=offscreen + tests/conftest.py
+#   无头兜底（P2-27）双保险；tests/uia 真窗测试默认 --ignore，不在 CI 跑。
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python 3.12（与本地 .venv 同小版本线，实测 3.12.9）
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖（全量 lock 锁装，与本地 .venv 构建方式一致）
+        run: python -m pip install -r requirements.lock.txt --extra-index-url https://download.pytorch.org/whl/cu121
+
+      - name: 门禁（pytest.ini 覆盖率 fail-under=92 生效）
+        run: python -m pytest
+        env:
+          QT_QPA_PLATFORM: offscreen

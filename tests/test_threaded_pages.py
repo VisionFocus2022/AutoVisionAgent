@@ -202,48 +202,45 @@ def test_invoke_main_delivers_all_primitive_types(qapp):
         "list": [("mAP", "0.9", "平均值")],
     }
 
-# ==================== W14-C2 追加（P2-15）：deploy 导出线程参数化 ==================== #
+# ==================== W14-C2（P2-15）→ W15-J3：deploy 导出线程参数化 ==================== #
 @pytest.mark.unit
 def test_deploy_export_thread_receives_task_value(qapp, monkeypatch, tmp_path):
-    """P2-15 RED：task_value 必须主线程预读（同 fmt/precision :138-140），
-    经 Thread 参数传入导出 worker——QComboBox 跨线程只读违 Qt 契约，
-    当前 _work() 无参闭包在线程体内自读 currentIndex → RED。"""
-    import inspect
+    """P2-15 契约在 W15-J3 run_job 迁移后保持：task_value 必须主线程预读
+    （同 fmt/precision），经 run_job 调用点捕获后传入导出 worker——
+    QComboBox 跨线程只读违 Qt 契约，worker 不得再触碰任何 QWidget。
 
-    from gui.pages.deploy.page import DeployPage
+    W15-J3：线程创建改经 gui.core.jobs.run_job（P2-1），原 Thread(target=,
+    args=(task_value,)) 接缝不复存在——改在 run_job 接缝断言同一行为：
+    恰好一次分发 + 预读值在 run_job 调用点（主线程）已捕获。
+    （worker 体内 combo 毒化的端到端实证见
+    tests/test_gui_jobs_migration.py::test_deploy_export_dispatched_via_run_job）
+    """
+    from gui.pages.deploy import page as dep_mod
 
-    class _RecordingThread:
-        """只记录创建形态、不执行 worker（本用例聚焦线程创建契约）。"""
+    captured = []
 
-        created = []
+    def fake_run_job(fn, *, name, on_error=None):
+        captured.append((fn, name))
+        return None  # 不执行 worker（本用例聚焦线程创建契约）
 
-        def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-            self._t, self._a, self._k = target, args, kwargs or {}
-            _RecordingThread.created.append(self)
+    monkeypatch.setattr(dep_mod, "run_job", fake_run_job)
 
-        def start(self):
-            pass
-
-    _RecordingThread.created = []
-    monkeypatch.setattr(threading, "Thread", _RecordingThread)
-
-    page = DeployPage()
+    page = dep_mod.DeployPage()
     page._model_edit.setText(str(tmp_path / "m.pt"))
     page._out_edit.setText(str(tmp_path / "out"))
     page._task_combo.setCurrentIndex(3)  # abdet
 
     page._do_export()
 
-    assert len(_RecordingThread.created) == 1, "导出必须分发到 worker 线程"
-    t = _RecordingThread.created[0]
-    sig = inspect.signature(t._t)
-    assert "task_value" in sig.parameters, (
-        "导出线程 target 应接收 task_value 参数（主线程预读后传入），"
-        "而非在线程体内读取 QComboBox"
-    )
-    bound = sig.bind(*t._a, **t._k)
-    assert bound.arguments["task_value"] == "abdet", (
-        "task_value 应为线程启动前主线程预读的下拉框映射值"
+    assert len(captured) == 1, "导出必须经 run_job 分发到 worker（且仅一次）"
+    fn, name = captured[0]
+    assert name == "deploy_export"
+    # 预读值在 run_job 调用点已被 worker 入参捕获（functools.partial 形态）：
+    # worker 启动后即使 combo 变化/不可访问，task_value 也不再依赖 Qt 对象
+    bound_args = getattr(fn, "args", None)
+    assert bound_args == ("abdet",), (
+        "task_value 应为 run_job 调用前主线程预读、随 worker 入参捕获的值，"
+        f"got partial args: {bound_args!r}"
     )
 
 

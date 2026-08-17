@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import logging.handlers
 import os
 import sys
 from concurrent import futures
@@ -176,6 +177,69 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
 
 # ------------------------------ 服务启动入口 ------------------------------- #
 
+# P2-20：serving 独立进程此前仅 console 日志（basicConfig），脱离 GUI 运行时
+# 日志随终端关闭消失（审查 v2 实测：serving/*.py 无一处 FileHandler）。
+# RotatingFileHandler 挂 root——shared_memory 等子 logger 经传播统一落盘。
+
+# setup_file_logging 挂载标记：幂等摘除旧 handler 时识别"自己挂的"用
+_SERVING_FILE_HANDLER_MARK = "_ava_serving_file"
+
+
+def setup_file_logging(
+    log_dir: str,
+    filename: str = "serving.log",
+    max_bytes: int = 5 * 1024 * 1024,
+    backup_count: int = 3,
+) -> logging.Handler:
+    """挂 RotatingFileHandler 到 root logger（P2-20：独立进程文件日志）。
+
+    - 路径参数化（目录/文件名/单文件上限/备份数），测试与嵌入方可注入；
+    - 幂等：先摘除并关闭此前由本函数挂载的 handler 再挂新——重复调用
+      不会重复挂载、不会双写；
+    - 仅允许在 serve() 入口调用（python -m serving 路径）；模块 import
+      期零副作用（见 test_import_serving_server_adds_no_root_handler）。
+
+    Args:
+        log_dir: 日志目录（不存在则创建）。
+        filename: 日志文件名。
+        max_bytes: 单文件轮转上限（字节）。
+        backup_count: 轮转保留的备份份数。
+
+    Returns:
+        挂载的 RotatingFileHandler（调用方可断言/摘除）。
+    """
+    os.makedirs(log_dir, exist_ok=True)
+    root = logging.getLogger()
+    for old in [
+        h for h in root.handlers if getattr(h, _SERVING_FILE_HANDLER_MARK, False)
+    ]:
+        root.removeHandler(old)
+        old.close()
+    handler = logging.handlers.RotatingFileHandler(
+        os.path.join(log_dir, filename),
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+        encoding="utf-8",
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    setattr(handler, _SERVING_FILE_HANDLER_MARK, True)
+    root.addHandler(handler)
+    return handler
+
+
+def _resolve_log_dir() -> str:
+    """日志目录解析：与 GUI（gui/main.setup_logging）同源——core.config
+    LoggingConfig.log_dir，配置不可用则回退 ./logs（GUI 同款兜底）。"""
+    try:
+        from core.config import get_config
+
+        return str(get_config().logging.log_dir)
+    except (AttributeError, ImportError, TypeError, ValueError):
+        return "./logs"
+
+
 def create_server(
     host: str = "127.0.0.1",
     port: int = 50051,
@@ -202,12 +266,30 @@ def create_server(
     return server
 
 
-def serve(host: str = "127.0.0.1", port: int = 50051, max_workers: int = 8) -> None:
-    """阻塞运行 gRPC server。"""
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 50051,
+    max_workers: int = 8,
+    log_dir: Optional[str] = None,
+) -> None:
+    """阻塞运行 gRPC server。
+
+    Args:
+        host/port/max_workers: 监听地址与线程池规格。
+        log_dir: 文件日志目录；None 时经 :func:`_resolve_log_dir`（与 GUI
+            同源的 logs/ 目录）。可由测试/嵌入方注入。
+    """
     logging.basicConfig(
         level=os.environ.get("AVA_SERVING_LOG", "INFO"),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
+    try:
+        # P2-20：独立进程文件日志（console 之外留持久轨迹）。文件日志失败
+        # 不得阻断服务启动，但必须留痕（不得静默吞——W14 静默 except 教训）。
+        handler = setup_file_logging(log_dir or _resolve_log_dir())
+        logger.info("文件日志已启用: %s", handler.baseFilename)
+    except OSError as e:
+        logger.warning("文件日志初始化失败，仅以 console 日志运行: %s", e)
     server = create_server(host, port, max_workers)
     server.start()
     logger.info("AutoVisionAgent gRPC 服务已启动: %s:%d (max_workers=%d)", host, port, max_workers)
@@ -232,4 +314,4 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return p
 
 
-__all__ = ["AutoVisionAgentServicer", "create_server", "serve"]
+__all__ = ["AutoVisionAgentServicer", "create_server", "serve", "setup_file_logging"]

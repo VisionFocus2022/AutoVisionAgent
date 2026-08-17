@@ -392,3 +392,230 @@ def test_module_examples_stay_loopback():
         encoding="utf-8"
     )
     assert "0.0.0.0" not in src, "serving/server.py 不得示范非回环监听（ADR-0001）"
+
+
+# ============ W15-L1 追加：P2-20 serving 独立进程文件日志 ============ #
+
+
+@pytest.fixture(autouse=True)
+def root_handler_guard():
+    """（模块级 autouse）测试后摘除本测试新增到 root 的 handler。
+
+    双重职责：防 tmp_path 句柄泄漏；也防既有 serve() 用例经真实
+    _resolve_log_dir() 挂上的 logs/serving.log handler 泄漏到会话
+    后续测试（实测曾把 W14-C3 用例的 ERROR 串写进 logs/serving.log）。
+    不改动任何既有用例本体（快照差集，只摘"本测试新增"的 handler）。"""
+    import logging
+
+    before = list(logging.getLogger().handlers)
+    yield
+    root = logging.getLogger()
+    for h in list(root.handlers):
+        if h not in before:
+            root.removeHandler(h)
+            h.close()
+
+
+@pytest.mark.unit
+def test_setup_file_logging_installs_rotating_handler(tmp_path):
+    """RED（P2-20）：setup_file_logging(tmp_path) 后 root 上存在
+    RotatingFileHandler，baseFilename/上限/备份数与参数一致（含自定义注入）。"""
+    import logging
+    import logging.handlers
+    from pathlib import Path
+
+    from serving.server import setup_file_logging
+
+    handler = setup_file_logging(str(tmp_path))
+    assert isinstance(handler, logging.handlers.RotatingFileHandler)
+    assert handler in logging.getLogger().handlers
+    assert Path(handler.baseFilename) == tmp_path / "serving.log"
+    assert handler.maxBytes == 5 * 1024 * 1024
+    assert handler.backupCount == 3
+
+    # 参数化注入：文件名/上限/备份数可覆盖
+    h2 = setup_file_logging(
+        str(tmp_path), filename="custom.log", max_bytes=1024, backup_count=7
+    )
+    assert Path(h2.baseFilename) == tmp_path / "custom.log"
+    assert h2.maxBytes == 1024 and h2.backupCount == 7
+
+
+@pytest.mark.unit
+def test_setup_file_logging_persists_record_to_disk(tmp_path):
+    """RED（P2-20）：挂载后写一条日志必须落盘（独立进程脱离终端后可追溯）。"""
+    import logging
+
+    from serving.server import setup_file_logging
+
+    setup_file_logging(str(tmp_path))
+    root = logging.getLogger()
+    prev_level = root.level
+    root.setLevel(logging.INFO)
+    try:
+        logging.getLogger("serving.server").info("P2-20 文件落盘探针")
+        for h in root.handlers:
+            h.flush()
+    finally:
+        root.setLevel(prev_level)
+    content = (tmp_path / "serving.log").read_text(encoding="utf-8")
+    assert "P2-20 文件落盘探针" in content
+
+
+@pytest.mark.unit
+def test_setup_file_logging_idempotent_replaces_old(tmp_path):
+    """RED（P2-20）：重复调用不得重复挂载（重复写同一份日志）——
+    先摘除旧 handler 再挂新（幂等替换）。"""
+    import logging
+    import logging.handlers
+    from pathlib import Path
+
+    from serving.server import setup_file_logging
+
+    h1 = setup_file_logging(str(tmp_path))
+    h2 = setup_file_logging(str(tmp_path / "second"))
+    root = logging.getLogger()
+    marked = [
+        h
+        for h in root.handlers
+        if isinstance(h, logging.handlers.RotatingFileHandler)
+        and getattr(h, "_ava_serving_file", False)
+    ]
+    assert len(marked) == 1, "重复调用后 root 上应恰有一个 serving 文件 handler"
+    assert marked[0] is h2
+    assert h1 not in root.handlers, "旧 handler 必须被摘除（不得双写）"
+    assert Path(h2.baseFilename) == tmp_path / "second" / "serving.log"
+
+
+@pytest.mark.unit
+def test_import_serving_server_adds_no_root_handler():
+    """RED（P2-20 契约）：setup_file_logging 只允许 serve() 入口调用，
+    import serving.server 期零副作用——root logger 不得新增 handler。"""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    code = (
+        "import logging, sys;"
+        "before = list(logging.getLogger().handlers);"
+        "import serving.server;"
+        "after = logging.getLogger().handlers;"
+        "leaked = [h for h in after if h not in before];"
+        "print('LEAKED', len(leaked));"
+        "sys.exit(1 if leaked else 0)"
+    )
+    repo_root = Path(__file__).resolve().parents[1]
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert proc.returncode == 0, (
+        f"import serving.server 泄漏 root handler:\n{proc.stdout}\n{proc.stderr}"
+    )
+
+
+@pytest.mark.unit
+def test_resolve_log_dir_reads_config_with_gui_fallback(monkeypatch, tmp_path):
+    """RED（P2-20）：log_dir 解析与 GUI（gui/main.setup_logging）同源——
+    core.config LoggingConfig.log_dir，配置不可用回退 ./logs。"""
+    from types import SimpleNamespace
+
+    import core.config as cfg_mod
+    from serving.server import _resolve_log_dir
+
+    monkeypatch.setattr(
+        cfg_mod, "get_config", lambda: SimpleNamespace(logging=SimpleNamespace(log_dir=str(tmp_path)))
+    )
+    assert _resolve_log_dir() == str(tmp_path)
+
+    def _broken():
+        raise ValueError("config unavailable")
+
+    monkeypatch.setattr(cfg_mod, "get_config", _broken)
+    assert _resolve_log_dir() == "./logs"
+
+
+@pytest.mark.unit
+def test_serve_wires_file_logging_and_keeps_interrupt_path(tmp_path, monkeypatch):
+    """RED（P2-20）：serve() 入口接线文件日志（目录可注入），且
+    KeyboardInterrupt 优雅退出路径不因接线破坏。"""
+    import logging
+    import logging.handlers
+    from pathlib import Path
+
+    from serving import server as srv
+
+    stops = []
+
+    class _FakeServer:
+        def start(self):
+            pass
+
+        def wait_for_termination(self):
+            raise KeyboardInterrupt
+
+        def stop(self, grace):
+            stops.append(grace)
+
+    monkeypatch.setattr(srv, "create_server", lambda *a, **k: _FakeServer())
+
+    root = logging.getLogger()
+    prev_level = root.level
+    root.setLevel(logging.INFO)  # 对齐生产 basicConfig(INFO)（pytest 下 root 已有 handler，basicConfig 为 no-op）
+    try:
+        srv.serve(log_dir=str(tmp_path))
+    finally:
+        root.setLevel(prev_level)
+
+    assert stops == [3], "KeyboardInterrupt 必须仍走优雅停止（grace=3）"
+    log_file = tmp_path / "serving.log"
+    assert log_file.exists(), "serve() 应在注入目录创建 serving.log"
+    content = log_file.read_text(encoding="utf-8")
+    assert "gRPC 服务已启动" in content, "启动行必须落盘"
+    assert "收到中断信号" in content, "中断退出行必须落盘"
+    marked = [
+        h
+        for h in root.handlers
+        if isinstance(h, logging.handlers.RotatingFileHandler)
+        and getattr(h, "_ava_serving_file", False)
+    ]
+    assert len(marked) == 1
+    assert Path(marked[0].baseFilename) == log_file
+
+
+@pytest.mark.unit
+def test_serve_file_logging_failure_does_not_block_startup(
+    tmp_path, monkeypatch, caplog
+):
+    """RED（P2-20）：文件日志初始化失败（如目录不可写）不得阻断服务启动，
+    且必须留痕（不得静默吞——W14 教训）。"""
+    import logging
+
+    from serving import server as srv
+
+    started = []
+
+    class _FakeServer:
+        def start(self):
+            started.append(True)
+
+        def wait_for_termination(self):
+            return None  # 立即正常返回
+
+        def stop(self, grace):
+            pass
+
+    monkeypatch.setattr(srv, "create_server", lambda *a, **k: _FakeServer())
+
+    def _boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(srv, "setup_file_logging", _boom)
+    with caplog.at_level(logging.WARNING, logger="serving.server"):
+        srv.serve(log_dir=str(tmp_path))  # 不得抛 OSError
+    assert started == [True], "文件日志失败后服务仍应启动"
+    warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert warns, "文件日志失败必须落 WARNING 留痕"

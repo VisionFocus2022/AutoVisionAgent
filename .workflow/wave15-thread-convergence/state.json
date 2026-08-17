@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "change_id": "wave15-thread-convergence",
+  "title": "W15 thread model convergence + logging + infra tails",
+  "created_at": "2026-08-17T09:52:51.893064+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：继续优化 P2-1/2/3 线程模型收敛专题（v2 标注的第二波优先项，量大宜单独一波）、P2-19/20 日志补强、P2-21/22/26/27。三项方向经 AskUserQuestion 确认：P2-1 轻量收敛（run_job 注册表）/P2-22 删除 DataManagerExt/P2-26 待命 CI 文件。"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（含三项交互确认记录，即执行授权）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave15-thread-convergence.md",
+    "design": "",
+    "tasks": "docs/tasks-wave15-thread-convergence.md"
+  },
+  "traceability": {
+    "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007"],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-002"]},
+      {"id": "AC-003", "requirements": ["FR-003"]},
+      {"id": "AC-004", "requirements": ["FR-004"]},
+      {"id": "AC-005", "requirements": ["FR-005"]},
+      {"id": "AC-006", "requirements": ["FR-004", "FR-006"]},
+      {"id": "AC-007", "requirements": ["FR-007"]}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005", "FR-006", "FR-007"], "acceptance": ["AC-001", "AC-002", "AC-003", "AC-004", "AC-005", "AC-006", "AC-007"]},
+      {"id": "TASK-002", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-003", "requirements": ["FR-002"], "acceptance": ["AC-002"]},
+      {"id": "TASK-004", "requirements": ["FR-003"], "acceptance": ["AC-003"]},
+      {"id": "TASK-005", "requirements": ["FR-004"], "acceptance": ["AC-004"]},
+      {"id": "TASK-006", "requirements": ["FR-004"], "acceptance": ["AC-004", "AC-006"]},
+      {"id": "TASK-007", "requirements": ["FR-005"], "acceptance": ["AC-005"]},
+      {"id": "TASK-008", "requirements": ["FR-006"], "acceptance": ["AC-006"]},
+      {"id": "TASK-009", "requirements": ["FR-007"], "acceptance": ["AC-007"]},
+      {"id": "TASK-010", "requirements": ["FR-007"], "acceptance": ["AC-007"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-002 J1 jobs 统一入口（AC-001）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_jobs.py -o addopts= -q（5 连跑）+ 消费方联动 27 passed",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "21 passed ×5 连跑零抖动。JobHandle/run_job/active_jobs/request_stop_all（201 行 88 语句，零 Qt 依赖实证：import 后 sys.modules 无 PySide6）；FakeThread 接缝保留（调用期属性解析）；cancel 内省透传；request_stop_all deadline 制总预算。验证员 accept，附非阻断建议三条（start 失败回滚注册表等，留 backlog）。"
+    },
+    {
+      "name": "TASK-003 L1 serving 文件日志（AC-002）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_serving_server.py tests/test_serving_shm.py tests/test_serving_serialization.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "51 passed（新 7）。setup_file_logging（RotatingFileHandler 5MB×3，幂等替换标记，路径可注入）仅 serve 入口调用；import 期零副作用；serve 原链（start/中断/stop(grace=3)）逐项未变，OSError 不阻断仅 WARNING。验证员 accept。"
+    },
+    {
+      "name": "TASK-004 M1 setuptools+CI+offscreen 兜底（AC-003，needs_fix 已闭环）",
+      "command": "pytest tests/test_conftest_offscreen_fallback.py tests/test_ci_workflow_file.py tests/test_gui.py tests/test_m1_e2e.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "setuptools 70.2.0→84.0.0（出 CVE-2024-6345 区间，lock 单行 diff，全栈导入回归绿）；.github/workflows/ci.yml 待命文件（windows-latest+lock 全装+offscreen+92 门禁）；根 tests/conftest.py 无头兜底双向锁定（有桌面绝不覆盖——UIA 安全）。验证员 needs_fix 两处（python-version 3.11→3.12 与本地 3.12.9 一致、cu121 注释宣称漂移）已按 fixInstructions 修复：ci.yml 两处 + test_ci_workflow_file.py 断言同步，复跑 4 passed。"
+    },
+    {
+      "name": "TASK-005 J2 三页迁移+日志（AC-004）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_w15_j2_jobs_migration.py + 三页全部既有测试 -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "58 passed（含 RED 迁移守卫：grep 断言三页无 threading.Thread 直调）。data_manage×2/eval_×1/flaw_gen×1 四点迁移 run_job，回调/按钮时序/文案逐项 diff 保持；eval_ TypeError 教训注释语义保留；各页关键操作 logger.info 经 caplog；data_manage docstring 撤销 DataManager 不实宣称。验证员 accept：三次 stash 往返复跑一致。"
+    },
+    {
+      "name": "TASK-006 J3 三页迁移+predict 原子写（AC-004/006）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest 四批 22 个文件 -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "156 passed。label×3/predict×2/deploy×1 六点迁移（deploy functools.partial 传 task_value，W14 主线程预读形态保持）；predict 批量 JSON temp+os.replace（机制断言+故障注入双证）；关键操作日志 caplog。验证员 accept：全文件审读非抽样，四批含 grep 补齐的三页消费方。"
+    },
+    {
+      "name": "TASK-007 J4 退出守卫+生命周期（AC-005）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_gui_shell_exit_guard.py + 回归并集 83 passed",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 先行（注册表路径弹窗/停止）。closeEvent：jobs.active_jobs() 为真相源（btn_batch 属性名失配根除，旧探测保留为并集增量）；确认后 request_stop_all(1.0) + _worker.stop()+wait(1500ms) + 两 QThreadPool waitForDone(500ms)——全部有界常量；审计 flush 与引擎 clear_cache 原顺序保留（既有特征化测试绿）。验证员 accept。"
+    },
+    {
+      "name": "TASK-008 A1 原子写+删除（AC-006）",
+      "command": "QT_QPA_PLATFORM=offscreen pytest tests/test_batch_tools_atomic.py + 回归三批 -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "17+16+43 passed。batch_tools 四写点（cut/replace/delete/flip）经 _atomic_write_json：机制断言+验证员独立 json.dump 层故障注入（旧文件逐字节完好、0 tmp 残留）；五公共签名 inspect 零差异。data_manager_ext.py 与其 20 用例随删（零生产调用方），包 __all__ 清理、全仓 10 类文件 grep 0 命中。验证员 accept。"
+    },
+    {
+      "name": "TASK-010a 门禁全量 + 棘轮（AC-007）",
+      "command": ".venv/Scripts/python.exe -m pytest（fail-under=92）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "835 passed / 3 skipped（W14 790 → +45 净增），rc=0，46.9s。覆盖率 92.80%（7987/574）≥ 92——jobs.py 新增 88 语句 + DataManagerExt 高覆盖删除净效应微降 0.08pp，棘轮维持 92。P2-1 终态守卫：gui 内 threading.Thread 直调 grep = 0（jobs.py 自身除外）。"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "P2-1 方向经 AskUserQuestion 用户选定轻量收敛（run_job 注册表）；P2-22 选定删除；P2-26 选定待命 CI 文件——证据在 approvals。",
+    "环境变更：setuptools 70.2.0→84.0.0（出 CVE-2024-6345 区间），requirements.lock.txt 单行同步。",
+    "合法删除：industrial_vision_platform/data_manager_ext.py（零生产调用方，用户拍板）+ tests/test_data_manager_ext_deep.py（W10 的 20 用例随删）；industrial_vision_platform 现仅 VisionModelDispatcher/get_dispatcher。",
+    "ci.yml 为待命产物：本仓无 git 远程，推送后生效；本地仅验 YAML 语法与步骤与实仓一致（不可真跑）。M1 验证员 needs_fix（python-version 3.12 对齐、cu121 注释）已按指令修复并复跑 4 passed。",
+    "执行方式（ultracode 沿用）：两阶段 Workflow——阶段一 J1/L1/M1 并行，阶段二 J2/J3/J4/A1 并行（消费 J1 实际 API），终局七验证员；14 代理 0 错误。",
+    "J1 验证员非阻断建议留 backlog：① run_job 中 thread.start() 抛异常时注册表条目回滚缺失；② 补替换线程无 join 属性的 request_stop_all 用例；③ 一处断言可收紧。",
+    "W14 遗留的 UIA 环境专项仍开放（本波未触碰 tests/uia；exe 仍为 W12 版）——发版检查单重建 exe 后复跑。"
+  ],
+  "request_evidence": "W14 交付总结列出的剩余项；本轮用户指令：继续优化 P2-1/2/3 线程模型收敛专题（v2 标注的第二波优先项）、P2-19/20 日志补强、P2-21/22/26/27。三项方向经 AskUserQuestion 确认：P2-1 轻量收敛（run_job 注册表）/P2-22 DataManagerExt 删除/P2-26 待命 CI 文件",
+  "final_summary": "第十五波完成（P2-1/2/3 线程收敛专题 + P2-19/20 日志 + P2-21/22/26/27，两阶段七簇 14 代理）：①P2-1 终态——gui/core/jobs.py 统一入口（run_job 注册表/异常路由/协作取消/有界 stop_all，零 Qt 依赖，FakeThread 接缝保留），十处裸 threading.Thread 全部迁移（gui 内直调 grep=0），行为逐项 diff 保持；②P2-2——退出守卫改 jobs 注册表真相源（btn_batch 属性名失配根除）+ batch_tools 四写点与 predict 批量 JSON 全部 temp+os.replace 原子化（机制断言+故障注入双证）；③P2-3——确认退出后 request_stop_all(1s)+TrainWorker.stop().wait(1.5s)+两 QThreadPool waitForDone(0.5s) 全有界，审计 flush 原顺序保留；④P2-19——六页关键操作 logger.info（caplog 断言）；⑤P2-20——serving 文件轮转日志（import 零副作用幂等挂载）；⑥P2-21 setuptools 70.2.0→84.0.0 出 CVE 区间；⑦P2-22 DataManagerExt 删除（零调用方，20 用例随删）；⑧P2-26 待命 ci.yml（3.12 对齐本地，needs_fix 两处已修）；⑨P2-27 根 conftest 无头兜底（双向锁定不误伤 UIA）。门禁 835 passed/3 skipped rc=0，覆盖 92.80% 棘轮维持 92。至此 v2 审查 P2 可落地项全清（余：发版域 UIA 复跑/git tag/无远程前 CI 生效）。validate_workflow 通过。",
+  "status": "complete"
+}

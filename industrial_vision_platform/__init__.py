@@ -1,6 +1,6 @@
 """industrial_vision_platform — 工业视觉平台扩展模块。
 
-提供视觉任务分发器 (VisionModelDispatcher) 和数据管理扩展 (DataManagerExt)。
+提供视觉任务分发器 (VisionModelDispatcher)：统一推理入口 + LRU 显存管理。
 """
 from __future__ import annotations
 
@@ -14,13 +14,7 @@ except ImportError:
     VisionModelDispatcher = None  # type: ignore
     get_dispatcher = None  # type: ignore
 
-try:
-    from industrial_vision_platform.data_manager_ext import DataManagerExt
-except ImportError:
-    DataManagerExt = None  # type: ignore
-
 __all__ = [
     "VisionModelDispatcher",
     "get_dispatcher",
-    "DataManagerExt",
 ]

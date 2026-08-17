@@ -8,6 +8,8 @@
 5. flip_image_annotation — 图像翻转（含标注坐标同步翻转）
 
 所有函数纯 I/O，无 Qt 依赖，可独立测试。
+所有 JSON 落盘均为原子写（同目录 tmp + os.replace）：写盘中途失败或进程
+退出不会截断/损坏既有标注文件（P2-2）。
 """
 from __future__ import annotations
 
@@ -17,9 +19,38 @@ logger = logging.getLogger(__name__)
 
 import json
 import os
+import tempfile
 from typing import Any, Dict, List, Optional, Tuple
 
 from labeling.io_labelme import load_labelme
+
+
+def _atomic_write_json(path: str, doc: Dict[str, Any]) -> None:
+    """原子写 JSON：先写同目录临时文件，再 os.replace 替换目标。
+
+    P2-2：直写是 truncate-then-write，写盘中途失败/进程退出会把目标
+    JSON 截断且旧内容已丢。本函数保证任何一步失败都不触碰旧文件：
+
+    - 临时文件与目标同目录（同盘，os.replace 原子性前提），名带 .tmp；
+    - 写入参数与直写版一致（utf-8 / ensure_ascii=False / indent=2）；
+    - 异常类型与直写版一致上抛（open OSError / dump 原样 / replace OSError），
+      上抛前尽力清理残留临时文件。
+    """
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=os.path.basename(path) + ".",
+        suffix=".tmp",
+        dir=os.path.dirname(path) or ".",
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            logger.warning("临时文件清理失败: %s", tmp_path, exc_info=True)
+        raise
 
 
 def cut_labelme_json(
@@ -99,8 +130,7 @@ def cut_labelme_json(
                 "imageWidth": tile_w,
             }
             out_path = os.path.join(out_dir, f"{base_name}_{tx}_{ty}.json")
-            with open(out_path, "w", encoding="utf-8") as f:
-                json.dump(tile_doc, f, ensure_ascii=False, indent=2)
+            _atomic_write_json(out_path, tile_doc)
             results.append(out_path)
 
     return results
@@ -137,8 +167,7 @@ def batch_replace_label(
                 s["label"] = new_label
                 changed = True
         if changed:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(doc, fh, ensure_ascii=False, indent=2)
+            _atomic_write_json(path, doc)
             count += 1
     return count
 
@@ -199,8 +228,7 @@ def batch_delete_labels(
             if s.get("label") not in delete_set
         ]
         if len(doc["shapes"]) != original_len:
-            with open(path, "w", encoding="utf-8") as fh:
-                json.dump(doc, fh, ensure_ascii=False, indent=2)
+            _atomic_write_json(path, doc)
             count += 1
     return count
 
@@ -236,8 +264,7 @@ def flip_image_annotation(
         elif mode == "vertical":
             s["points"] = [[p[0], h - p[1]] for p in pts]
 
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(doc, f, ensure_ascii=False, indent=2)
+    _atomic_write_json(json_path, doc)
     return True
 
 
