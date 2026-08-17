@@ -1,7 +1,7 @@
 # AutoVisionAgent 发版检查单
 
 > 适用：打包发布 dist/ 前的人工验证流程（W4-T4 建立，P2-1 收尾）。
-> 常规开发验证不需要本单——`pytest`（门禁 64% + uia 默认排除）即可。
+> 常规开发验证不需要本单——`pytest`（门禁覆盖率见 pytest.ini fail-under + uia 默认排除）即可。
 
 ## 1. 门禁全量（必须 rc=0）
 
@@ -9,7 +9,7 @@
 .venv/Scripts/python.exe -m pytest
 ```
 
-预期：全绿，覆盖率 ≥ 64（棘轮地板，见 pytest.ini 注释）。
+预期：全绿，覆盖率 ≥ fail-under（**以 pytest.ini 的 --cov-fail-under 为单一真源**，W10 起为 89；本单不写死数字以免与棘轮脱节——W11 审查曾发现此处滞留旧值 64%）。
 
 ## 2. 打包
 

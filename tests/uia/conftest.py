@@ -67,9 +67,13 @@ LICENSE_KEY = CONFIG_DIR / "license.key"
 
 # ================================ 启动应用 ================================ #
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def ava_app():
-    """启动 AutoVisionAgent 并返回主窗口控件，会话结束后关闭进程。
+    """启动 AutoVisionAgent 并返回主窗口控件，测试结束后关闭进程。
+
+    W11 起 function 级（每用例独立启动被测应用——uia-autofix-loop plan-phase
+    生命周期纪律）：会话级复用在 6 用例下出现 UIA 树随页面内容膨胀导致的
+    渐进性查找失稳（W11 基线实测 5/6 → 1/6 随机翻车）。代价 ~20s/次启动。
 
     启动方式：
       - 默认：dist\\AutoVisionAgent\\AutoVisionAgent.exe
@@ -274,3 +278,42 @@ def fake_model_path(workspace_dir) -> Path:
     # 写入占位字节（非真实 torch 序列化格式）
     p.write_bytes(b"FAKE_PT_FOR_UIA_TEST")
     return p
+
+
+# ================================ 极柱真实数据 ================================ #
+
+# 极柱外观检数据集（用户指定测试图片源，可经 AVA_UIA_POLE_DIR 覆写）
+POLE_SOURCE_DIR = Path(os.environ.get(
+    "AVA_UIA_POLE_DIR", r"E:\学习项目\极柱外观检标注图"
+))
+
+
+@pytest.fixture(scope="session")
+def pole_subset_dir(tmp_path_factory) -> Path:
+    """从极柱数据集抽 8 张真实 bmp 到临时目录（4 正常 + 4 缺陷）。
+
+    - 正常图：文件名 "(N)" 前缀；缺陷图：纯数字前缀（数据集约定）。
+    - 括号文件名 + 1600x1600 真图：中文/特殊字符读图路径的天然探针
+      （历史坑：cv2.imread 对 "(N)" 与非 ASCII 路径解析失败）。
+    - 源目录不存在时 skip（fail-honest，不造假图冒充）。
+    """
+    if not POLE_SOURCE_DIR.is_dir():
+        pytest.skip(f"极柱数据集不存在: {POLE_SOURCE_DIR}")
+
+    import shutil
+
+    d = tmp_path_factory.mktemp("pole_subset")
+    normals = sorted(POLE_SOURCE_DIR.glob("(N)*.bmp"))
+    defects = sorted(
+        (p for p in POLE_SOURCE_DIR.glob("*.bmp") if p.name[:1].isdigit()),
+        key=lambda p: p.name,
+    )
+    picked = normals[:4] + defects[:4]
+    if len(picked) < 8:
+        pytest.skip(
+            f"极柱数据集样本不足（正常 {len(normals)} / 缺陷 {len(defects)}）: {POLE_SOURCE_DIR}"
+        )
+    for src in picked:
+        shutil.copy2(src, d / src.name)
+    logger.info("极柱子集: %s（%d 张）", d, len(picked))
+    return d

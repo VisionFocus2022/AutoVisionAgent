@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "runtime": "uia-autofix-loop",
+  "mode": "git",
+  "createdIso": "2026-08-17T02:55:00+00:00",
+  "baseline": {
+    "failCount": 0,
+    "passedCount": 6,
+    "skipCount": 0,
+    "parseError": false
+  },
+  "roundResults": [],
+  "consecutiveNoProgress": 0,
+  "restoreStreak": 0,
+  "suspectTests": {},
+  "stallLimit": 3,
+  "testWrongEscalationThreshold": 3,
+  "restoreStreakEscalation": 2,
+  "failCountHistory": [0],
+  "runningDigest": "",
+  "touchedFiles": [],
+  "recoveredSet": [],
+  "note": "基线即 GREEN（failCount=0），无 worker 轮次。到达 GREEN 前的 4 轮驱动器侧测试基建修复见 report.md。"
+}

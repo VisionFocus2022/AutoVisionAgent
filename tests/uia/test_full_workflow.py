@@ -237,7 +237,7 @@ def _step_annotate(win, data_dir: Path, labels_dir: Path) -> None:
     # 保存对话框可能不弹出（若 shapes 为空则直接 emit "标注数=0"）
     # 等待对话框出现，超时则检查状态是否已显示"标注数=0"
     dlg_appeared = enter_path_in_save_dialog(
-        "保存标注", str(label_path), timeout=5.0
+        "保存标注", str(label_path), timeout=25.0
     )
     saved = False
     if dlg_appeared:

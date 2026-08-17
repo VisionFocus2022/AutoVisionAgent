@@ -35,8 +35,12 @@ def find_main_window(timeout: float = 30.0) -> ua.WindowControl:
         try:
             win = ua.WindowControl(searchDepth=1, Name=MAIN_WINDOW_TITLE)
             if win.Exists(0.5):
-                # 等待窗口可交互
-                win.SetFocus()
+                # W11：SetActive 真前台化（SetFocus 只设键盘焦点不抬 z 序，
+                # 后续坐标点击会落到其他窗口——多实例顺序启动实测坑）
+                try:
+                    win.SetActive()
+                except Exception:  # noqa: BLE001
+                    win.SetFocus()
                 return win
         except Exception as e:  # noqa: BLE001
             last_err = e
@@ -235,7 +239,7 @@ def wait_any_status(
 
 # ============================ 文件对话框操作 ============================ #
 
-def _wait_dialog(title_contains: str, timeout: float = 10.0) -> Optional[object]:
+def _wait_dialog(title_contains: str, timeout: float = 22.0) -> Optional[object]:
     """等待标题包含 title_contains 的对话框窗口出现。
 
     多策略查找：
@@ -327,10 +331,62 @@ def confirm_dialog_if_present(
         return False
 
 
+def dismiss_stale_dialogs(timeout: float = 1.5) -> int:
+    """清扫意料之外的残留顶层对话框（对每个 #32770/Qt 弹窗发 ESC）。
+
+    W11 实测：原生对话框级联残留会让后续坐标点击落到弹窗上（点击"创建"
+    等按钮无响应）。返回清扫的窗口数（best-effort，失败不抛）。
+    """
+    dismissed = 0
+    try:
+        root = ua.GetRootControl()
+        for top in root.GetChildren():
+            try:
+                name = (top.Name or "")
+                if MAIN_WINDOW_TITLE in name:
+                    continue
+                tn = type(top).__name__
+                if not (tn.startswith("Window") or tn.startswith("Pane")):
+                    continue
+                cls = (top.ClassName or "")
+                # 只对原生对话框（#32770）发 ESC——有名窗口可能是其他应用，
+                # 误 ESC 会关掉用户的其他程序（W11 修正：不再动非 #32770 窗口）
+                if cls != "#32770":
+                    continue
+                top.SetFocus()
+                time.sleep(0.1)
+                ua.SendKey(ua.Keys.VK_ESCAPE)
+                dismissed += 1
+                logger.info("已清扫残留对话框: '%s'", name or cls)
+            except Exception:  # noqa: BLE001
+                continue
+    except Exception:  # noqa: BLE001
+        pass
+    if dismissed:
+        time.sleep(timeout)
+    return dismissed
+
+
+def _wait_dialog_gone(title_contains: str, timeout: float = 6.0) -> bool:
+    """等待标题匹配的对话框关闭（确认点击可能异步生效）。"""
+    title_lower = title_contains.lower()
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        dlg = ua.WindowControl(searchDepth=1, SubName=title_contains)
+        try:
+            if not dlg.Exists(0.4):
+                return True
+        except Exception:  # noqa: BLE001
+            return True
+        time.sleep(0.4)
+    logger.warning("对话框 '%s' 确认后 %ss 未关闭", title_contains, timeout)
+    return False
+
+
 def enter_path_in_open_dialog(
     dialog_title: str,
     path: str,
-    timeout: float = 10.0,
+    timeout: float = 22.0,
 ) -> bool:
     """在"打开/选择目录"对话框中输入路径并确认。
 
@@ -435,6 +491,10 @@ def enter_path_in_open_dialog(
             pass
 
     if confirmed:
+        # 确认可能异步生效：等对话框消失，仍在则补点一次确认
+        if not _wait_dialog_gone(dialog_title, timeout=6.0):
+            _click_confirm_button(dlg)
+            _wait_dialog_gone(dialog_title, timeout=4.0)
         logger.info("对话框 '%s' 已输入路径并确认: %s", dialog_title, path)
         return True
     return False
@@ -605,6 +665,106 @@ def _find_canvas(win):
     return best
 
 
+def draw_polygon_on_canvas(
+    win,
+    points_rel: list[tuple[float, float]],
+) -> bool:
+    """在标注画布上点击多个点后右键提交多边形（controller.py:113 右键=commit）。
+
+    points_rel 为画布内相对坐标 (0~1) 列表（≥3 点）。定位画布/聚焦逻辑与
+    draw_rectangle_on_canvas 相同；每个点一次左键单击，最后在末点右键提交。
+    """
+    import ctypes
+
+    LEFTDOWN, LEFTUP = 0x0002, 0x0004
+    RIGHTDOWN, RIGHTUP = 0x0008, 0x0010
+
+    canvas = _find_canvas(win)
+    if canvas is None:
+        logger.warning("未定位到画布控件（多边形）")
+        return False
+    rect = canvas.BoundingRectangle
+    logger.info("多边形画布 Rect=(%d,%d,%d,%d)", rect.left, rect.top, rect.right, rect.bottom)
+
+    user32 = ctypes.windll.user32
+
+    def _click(x: int, y: int, down: int, up: int) -> None:
+        user32.SetCursorPos(x, y)
+        time.sleep(0.08)
+        user32.mouse_event(down, 0, 0, 0, 0)
+        time.sleep(0.05)
+        user32.mouse_event(up, 0, 0, 0, 0)
+
+    # 先点击画布中心聚焦（QGraphicsView 需焦点接收鼠标事件）
+    cx, cy = (rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2
+    try:
+        ua.Click(cx, cy, waitTime=0.3)
+    except Exception:  # noqa: BLE001
+        pass
+
+    for rx, ry in points_rel:
+        x = int(rect.left + (rect.right - rect.left) * rx)
+        y = int(rect.top + (rect.bottom - rect.top) * ry)
+        _click(x, y, LEFTDOWN, LEFTUP)
+        time.sleep(0.12)
+        logger.info("多边形顶点: (%d,%d)", x, y)
+
+    time.sleep(0.15)
+    # 末点右键提交
+    _click(x, y, RIGHTDOWN, RIGHTUP)
+    time.sleep(0.4)
+    logger.info("多边形右键提交完成")
+    return True
+
+
+def find_edit_controls(root, timeout: float = 5.0) -> list:
+    """收集子树内全部 Edit 控件（QLineEdit 的 UIA 暴露）。"""
+    deadline = time.time() + timeout
+    edits: list = []
+    while time.time() < deadline:
+        edits = [c for c in _iter_descendants(root, max_depth=8)
+                 if type(c).__name__.startswith("Edit")]
+        if edits:
+            return edits
+        time.sleep(0.4)
+    return edits
+
+
+def set_edit_value(edit, value: str) -> bool:
+    """向 Edit 控件写入值：ValuePattern 优先，SendKeys 回退（回退需清空）。"""
+    try:
+        edit.SetFocus()
+        time.sleep(0.1)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        edit.GetValuePattern().SetValue(value)
+        logger.info("已 ValuePattern 写入: %r", value[:40])
+        return True
+    except Exception:  # noqa: BLE001
+        try:
+            edit.SendKeys("{Ctrl}a{Delete}", waitTime=0.05)
+            edit.SendKeys(value.replace("\\", "/"), waitTime=0.1)
+            logger.info("已 SendKeys 写入: %r", value[:40])
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.error("写入 Edit 失败: %s", e)
+            return False
+
+
+def find_combo_controls(root, timeout: float = 5.0) -> list:
+    """收集子树内全部 ComboBox 控件（QComboBox 的 UIA 暴露）。"""
+    deadline = time.time() + timeout
+    combos: list = []
+    while time.time() < deadline:
+        combos = [c for c in _iter_descendants(root, max_depth=8)
+                  if type(c).__name__.startswith("ComboBox")]
+        if combos:
+            return combos
+        time.sleep(0.4)
+    return combos
+
+
 __all__ = [
     "MAIN_WINDOW_TITLE",
     "find_main_window",
@@ -618,4 +778,10 @@ __all__ = [
     "enter_path_in_open_dialog",
     "enter_path_in_save_dialog",
     "draw_rectangle_on_canvas",
+    "draw_polygon_on_canvas",
+    "find_edit_controls",
+    "set_edit_value",
+    "find_combo_controls",
+    "dismiss_stale_dialogs",
+    "_wait_dialog_gone",
 ]

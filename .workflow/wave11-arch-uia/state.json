@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "change_id": "wave11-arch-uia",
+  "title": "W11 architecture review + UIA full-flow testing",
+  "created_at": "2026-08-17T01:55:23.191765+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "medium",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "用户原话（2026-08-17 消息）：使用架构师技能，对项目全面审查，并创建UIA自动化测试方案，对项目全面测试。 测试图片路径在E:\\学习项目\\极柱外观检标注图"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "同上（同一指令含执行授权：全面审查 + 创建方案并全流程测试）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave11-arch-uia.md",
+    "design": "",
+    "tasks": "docs/tasks-wave11-arch-uia.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005"
+    ],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-002"]},
+      {"id": "AC-003", "requirements": ["FR-003"]},
+      {"id": "AC-004", "requirements": ["FR-004"]},
+      {"id": "AC-005", "requirements": ["FR-005"]}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005"], "acceptance": ["AC-001", "AC-002", "AC-003", "AC-004", "AC-005"]},
+      {"id": "TASK-002", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-003", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-004", "requirements": ["FR-001"], "acceptance": ["AC-001"]},
+      {"id": "TASK-005", "requirements": ["FR-003"], "acceptance": ["AC-003"]},
+      {"id": "TASK-006", "requirements": ["FR-002"], "acceptance": ["AC-002"]},
+      {"id": "TASK-007", "requirements": ["FR-004"], "acceptance": ["AC-004"]},
+      {"id": "TASK-008", "requirements": ["FR-005"], "acceptance": ["AC-005"]},
+      {"id": "TASK-009", "requirements": ["FR-005"], "acceptance": ["AC-005"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-005 exe 重打包（AC-003）",
+      "command": ".venv/Scripts/python.exe -m PyInstaller autovisionagent.spec --noconfirm",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "dist/AutoVisionAgent/AutoVisionAgent.exe 时间戳 2026-08-17 10:00（晚于 W10 提交 0bc218a），含 W8-W10 全部 13 个修复；应用日志 10:16:35 '首次启动：已创建默认管理员' 证明新配置面生效。pytest-json-report 装入 venv；uia-autofix-loop config 合入 runner=uia-windows + 超时 900000。"
+    },
+    {
+      "name": "TASK-006 UIA 测试方案（AC-002）",
+      "command": "dir docs/uia-test-plan-full-coverage.md",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "方案文档落盘：栈探测/runner 合入说明/6 用例覆盖矩阵（每用例标注三级断言通道）/失败分类路由/生命周期（W11 修正为每用例独立启动）/条件用例清单/确认记录（用户指令充当用户门，偏差已记录）。"
+    },
+    {
+      "name": "TASK-007 UIA 测试扩写（AC-004）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/uia/test_pole_dataset_flows.py -o addopts= --timeout=300 -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "真窗首跑 4/5 通过（导入+划分/项目创建/设置持久化/主页一次过）；唯一失败为测试自身断言设计缺陷——矩形重试累计计数（状态实际 '矩形 4 标注数'）而死等字面 '1'；改为基线计数+增量检测（更严：任何一次未增即重试，最终硬失败）后单用例复跑 1 passed（66s）。5 用例全为 deterministic 断言（无像素/screenshot），铁证通道=磁盘产物+状态栏+UIA 树。"
+    },
+    {
+      "name": "TASK-008 autofix-loop 基线与收敛（AC-005 前半）",
+      "command": "node uia-autofix-loop/scripts/baseline-uia.mjs（env: PATH=venv + PYTEST_ADDOPTS=tests/uia -o addopts= --timeout=300）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "终态 GREEN：基线#4 与复确认整跑连续两次 6 passed / 0 failed / 0 skipped / parseError=false（full_workflow 全流程 + 极柱 5 用例，exe 真窗）。到达 GREEN 前 4 轮驱动器侧测试基建修复（详见 .autofix-loop/report.md 与 deviations）；loop 内生产代码零修改（应用日志全程零异常）；loop-state.json + report.md 已落盘。"
+    },
+    {
+      "name": "TASK-009a 门禁全量回归（棘轮不降）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "659 passed / 1 skipped（与 W10 终态一致，无回归），rc=0，全量 120s——fail-under=89 由 rc=0 保证满足；本波未动生产代码与 pytest.ini，棘轮地板不变。"
+    },
+    {
+      "name": "TASK-002 架构审查 Phase1 证据采集（AC-001 前置）",
+      "command": "bash：包级 LOC/Top10 大文件/测试规模/质量信号/C# 规模实测",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "生产码 15,881 LOC（gui 6,638/labeling 2,058/core 1,747/serving 1,332/models 1,204 为前五）；Top 文件 label/page.py 818；测试 53 文件/13,302 行/607 测试函数；except 广捕 44 处、TODO/FIXME 0；C# 9 文件/1,420 LOC。coverage 89.35% 与 C# 45 测试引用 W7/W10 已验证记录。"
+    },
+    {
+      "name": "TASK-003 架构扇出与对抗验证（AC-001）",
+      "command": "Workflow wf_9e437d72-d8d（6 视角 + P0/P1 反驳，resume 续跑）+ 2 个降并发补漏代理",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "6 视角全交付（C4/一条反驳经 429 两轮失败后第 3 次单代理重试成功）；47 条原始发现（P0×1/P1×9/P2×37）；9 条 P0/P1 对抗反驳判定：P0 巨石函数 AST 重测 9/9 精确复现 confirmed、shm 泄漏重测坐实且更严重、config 双体系全声明复现、审计停摆 48 天 0 落盘坐实、FID sqrtm 30 seeds 实测恒低估 ~2.5 倍坐实、训练权重假成功 confirmed 但下游 FileNotFoundError 断言被反驳修正（全仓无 artifact.weights_path 消费者、引擎 load 均 exists 预检）、后台样板降级 P2。反驳代理另核实到 pytest.ini 尾巴注释陈旧（path_io 实 93% 非 28%）。"
+    },
+    {
+      "name": "TASK-004 架构审查 v2 文档（AC-001）",
+      "command": "dir docs\\AutoVisionAgent-架构解析与优化方案-v2.md",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "475 行 14 节齐（摘要/概览/分层图/4 关键机制/双启动链/协作/指标表含复核状态列/多视角含 18 视角覆盖矩阵/三波路线/决策建议/完整性批判记录/验证范围与局限/驳回降级审计/v1 P2 对照表）；终版 P0×1/P1×7/P2×27（47 条合并 12 处跨视角重复）；终审抽查：P 条目 35、待补/待评残留 0、P0/P1 全部带对抗验证标注。"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "uia-autofix-loop Phase 0 的方案确认用户门由本轮 G1 指令充当（用户已明确指定全面测试范围与极柱图片路径，自主会话无交互确认）——同一证据记录于 docs/uia-test-plan-full-coverage.md 确认记录节。",
+    "执行方式（ultracode 沿用 W10）：架构审查多视角用 Workflow 并行扇出（6 视角代理 + P0/P1 对抗反驳）；UIA 修复收敛用 uia-autofix-loop 驱动器-工人协议（主会话不读 UIA 原生报告）。",
+    "uia-windows runner 接线适配：内置调用为裸 python -m pytest（会吃 pytest.ini 的 coverage addopts 且被 --ignore=tests/uia 排除）——通过调用侧导出 PATH（venv python）+ PYTEST_ADDOPTS=\"tests/uia -o addopts=\" 适配，不改技能脚本。",
+    "UIA 测试基建稳定性迭代（基线前，驱动器侧修测试基建而非断言）：#1 5/6（项目创建无终态）；#2（用户指示'再试一次'）1/6 随机翻车——会话级复用 app 在 6 用例下 UIA 树随页面内容膨胀渐进失稳+对话框级联；改每用例独立启动（plan-phase 生命周期纪律）+对话框等待 10→22s+确认后等消失+#32770 清扫后 #3 仍 1/6——钉死根因为第 2+ 实例 SetFocus 不抬 z 序致点击落他窗（UIA 树可见隐藏页使导航点击假成功连锁迷失）；修复 SetActive 真前台化+登录完成硬校验（离线模式按钮消失+两轮重试）后跑 #4。",
+    "架构扇出首跑 3 视角代理（C4 可测试性/C5C6 运维安全/领域扫雷）因 API 速率限制 429 失败——Workflow resumeFromRunId 续跑（已完成视角走缓存）。",
+    "架构扇出续跑仍有 2 条 429（C4 视角/训练权重反驳）——降并发改单代理第 3 次重试成功；v2 文档由独立单代理撰写（读写隔离，母会话终审抽查）。",
+    "审查确证的文档漂移顺手修复（零行为影响）：pytest.ini 尾巴注释刷新为当日 .coverage 实测值（path_io 28%→已填平 93%、interfaces 67%→78%）；release-checklist 的『门禁 64%』陈旧门槛改为引用 pytest.ini 单一真源。"
+  ],
+  "request_evidence": "使用架构师技能，对项目全面审查，并创建UIA自动化测试方案，对项目全面测试。测试图片路径在E:\\学习项目\\极柱外观检标注图",
+  "final_summary": "第十一波完成（架构全面审查 + UIA 全流程测试双交付）。①架构审查 v2（docs/AutoVisionAgent-架构解析与优化方案-v2.md，475 行 14 节）：Workflow 6 视角扇出 + 9 条 P0/P1 对抗反驳（429 两轮后降并发重试补齐），47 原始发现合并为终版 P0×1/P1×7/P2×27——P0=9 个巨石函数（AST 复测 9/9）；代表性 P1：shm 区域泄漏为默认路径行为（无 TTL/reaper，验证员重测更严重）、config.py 545 行 82% 配置死区、训练权重保存失败假成功（下游断言经反驳修正）、审计轨停摆 48 天 0 落盘、FID sqrtm 恒低估 ~2.5 倍（真算法 bug）、lock 不可安装零文档、RCE 安全回退零测试。v1 的 4 P1 已全部根治；v1 P2 对照：8 根治/3 残留/2 部分残留。②UIA：exe 重打包（含 W8-W10 全部 13 修复）；方案文档 + 5 条极柱真实数据用例（括号文件名 bmp 导入+划分三目录铁证、多边形右键提交+矩形+切图双 LabelMe JSON 铁证、项目创建落盘、主题持久化、主页冒烟）；uia-autofix-loop 终态 GREEN——基线与复确认连续两次 6/6 全绿，loop 内生产代码零修改（应用日志全程干净）；到达 GREEN 前 4 轮驱动器侧测试基建修复（断言增量检测/每用例独立启动/对话框加固/SetActive 真前台化+登录硬校验）。③门禁全量回归 659 passed/1 skipped rc=0（棘轮 89 不变）；顺手修两处文档漂移。validate_workflow 通过。",
+  "status": "complete"
+}
