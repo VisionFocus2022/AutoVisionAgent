@@ -353,7 +353,7 @@ _EN_US: Dict[str, str] = {
     "请等待上一轮训练结束": "Please wait for the current training to finish",
 
     # ---- R4 新增（登录/许可证/部署） ----
-    "首次登录，请尽快修改密码": "First login, please change your password ASAP",
+    "首次登录——请修改密码": "First Login — Change Password",
     "选择许可证文件": "Select License File",
     "许可证导入成功": "License imported successfully",
     "许可证导入失败": "License import failed",
