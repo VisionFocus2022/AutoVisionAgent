@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
-from gui.core.thread_bridge import invoke_main
+from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_directory
 
 logger = logging.getLogger(__name__)
@@ -175,6 +175,7 @@ class FlawGenPage(QWidget):
                 from core.exceptions import SupervisedEngineError
                 from core.image_io import imwrite_unicode
                 from core.interfaces_supervised import TaskType
+                # registry 直连为 GUI 正式形态（v3 P2-7）
                 from models.supervised.engines import register_all_engines
                 from models.supervised.registry import get_engine
 
@@ -217,8 +218,12 @@ class FlawGenPage(QWidget):
                 invoke_main(self, "_failed_slot", str(exc))
 
         # W15-J2（P2-1 批次 A）：经 gui.core.jobs 统一调度——注册表登记 +
-        # 协作取消 + 异常路由（_work 内两段 except 路由/文案不变）
-        run_job(_work, name="flaw_gen.generate")
+        # 协作取消 + 异常路由（_work 内两段 except 路由/文案不变）；
+        # W17（v3 P2-1）：on_error 兜底——元组外异常也复位生成按钮
+        run_job(
+            _work, name="flaw_gen.generate",
+            on_error=ui_on_error(self, "_failed_slot"),
+        )
 
     @Slot(int)
     def _progress_slot(self, pct: int) -> None:

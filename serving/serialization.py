@@ -8,8 +8,10 @@
 2. 把 ``DetectRequest`` 中的图像源（image_shm / image_path / image_bytes）
    解码为 numpy 数组，喂给分发器。
 
-阈值：大数组判定。``_SHM_MIN_BYTES`` 以下的数组直接内联，避免为小掩码
-也创建文件的额外开销。
+阈值：大数组判定。序列化后（bool 掩码经 RLE）小于 ``_SHM_MIN_BYTES`` 的
+载荷直接内联进 proto 的 masks_inline/keypoints_inline 字段（W17，v3 P1-1：
+结果区域由客户端在 RPC 返回后即读，小载荷内联不再消耗 shm 区域配额——
+随附 C# 客户端结构性无法回收结果区域）；大于阈值仍走共享内存文件。
 """
 from __future__ import annotations
 
@@ -67,13 +69,39 @@ def detection_result_to_proto(
         except Exception:
             logger.warning("boxes 序列化失败，跳过", exc_info=True)
 
-    # masks: (N,H,W) bool —— 大块，走共享内存
-    if result.masks is not None:
-        proto.masks_shm.CopyFrom(_array_to_shm_or_skip(result.masks, "bool", shm))
+    # P3⑤（W17 簇C）：部分失败回滚——masks/keypoints 两段载荷写入期间任一
+    # 后续步骤抛异常，客户端不会收到任何句柄，此前已成功创建的 shm 区域将
+    # 成为无主泄漏（登记表占位 + 磁盘文件残留）。记录已落地区域路径，
+    # 异常时先逐个 release 再上抛（inline 载荷 file_path 为空，不记录）。
+    created_region_paths: list[str] = []
+    try:
+        # masks: (N,H,W) bool —— 小掩码内联（W17），大掩码走共享内存
+        if result.masks is not None:
+            inline, handle = _array_payload(result.masks, "bool", shm, rle=True)
+            if handle.file_path:
+                created_region_paths.append(handle.file_path)
+            proto.masks_shm.CopyFrom(handle)
+            if inline is not None:
+                proto.masks_inline = inline
 
-    # keypoints: (N,K,2|3) float —— 走共享内存
-    if result.keypoints is not None:
-        proto.keypoints_shm.CopyFrom(_array_to_shm_or_skip(result.keypoints, "float32", shm))
+        # keypoints: (N,K,2|3) float —— 同契约
+        if result.keypoints is not None:
+            inline, handle = _array_payload(result.keypoints, "float32", shm, rle=False)
+            if handle.file_path:
+                created_region_paths.append(handle.file_path)
+            proto.keypoints_shm.CopyFrom(handle)
+            if inline is not None:
+                proto.keypoints_inline = inline
+    except BaseException:
+        for path in created_region_paths:
+            try:
+                shm.release(path)
+            except Exception:
+                # 回滚本身失败不得掩盖原始异常，但必须留痕（不得静默吞）
+                logger.warning(
+                    "部分失败回滚共享内存区域失败: %s", path, exc_info=True
+                )
+        raise
 
     # extra: 仅保留可字符串化的值
     for k, v in (result.extra or {}).items():
@@ -87,15 +115,22 @@ def detection_result_to_proto(
     return proto
 
 
-def _array_to_shm_or_skip(
+def _array_payload(
     array: Any,
     dtype_name: str,
     shm: SharedMemoryManager,
-) -> pb.SharedMemoryHandle:
-    """大数组写共享内存；小数组或失败时返回空句柄（消费方按 length==0 判定）。
+    *,
+    rle: bool,
+):
+    """序列化大数组，返回 ``(inline_bytes | None, SharedMemoryHandle)``。
 
-    W7：bool 掩码默认走 bool_rle 压缩（.NET SharedMemoryReader.ReadMasks
-    已支持解码，见 serving/dotnet_client）；AVA_SHM_MASK_RLE=0 显式退回 raw。
+    W17（v3 P1-1）小数组内联：序列化后（bool 掩码经 RLE，默认开启，
+    AVA_SHM_MASK_RLE=0 退回 raw）字节少于 ``_SHM_MIN_BYTES`` 的载荷直接
+    内联——返回的句柄仅作 dtype/shape 元数据载体（file_path 空、length 0），
+    不创建共享内存区域、不消耗区域配额。大载荷仍走 shm 区域，inline 为 None。
+
+    失败/空数组语义与旧 ``_array_to_shm_or_skip`` 一致：返回 (None, 空句柄)，
+    消费方按 length==0 判定缺失。
     """
     import numpy as np
 
@@ -108,21 +143,30 @@ def _array_to_shm_or_skip(
         arr = arr.astype(target, copy=False)
     except Exception:
         logger.warning("数组转 dtype=%s 失败，跳过共享内存", dtype_name, exc_info=True)
-        return pb.SharedMemoryHandle()
+        return None, pb.SharedMemoryHandle()
 
-    nbytes = int(arr.nbytes)
-    if nbytes < _SHM_MIN_BYTES:
-        # 小数组：仍走共享内存以保持句柄语义一致；若需内联可在此扩展
-        # 这里选择直接写文件，简化消费端逻辑（始终从 shm 读 masks/keypoints）
-        pass
-    if nbytes == 0:
-        return pb.SharedMemoryHandle()
+    shape = tuple(int(s) for s in arr.shape)
 
-    if dtype_name == "bool" and os.environ.get("AVA_SHM_MASK_RLE", "1") == "1":
-        return shm.write_mask_compact(arr).to_proto()
+    if rle and os.environ.get("AVA_SHM_MASK_RLE", "1") == "1":
+        from serving.mask_codec import encode_mask_rle
 
-    handle = shm.write_array(arr, dtype=dtype_name)
-    return handle.to_proto()
+        payload = encode_mask_rle(arr)
+        wire_dtype = "bool_rle"
+    else:
+        payload = arr.tobytes(order="C")
+        wire_dtype = dtype_name
+
+    if len(payload) == 0:
+        return None, pb.SharedMemoryHandle()
+
+    if len(payload) < _SHM_MIN_BYTES:
+        # 小数组内联：句柄只携带 dtype/shape 元数据（file_path 空、length 0）
+        return payload, pb.SharedMemoryHandle(
+            dtype=wire_dtype, shape=list(shape)
+        )
+
+    handle = shm.write_bytes(payload, dtype=wire_dtype, shape=shape)
+    return None, handle.to_proto()
 
 
 # ----------------------- proto / request -> numpy ------------------------- #

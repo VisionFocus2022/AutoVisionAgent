@@ -20,7 +20,7 @@ import logging.handlers
 import os
 import sys
 from concurrent import futures
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 import grpc
 
@@ -37,6 +37,12 @@ from serving.shared_memory import SharedMemoryManager
 logger = logging.getLogger(__name__)
 
 _SERVER_VERSION = "autovisionagent-serving/1.0"
+
+# P2-9（W17 簇C）：回环地址白名单——非回环绑定须在绑定前告警（ADR-0001）
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+# W19（v3 第三波 FR-2 方向 B，PoC）：FetchRegion 服务端流分块大小（1 MiB）
+_FETCH_CHUNK_BYTES = 1024 * 1024
 
 
 class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
@@ -164,7 +170,28 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
         self, request: pb.ReleaseSharedMemoryRequest, context: grpc.ServicerContext
     ) -> pb.ReleaseSharedMemoryResponse:
         try:
-            ok = self._shm.release(request.file_path)
+            # W19（v3 第三波 FR-2 方向 A，PoC）：非 0 lease_id → 校验归属后
+            # 释放；错误租约拒绝且区域不动。默认（0，无租约）路径不变。
+            if request.lease_id:
+                ok = self._shm.release_leased(request.file_path, int(request.lease_id))
+            else:
+                ok = self._shm.release(request.file_path)
+            if not ok:
+                # W17（v3 P1-1 附带）：未命中本进程区域不得假报成功——旧行为
+                # 恒 success=True，客户端把"什么都没回收"当成功 ACK，与泄漏
+                # 互为盲区。未命中多为：路径错 / 已回收 / 对端创建的文件 /
+                # （W19）租约归属不符。
+                logger.warning(
+                    "ReleaseSharedMemory 未命中或被拒: %s (lease_id=%d)",
+                    request.file_path, request.lease_id,
+                )
+                return pb.ReleaseSharedMemoryResponse(
+                    success=False,
+                    error=(
+                        "区域不存在、非本服务创建或租约归属不符"
+                        f"（lease_id={request.lease_id}）：{request.file_path}"
+                    ),
+                )
             return pb.ReleaseSharedMemoryResponse(success=True)
         except Exception as e:
             # W14-C3（P2-13）：共享内存泄漏排查依赖服务端日志（与客户端
@@ -173,6 +200,42 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
                 "ReleaseSharedMemory(%s) 失败: %s", request.file_path, e, exc_info=True
             )
             return pb.ReleaseSharedMemoryResponse(success=False, error=str(e))
+
+    # ------------------- 大区域流式拉取（W19 FR-2 方向 B PoC） ------------------- #
+
+    def FetchRegion(
+        self, request: pb.SharedMemoryHandle, context: grpc.ServicerContext
+    ) -> Iterator[pb.ArrayChunk]:
+        """按句柄把共享内存区域字节以 1 MiB ArrayChunk 流式回传。
+
+        供无法做同机文件映射的消费端（跨机/受限沙箱）取回大数组；
+        区域不存在/已被回收 → context.abort(NOT_FOUND)。生产路径
+        未启用（serialization 默认不产生本调用，ADR-0002）。
+        """
+        end = int(request.offset) + int(request.length)
+        pos = int(request.offset)
+        while pos < end:
+            n = min(_FETCH_CHUNK_BYTES, end - pos)
+            try:
+                data = self._shm.read_range(request.file_path, pos, n)
+            except FileNotFoundError:
+                context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"共享内存区域不存在或已被回收: {request.file_path}",
+                )
+                return  # 静态检查友好；abort 已抛出终止异常
+            if len(data) != n:
+                # 短读：文件被截断（异常态），按区域已损坏终止
+                context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"共享内存区域读取短块（期望 {n}，实得 {len(data)}）: {request.file_path}",
+                )
+                return
+            # W19 验证修正：offset 取本块起始位移（首块为 0）——与 proto
+            # 注释/重组惯例一致（消费端 handle.offset+chunk.offset 定位）
+            rel = pos - int(request.offset)
+            pos += n
+            yield pb.ArrayChunk(data=data, offset=rel, last=pos >= end)
 
 
 # ------------------------------ 服务启动入口 ------------------------------- #
@@ -257,6 +320,18 @@ def create_server(
         # 延迟导入，避免 dispatcher 依赖（如 torch）未就绪时影响模块加载
         from industrial_vision_platform.vision_dispatcher import get_dispatcher
         dispatcher = get_dispatcher()
+
+    if host not in _LOOPBACK_HOSTS:
+        # P2-9（W17 簇C）：绑定前告警——无 TLS/token 的 gRPC 一旦非回环监听，
+        # 即对整个网段裸奔（任意客户端可加载模型/触发推理），须显式提醒。
+        logger.warning(
+            "非回环绑定: %s:%d —— 本服务无 TLS/token 鉴权，非回环监听会把 gRPC "
+            "接口（加载模型/触发推理/读写共享内存）暴露给外部网络；请确认网络"
+            "边界与访问来源，或参考 ADR-0001（docs/adr/0001-serving-loopback.md）"
+            "改用回环地址 + 反向代理方案",
+            host,
+            port,
+        )
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=max_workers))
     pb_grpc.add_AutoVisionAgentServiceServicer_to_server(

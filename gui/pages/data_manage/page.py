@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
-from gui.core.thread_bridge import invoke_main
+from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
 
@@ -46,7 +46,12 @@ _OP_TITLES = {
     "flip": "翻转完成",
     "cut": "切割完成",
     "export": "导出完成",
+    # W19（v3 第三波 FR-4.2）：版本管理入口
+    "snapshot": "快照完成",
 }
+
+# W19 FR-4.2：版本对比对话框每类示例上限（长清单只列前 20 条，计数仍全量）
+_MAX_DIFF_EXAMPLES = 20
 
 
 class DataManagePage(QWidget):
@@ -66,19 +71,25 @@ class DataManagePage(QWidget):
         self._thumb_pool = QThreadPool(self)
         self._thumb_pool.setMaxThreadCount(4)
         self._thumb_items: Dict[str, "QListWidgetItem"] = {}  # R5-5: path → item
+        # W19（v3 第三波 FR-4.2）：最近一次版本对比对话框（非模态，供测试直读）
+        self._diff_dialog = None
 
         self._build_ui()
         self._wire()
 
         # W3-T3: 重活操作 → 触发按钮（worker 执行期间禁用）
+        # W17：补注册 stats——此前统计失败路径查不到按钮，btn_stat 不复位
         self._op_buttons: Dict[str, QPushButton] = {
             "import": self.btn_import,
             "split": self.btn_split,
+            "stats": self.btn_stat,
             "replace": self.btn_replace,
             "delete": self.btn_delete_lbl,
             "flip": self.btn_flip,
             "cut": self.btn_cut,
             "export": self.btn_export,
+            # W19（v3 第三波 FR-4.2）：快照后台执行期间禁用按钮
+            "snapshot": self.btn_snapshot,
         }
 
     # ============================== UI ============================== #
@@ -104,6 +115,7 @@ class DataManagePage(QWidget):
 
         self._build_toolbar_data_group(bar, h)
         self._build_toolbar_label_group(bar, h)
+        self._build_toolbar_version_group(bar, h)
         return bar
 
     def _build_toolbar_data_group(self, bar: QWidget, h: QHBoxLayout) -> None:
@@ -183,6 +195,18 @@ class DataManagePage(QWidget):
         self.btn_export = QPushButton(tr("导出训练集"), bar)
         h.addWidget(self.btn_export)
 
+    def _build_toolbar_version_group(self, bar: QWidget, h: QHBoxLayout) -> None:
+        """工具栏版本组：创建快照 + 版本对比（W19 v3 第三波 FR-4.2）。"""
+        sep3 = QFrame(bar)
+        sep3.setFixedWidth(1)
+        sep3.setStyleSheet("background-color: #3f4452;")
+        h.addWidget(sep3)
+
+        self.btn_snapshot = QPushButton(tr("创建快照"), bar)
+        h.addWidget(self.btn_snapshot)
+        self.btn_diff = QPushButton(tr("版本对比"), bar)
+        h.addWidget(self.btn_diff)
+
     def _build_body(self) -> QHBoxLayout:
         """正文：缩略图列表 + 右侧统计面板。"""
         body = QHBoxLayout()
@@ -250,6 +274,10 @@ class DataManagePage(QWidget):
         self.btn_flip.clicked.connect(self._tool_flip_annotation)
         self.btn_cut.clicked.connect(self._tool_cut_json)
         self.btn_export.clicked.connect(self._tool_export_dataset)
+
+        # W19（v3 第三波 FR-4.2）：版本管理入口
+        self.btn_snapshot.clicked.connect(self._tool_snapshot)
+        self.btn_diff.clicked.connect(self._tool_version_diff)
 
         # 比例联动：三者之和 = 1.0
         self.spin_train.valueChanged.connect(self._on_ratio_changed)
@@ -385,8 +413,12 @@ class DataManagePage(QWidget):
             invoke_main(self, "_op_done", op, fmt(result))
 
         # W15-J2（P2-1 批次 A）：经 gui.core.jobs 统一调度——注册表登记 +
-        # 协作取消 + 异常路由（wrapper 内 expected 异常元组/时序/文案不变）
-        run_job(_wrapper, name=f"data_manage.{op}")
+        # 协作取消 + 异常路由（wrapper 内 expected 异常元组/时序/文案不变）；
+        # W17（v3 P2-1）：on_error 兜底——元组外异常经 _op_failed(op, err) 复位按钮
+        run_job(
+            _wrapper, name=f"data_manage.{op}",
+            on_error=ui_on_error(self, "_op_failed", op),
+        )
 
     @Slot(str, str)
     def _op_done(self, op: str, msg: str) -> None:
@@ -492,8 +524,11 @@ class DataManagePage(QWidget):
                 return
             invoke_main(self, "_stats_done", stats if stats else {})
 
-        # W15-J2（P2-1 批次 A）：同上，经 jobs 统一调度
-        run_job(_work, name="data_manage.stats")
+        # W15-J2（P2-1 批次 A）：同上，经 jobs 统一调度；W17 on_error 兜底
+        run_job(
+            _work, name="data_manage.stats",
+            on_error=ui_on_error(self, "_op_failed", "stats"),
+        )
 
     @Slot(dict)
     def _stats_done(self, stats: dict) -> None:
@@ -624,6 +659,80 @@ class DataManagePage(QWidget):
             ),
         )
 
+    # ============================== 版本管理（W19 v3 第三波 FR-4.2） ============================== #
+    def _tool_snapshot(self) -> None:
+        """创建项目快照（run_job 后台执行，on_error 兜底复位）。"""
+        if not self._project_dir or not os.path.isdir(self._project_dir):
+            self.status_changed.emit(tr("请先设置项目目录"), "!")
+            return
+        from project import versioning
+
+        root = self._project_dir
+        self._run_worker(
+            "snapshot",
+            lambda: versioning.create_snapshot(root, "manual"),
+            lambda snap_dir: os.path.basename(snap_dir),
+        )
+
+    def _tool_version_diff(self) -> None:
+        """版本对比：最近两个快照的 diff 摘要（非模态 QDialog 展示）。"""
+        if not self._project_dir or not os.path.isdir(self._project_dir):
+            self.status_changed.emit(tr("请先设置项目目录"), "!")
+            return
+        from project import versioning
+
+        snaps = versioning.list_snapshots(self._project_dir)
+        if len(snaps) < 2:
+            self.status_changed.emit(
+                tr("快照不足两个，无法对比"), f"{len(snaps)}"
+            )
+            return
+        (old_dir, old_label, _), (new_dir, new_label, _) = snaps[-2], snaps[-1]
+        try:
+            diff = versioning.diff_manifests(
+                versioning.load_manifest(old_dir),
+                versioning.load_manifest(new_dir),
+            )
+        except ValueError as exc:
+            self.status_changed.emit(tr("快照清单读取失败"), str(exc)[:60])
+            return
+
+        from PySide6.QtWidgets import QDialog, QTextEdit
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(tr("版本对比"))
+        lay = QVBoxLayout(dlg)
+        view = QTextEdit(dlg)
+        view.setObjectName("diffText")
+        view.setReadOnly(True)
+        view.setPlainText(
+            f"{tr('旧')} {old_label} → {tr('新')} {new_label}\n\n"
+            + self._version_diff_text(diff)
+        )
+        lay.addWidget(view)
+        self._diff_dialog = dlg
+        # 非模态：不阻塞主线程（offscreen 测试可直接读文本）
+        dlg.show()
+        total = len(diff["added"]) + len(diff["removed"]) + len(diff["changed"])
+        self.status_changed.emit(
+            tr("版本对比完成"), f"{total} {tr('处差异')}"
+        )
+
+    def _version_diff_text(self, diff: dict) -> str:
+        """diff 三类 → 摘要文本：各类计数 + 每类前 _MAX_DIFF_EXAMPLES 条示例。"""
+        lines = []
+        for key, label in (
+            ("added", "新增"), ("removed", "删除"), ("changed", "变更"),
+        ):
+            items = diff.get(key, [])
+            lines.append(f"{tr(label)} {len(items)} {tr('项')}")
+            lines.extend(f"  {p}" for p in items[:_MAX_DIFF_EXAMPLES])
+            if len(items) > _MAX_DIFF_EXAMPLES:
+                lines.append(
+                    f"  {tr('……其余')} {len(items) - _MAX_DIFF_EXAMPLES} {tr('项略')}"
+                )
+        return "\n".join(lines)
+
     def retranslate(self) -> None:
         """切换语言时刷新文案。"""
         self.btn_open_dir.setText(tr("选择目录"))
@@ -636,6 +745,8 @@ class DataManagePage(QWidget):
         self.btn_flip.setText(tr("翻转标注"))
         self.btn_cut.setText(tr("切割标注"))
         self.btn_export.setText(tr("导出训练集"))
+        self.btn_snapshot.setText(tr("创建快照"))
+        self.btn_diff.setText(tr("版本对比"))
         self.cmb_export_fmt.setItemText(0, tr("YOLO 格式"))
         self.cmb_export_fmt.setItemText(1, tr("COCO 格式"))
         self._refresh()

@@ -1,7 +1,9 @@
-"""有监督引擎导出整合（FR-E）— T-AVA-13
+"""有监督引擎导出整合（FR-E）— T-AVA-14
 
 将有监督任务引擎对接到 inference/onnx_exporter 和 TensorRT 加速链路。
-支持将 ISupervisedTaskEngine 底层 nn.Module 导出为 ONNX + 量化 + TRT。
+支持将底层 nn.Module 导出为 ONNX + 量化 + TRT（W18：export_onnx 为显式
+参数形态 model/task_value/path——引擎字段提取仅保留在 export_supervised_engine
+便捷门面，调用方无需再造引擎桩）。
 """
 from __future__ import annotations
 
@@ -19,7 +21,8 @@ class SupervisedExporter:
     """有监督引擎导出器。
 
     流程：
-    1. 从引擎提取底层 nn.Module（engine._model）
+    1. 接收显式参数（nn.Module + task_value）——W18 起不再吃 engine 对象
+       （旧形态内取 .task.value 与 ._model，迫使调用方造引擎桩）
     2. 调用 inference/onnx_exporter 导出 ONNX
     3. 可选：TensorRT 转换
     """
@@ -30,18 +33,21 @@ class SupervisedExporter:
 
     def export_onnx(
         self,
-        engine: ISupervisedTaskEngine,
+        model,
+        task_value: str,
         output_path: str,
         input_shape: Optional[tuple] = None,
         precision: str = "fp32",
     ) -> str:
         """
-        导出有监督引擎为 ONNX。
+        导出有监督模型为 ONNX（W18：显式参数形态）。
 
         Args:
-            engine: 已加载权重的引擎实例。
+            model: 已加载权重的底层 nn.Module（完整模型对象）。
+            task_value: 任务值（cls/det/pseg/pose/sseg/super...，
+                用于 input_shape 未显式给出时自动选择）。
             output_path: 输出 .onnx 路径。
-            input_shape: 输入张量形状（None 时根据 task 自动选择）。
+            input_shape: 输入张量形状（None 时按 task_value 自动选择）。
             precision: fp32/fp16/int8。
 
         Returns:
@@ -49,24 +55,22 @@ class SupervisedExporter:
         """
         import torch
 
-        # 根据 task 自动选择默认 input_shape（引擎可能无 task 属性，R-W10 防穿）
+        # 根据 task 自动选择默认 input_shape（task_value 为空串时走 else 兜底）
         if input_shape is None:
-            task_val = getattr(getattr(engine, "task", None), "value", "")
-            if task_val == "cls":
+            if task_value == "cls":
                 input_shape = (1, 3, 224, 224)
-            elif task_val in ("det", "pseg", "pose"):
+            elif task_value in ("det", "pseg", "pose"):
                 input_shape = (1, 3, 640, 640)
-            elif task_val == "sseg":
+            elif task_value == "sseg":
                 input_shape = (1, 3, 512, 512)
-            elif task_val == "super":
+            elif task_value == "super":
                 input_shape = (1, 3, 256, 256)
             else:
                 input_shape = (1, 3, 640, 640)
-            logger.info("自动选择 input_shape=%s (task=%s)", input_shape, task_val)
+            logger.info("自动选择 input_shape=%s (task=%s)", input_shape, task_value)
 
-        model = getattr(engine, "_model", None)
         if model is None:
-            raise ModelExportError("引擎未加载模型", details={})
+            raise ModelExportError("模型未加载", details={})
 
         model.eval()
         out_path = Path(output_path)
@@ -286,8 +290,9 @@ def export_supervised_engine(
 
     if "onnx" in formats:
         onnx_path = Path(output_dir) / f"{task}_model.onnx"
+        # W18：export_onnx 显式参数形态——此处提取引擎字段后转调
         results["onnx"] = exporter.export_onnx(
-            engine, str(onnx_path), precision=precision
+            getattr(engine, "_model", None), task, str(onnx_path), precision=precision
         )
 
     if "trt" in formats and "onnx" in results:

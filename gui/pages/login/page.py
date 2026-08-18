@@ -9,12 +9,13 @@ import logging
 import os
 import secrets
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
-from PySide6.QtCore import Signal, QTimer
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -29,6 +30,7 @@ from PySide6.QtWidgets import (
 from gui.core.i18n import tr
 from core.auth import hash_password as _hash_password
 from core.auth import verify_and_migrate as _verify_and_migrate
+from core.auth import verify_password as _verify_password
 from core.constants import CONFIG_DIR as _CONFIG_DIR
 
 logger = logging.getLogger(__name__)
@@ -37,11 +39,123 @@ logger = logging.getLogger(__name__)
 _MAX_LOGIN_ATTEMPTS = 5
 _LOCKOUT_SECONDS = 300  # 5 分钟锁定
 
+# W19（v3 第三波 FR-5.1）：初始凭据一次性文件——替代日志明文通道；
+# 改密成功后由 _remove_initial_credentials 删除（FR-5.2）
+_INITIAL_CREDENTIALS_FILENAME = "initial_credentials.txt"
+
+# ---- W18 / P2-8: 角色稳定枚举 ----
+# 持久层（users.json）与 login_success 信号只落枚举值，与界面语言解耦；
+# 显示名经 _role_display_map() 按当前语言渲染（展示层再 tr()）。
+ROLE_ADMIN = "admin"
+ROLE_ENGINEER = "engineer"
+ROLE_OPERATOR = "operator"
+
+_ROLE_ORDER = (ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR)
+
+# 中文旧值迁移映射（W18 前历史库落的是 tr() 显示名）
+_LEGACY_ROLE_MAP = {
+    "管理员": ROLE_ADMIN,
+    "工程师": ROLE_ENGINEER,
+    "操作员": ROLE_OPERATOR,
+}
+
+
+def _role_display_map() -> Dict[str, str]:
+    """枚举 → 当前语言显示名。
+
+    tr() 依赖运行期语言状态，映射须函数内构造（模块导入期语言未定）。
+    """
+    return {
+        ROLE_ADMIN: tr("管理员"),
+        ROLE_ENGINEER: tr("工程师"),
+        ROLE_OPERATOR: tr("操作员"),
+    }
+
+
+def _migrate_role(value: object) -> str:
+    """归一历史/新式角色值为稳定枚举。
+
+    - 已是枚举 → 直通；
+    - 中文旧值（"管理员"/"工程师"/"操作员"）→ 迁移到枚举；
+    - 缺失/未知值 → 回退 operator（默认角色缺省）。
+    """
+    if not isinstance(value, str):
+        return ROLE_OPERATOR
+    if value in _ROLE_ORDER:
+        return value
+    return _LEGACY_ROLE_MAP.get(value, ROLE_OPERATOR)
+
+
+class _ChangePasswordDialog(QDialog):
+    """首登强制改密对话框（W19/FR-5.3）。
+
+    三重校验：旧密须匹配 record 哈希、新密 >= 8 字符、两次输入一致；
+    错误经 QLabel 就地提示（不关框）。全过 → new_hash_record 落新哈希
+    三元组并 accept()；取消/失败 → new_hash_record 保持 None。
+    """
+
+    _MIN_NEW_PASSWORD_LEN = 8
+
+    def __init__(self, record: dict, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(tr("首次登录——请修改密码"))
+        self._record = record
+        self.new_hash_record: Optional[Tuple[str, str, int]] = None
+        self._build_ui()
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        form = QFormLayout()
+        self._old_edit = QLineEdit()
+        self._old_edit.setEchoMode(QLineEdit.Password)
+        form.addRow(tr("旧密码"), self._old_edit)
+        self._new_edit = QLineEdit()
+        self._new_edit.setEchoMode(QLineEdit.Password)
+        form.addRow(tr("新密码"), self._new_edit)
+        self._confirm_edit = QLineEdit()
+        self._confirm_edit.setEchoMode(QLineEdit.Password)
+        form.addRow(tr("确认新密码"), self._confirm_edit)
+        root.addLayout(form)
+
+        self._error = QLabel("")
+        self._error.setStyleSheet("color: #FF6B6B;")
+        root.addWidget(self._error)
+
+        btn_row = QHBoxLayout()
+        ok_btn = QPushButton(tr("确认修改"))
+        cancel_btn = QPushButton(tr("取消"))
+        ok_btn.clicked.connect(self._on_accept)
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(ok_btn)
+        btn_row.addWidget(cancel_btn)
+        root.addLayout(btn_row)
+
+    def _on_accept(self) -> None:
+        """三重校验；全过才落新哈希三元组并关闭。"""
+        old_ok = _verify_password(
+            self._old_edit.text(),
+            self._record.get("password_hash", ""),
+            self._record.get("salt", ""),
+            self._record.get("iterations", 100_000),
+        )
+        if not old_ok:
+            self._error.setText(tr("旧密码错误"))
+            return
+        new = self._new_edit.text()
+        if len(new) < self._MIN_NEW_PASSWORD_LEN:
+            self._error.setText(tr("新密码至少 8 个字符"))
+            return
+        if new != self._confirm_edit.text():
+            self._error.setText(tr("两次输入不一致"))
+            return
+        self.new_hash_record = _hash_password(new)
+        self.accept()
+
 
 class LoginPage(QWidget):
     """登录/许可证激活页。"""
 
-    login_success = Signal(str, str)  # (user, role)
+    login_success = Signal(str, str)  # (user, role)——role 为稳定枚举值（W18/P2-8）
     status_changed = Signal(str, str)
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
@@ -71,30 +185,48 @@ class LoginPage(QWidget):
                 db["admin"] = {
                     "password_hash": h,
                     "salt": s,
-                    "role": tr("管理员"),
+                    "role": ROLE_ADMIN,
                     "iterations": iters,
                     "must_change": True,  # 首次登录强制改密
                 }
                 with open(db_path, "w", encoding="utf-8") as f:
                     json.dump(db, f, ensure_ascii=False, indent=2)
-                # 限制文件权限（仅所有者可读写）
+                # chmod(0o600) 为 POSIX 语义；Windows/NTFS 下仅映射只读位，
+                # 不构成访问控制——凭据保护实际依赖文件系统 ACL/目录权限。
                 try:
                     os.chmod(db_path, 0o600)
                 except OSError:
                     pass
-                # 随机密码仅记入日志文件（W14-C3：不打 stdout——明文密码
-                # 会进终端历史/重定向文件；不硬编码 admin/admin）
-                msg = (
-                    "=" * 60 + "\n"
-                    "首次启动：已创建默认管理员账户。\n"
-                    f"  用户名: admin\n"
-                    f"  初始密码: {default_pwd}\n"
-                    "  请首次登录后立即修改密码。\n" +
-                    "=" * 60
-                )
-                logger.info(msg)
+                # W19（v3 第三波 FR-5.1）：初始密码改落一次性文件，
+                # 日志只记提示不含明文（W14-C3 的日志通道明文就此关闭）
+                LoginPage._write_initial_credentials(config_dir, default_pwd)
         except (OSError, json.JSONDecodeError):
             logger.exception("初始化默认管理员失败")
+
+    @staticmethod
+    def _write_initial_credentials(config_dir: str, default_pwd: str) -> None:
+        """初始密码写 configs/initial_credentials.txt（W19/FR-5.1）。
+
+        内容：用户名/初始密码/首次登录后修改提示；attempt chmod 0o600
+        （与 users.json 同法）。改密成功后自动删除（FR-5.2）。
+        """
+        cred_path = os.path.join(config_dir, _INITIAL_CREDENTIALS_FILENAME)
+        content = (
+            "AutoVisionAgent 首次启动——默认管理员账户\n"
+            "用户名: admin\n"
+            f"初始密码: {default_pwd}\n"
+            "请首次登录后立即修改密码，并删除本文件。\n"
+        )
+        with open(cred_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        try:
+            os.chmod(cred_path, 0o600)
+        except OSError:
+            pass
+        logger.info(
+            "初始密码已写入 configs/%s，首次登录后请修改并删除该文件",
+            _INITIAL_CREDENTIALS_FILENAME,
+        )
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -120,7 +252,9 @@ class LoginPage(QWidget):
         form.addRow(tr("密码"), self._pass_edit)
 
         self._role_combo = QComboBox()
-        self._role_combo.addItems([tr("管理员"), tr("工程师"), tr("操作员")])
+        # userData=稳定枚举：currentData() 取值，显示文本仅作渲染（语言切换不落库）
+        for _role in _ROLE_ORDER:
+            self._role_combo.addItem(_role_display_map()[_role], userData=_role)
         form.addRow(tr("角色"), self._role_combo)
 
         self._remember = QCheckBox(tr("记住登录状态"))
@@ -178,7 +312,7 @@ class LoginPage(QWidget):
         stored_hash = record.get("password_hash", "")
         salt_hex = record.get("salt", "")
         stored_iterations = record.get("iterations", 100_000)  # 旧记录默认 100K
-        stored_role = record.get("role", tr("操作员"))
+        stored_role = _migrate_role(record.get("role"))
 
         # R4-3: 使用 verify_and_migrate 验证密码
         is_valid, rehash_info = _verify_and_migrate(
@@ -222,16 +356,9 @@ class LoginPage(QWidget):
             record["iterations"] = new_iters
             logger.info("用户 %s 密码哈希已迁移到新迭代次数", user)
 
-        # 首次登录强制改密提示
-        must_change = record.get("must_change", False)
-        if must_change:
-            record["must_change"] = False
-            users_db[user] = record
-            self._save_users_db(users_db)
-            self.status_changed.emit(tr("首次登录，请尽快修改密码"), "warn")
-        else:
-            users_db[user] = record
-            self._save_users_db(users_db)
+        # W19（v3 第三波 FR-5.3）：must_change 强制拦截——改密成功才放行
+        if not self._handle_must_change(user, record, users_db):
+            return
 
         # W13-C3: 会话用户 + 登录审计（docstring 宣称记录登录，此前 0 条）
         try:
@@ -245,6 +372,49 @@ class LoginPage(QWidget):
 
         self.login_success.emit(user, stored_role)
         self.status_changed.emit(tr("登录成功"), user)
+
+    def _handle_must_change(self, user: str, record: dict, users_db: dict) -> bool:
+        """must_change 强制改密拦截（W19/FR-5.3）。
+
+        - must_change=False：记录落库直通（既有路径零影响），返回 True；
+        - must_change=True：弹改密框——成功 → 新哈希/清标志落库 + 删初始
+          凭据文件（FR-5.2），返回 True；取消/失败 → 不动库、提示后
+          返回 False（调用方不发 login_success、标志保留）。
+        """
+        if not record.get("must_change", False):
+            users_db[user] = record
+            self._save_users_db(users_db)
+            return True
+        new_hash_record = self._run_change_password_dialog(record)
+        if new_hash_record is None:
+            self.status_changed.emit(tr("未修改密码，暂不登录"), "warn")
+            return False
+        new_hash, new_salt, new_iters = new_hash_record
+        record["password_hash"] = new_hash
+        record["salt"] = new_salt
+        record["iterations"] = new_iters
+        record["must_change"] = False
+        users_db[user] = record
+        self._save_users_db(users_db)
+        self._remove_initial_credentials()
+        return True
+
+    def _run_change_password_dialog(
+        self, record: dict
+    ) -> Optional[Tuple[str, str, int]]:
+        """弹出改密对话框（阻塞），返回新哈希三元组；取消/失败为 None。"""
+        dlg = _ChangePasswordDialog(record, parent=self)
+        dlg.exec()
+        return dlg.new_hash_record
+
+    def _remove_initial_credentials(self) -> None:
+        """删除初始凭据文件（W19/FR-5.2：存在才删，幂等）。"""
+        cred_path = os.path.join(str(_CONFIG_DIR), _INITIAL_CREDENTIALS_FILENAME)
+        try:
+            if os.path.exists(cred_path):
+                os.remove(cred_path)
+        except OSError:
+            logger.exception("删除初始凭据文件失败")
 
     def _load_users_db(self) -> dict:
         """加载 configs/users.json 用户数据库。"""
@@ -266,7 +436,8 @@ class LoginPage(QWidget):
             db_path = os.path.join(config_dir, "users.json")
             with open(db_path, "w", encoding="utf-8") as f:
                 json.dump(db, f, ensure_ascii=False, indent=2)
-            # 限制文件权限（仅所有者可读写）
+            # chmod(0o600) 为 POSIX 语义；Windows/NTFS 下仅映射只读位，
+            # 不构成访问控制——凭据保护实际依赖文件系统 ACL/目录权限。
             try:
                 os.chmod(db_path, 0o600)
             except OSError:
@@ -275,7 +446,12 @@ class LoginPage(QWidget):
             logger.exception("保存用户数据库失败")
 
     def _do_register(self) -> None:
-        """注册许可证：选择并导入 .key 许可证文件（R4-4）。"""
+        """导入 .key 许可证文件到 configs/（仅复制，无内容校验）。
+
+        实际语义：把用户选择的文件复制为 configs/license.key，不校验
+        签名/格式/有效期（去 DRM 复刻决策，非许可证验证）——文件仅被
+        _do_offline 用作存在性提示。
+        """
         from gui.widgets.file_dialog import pick_open_file
 
         config_dir = str(_CONFIG_DIR)
@@ -297,7 +473,12 @@ class LoginPage(QWidget):
             self.status_changed.emit(tr("许可证导入失败"), "error")
 
     def _do_offline(self) -> None:
-        """离线模式：需验证本地 License 文件，而非无条件进入。"""
+        """离线模式：license.key 存在性检查 + 缺失时确认框，单工位模式。
+
+        实际语义：仅检查 configs/license.key 是否存在（无签名/内容校验——
+        去 DRM 复刻决策，非许可证验证）；文件缺失时弹确认框，用户确认
+        即以受限离线模式进入。角色固定枚举 operator。
+        """
         config_dir = str(_CONFIG_DIR)
         license_path = os.path.join(config_dir, "license.key")
         if not os.path.exists(license_path):
@@ -314,19 +495,20 @@ class LoginPage(QWidget):
             from core.session import set_current_user
 
             set_current_user("offline")
-            log_login(user="offline", role=tr("操作员"), mode="offline")
+            log_login(user="offline", role=ROLE_OPERATOR, mode="offline")
         except (ImportError, OSError):
             logger.exception("离线模式审计写入失败")
-        self.login_success.emit("offline", tr("操作员"))
+        self.login_success.emit("offline", ROLE_OPERATOR)
         self.status_changed.emit(tr("已进入离线模式"), "ok")
 
     def retranslate(self) -> None:
         self._title.setText(tr("AutoVisionAgent 登录"))
         self._user_edit.setPlaceholderText(tr("请输入用户名"))
         self._pass_edit.setPlaceholderText(tr("请输入密码"))
-        self._role_combo.setItemText(0, tr("管理员"))
-        self._role_combo.setItemText(1, tr("工程师"))
-        self._role_combo.setItemText(2, tr("操作员"))
+        display = _role_display_map()
+        for _i, _role in enumerate(_ROLE_ORDER):
+            # 仅刷新显示文本；userData（稳定枚举）不动——显示/持久解耦
+            self._role_combo.setItemText(_i, display[_role])
         self._remember.setText(tr("记住登录状态"))
         self._login_btn.setText(tr("登录"))
         self._register_btn.setText(tr("注册许可证"))

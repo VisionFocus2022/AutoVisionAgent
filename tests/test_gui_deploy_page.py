@@ -53,8 +53,8 @@ class FakeExporter:
     def __init__(self):
         pass
 
-    def export_onnx(self, engine, path, precision=None):
-        FakeExporter.calls.append(("onnx", engine.task.value, path, precision))
+    def export_onnx(self, model, task_value, path, precision=None):
+        FakeExporter.calls.append(("onnx", task_value, path, precision))
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as f:
             f.write(b"onnx-bytes")

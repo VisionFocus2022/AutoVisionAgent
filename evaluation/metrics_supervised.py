@@ -31,6 +31,101 @@ def _box_iou(
 
 
 # ============================== det mAP ============================== #
+def _match_class_detections(
+    preds: Sequence[Dict],
+    gts: Sequence[Dict],
+    cls: int,
+    iou_threshold: float,
+) -> Tuple[List[float], List[int], int]:
+    """单类收集：逐图取当前类预测/标注并做 IoU 匹配。
+
+    返回 ``(all_scores, all_tp, n_gt)``——该类全部预测分数（图序、
+    图内按分数降序）、TP/FP 标记（1/0）与该类 GT 总数。
+    """
+    all_scores: List[float] = []
+    all_tp: List[int] = []  # 1=TP, 0=FP
+    n_gt = 0
+
+    for pred, gt in zip(preds, gts):
+        p_boxes = np.asarray(pred.get("boxes", []))
+        p_scores = np.asarray(pred.get("scores", []))
+        p_labels = np.asarray(pred.get("labels", []))
+        g_boxes = np.asarray(gt.get("boxes", []))
+        g_labels = np.asarray(gt.get("labels", []))
+
+        # W17（v3 P1-2）防御：labels/scores 与 boxes 长度失配时按单类 0 /
+        # 零分对齐——布尔掩码错配会抛裸 IndexError 击穿调用方 except 元组
+        # （上游 eval_flow 已保证一致，此处兜底未来调用方再构造失配输入）。
+        if len(p_labels) != len(p_boxes):
+            p_labels = np.zeros(len(p_boxes), dtype=np.int64)
+        if len(p_scores) != len(p_boxes):
+            p_scores = np.zeros(len(p_boxes), dtype=np.float64)
+
+        # 过滤当前类
+        p_mask = p_labels == cls if len(p_labels) else np.array([])
+        g_mask = g_labels == cls if len(g_labels) else np.array([])
+
+        p_cls = p_boxes[p_mask] if len(p_mask) else np.array([]).reshape(0, 4)
+        p_cls_scores = p_scores[p_mask] if len(p_mask) else np.array([])
+        g_cls = g_boxes[g_mask] if len(g_mask) else np.array([]).reshape(0, 4)
+
+        n_gt += len(g_cls)
+        if len(p_cls) == 0:
+            continue
+
+        # 按分数降序排列
+        order = np.argsort(-p_cls_scores)
+        p_cls = p_cls[order]
+        p_cls_scores = p_cls_scores[order]
+
+        # 匹配 GT
+        matched = np.zeros(len(g_cls), dtype=bool)
+        for i in range(len(p_cls)):
+            best_iou = 0.0
+            best_j = -1
+            for j in range(len(g_cls)):
+                if matched[j]:
+                    continue
+                iou = _box_iou(p_cls[i], g_cls[j])
+                if iou > best_iou:
+                    best_iou = iou
+                    best_j = j
+            if best_iou >= iou_threshold and best_j >= 0:
+                matched[best_j] = True
+                all_tp.append(1)
+            else:
+                all_tp.append(0)
+            all_scores.append(float(p_cls_scores[i]))
+
+    return all_scores, all_tp, n_gt
+
+
+def _interpolated_ap(
+    all_scores: List[float],
+    all_tp: List[int],
+    n_gt: int,
+) -> float:
+    """11 点插值 AP（VOC 式 PR 曲线近似）；无 GT 或无预测时为 0。"""
+    if n_gt == 0:
+        return 0.0
+    if not all_scores:
+        return 0.0
+
+    order = np.argsort(-np.asarray(all_scores))
+    tp_arr = np.asarray(all_tp)[order]
+    fp_arr = 1 - tp_arr
+    tp_cum = np.cumsum(tp_arr)
+    fp_cum = np.cumsum(fp_arr)
+    recall = tp_cum / n_gt
+    precision = tp_cum / (tp_cum + fp_cum + 1e-9)
+
+    ap = 0.0
+    for t in np.linspace(0, 1, 11):
+        mask = recall >= t
+        ap += float(precision[mask].max()) / 11 if mask.any() else 0.0
+    return ap
+
+
 def det_map(
     preds: Sequence[Dict],
     gts: Sequence[Dict],
@@ -65,79 +160,10 @@ def det_map(
     result: Dict[str, float] = {}
 
     for cls in classes:
-        # 收集该类所有预测
-        all_scores: List[float] = []
-        all_tp: List[int] = []  # 1=TP, 0=FP
-        n_gt = 0
-
-        for pred, gt in zip(preds, gts):
-            p_boxes = np.asarray(pred.get("boxes", []))
-            p_scores = np.asarray(pred.get("scores", []))
-            p_labels = np.asarray(pred.get("labels", []))
-            g_boxes = np.asarray(gt.get("boxes", []))
-            g_labels = np.asarray(gt.get("labels", []))
-
-            # 过滤当前类
-            p_mask = p_labels == cls if len(p_labels) else np.array([])
-            g_mask = g_labels == cls if len(g_labels) else np.array([])
-
-            p_cls = p_boxes[p_mask] if len(p_mask) else np.array([]).reshape(0, 4)
-            p_cls_scores = p_scores[p_mask] if len(p_mask) else np.array([])
-            g_cls = g_boxes[g_mask] if len(g_mask) else np.array([]).reshape(0, 4)
-
-            n_gt += len(g_cls)
-            if len(p_cls) == 0:
-                continue
-
-            # 按分数降序排列
-            order = np.argsort(-p_cls_scores)
-            p_cls = p_cls[order]
-            p_cls_scores = p_cls_scores[order]
-
-            # 匹配 GT
-            matched = np.zeros(len(g_cls), dtype=bool)
-            for i in range(len(p_cls)):
-                best_iou = 0.0
-                best_j = -1
-                for j in range(len(g_cls)):
-                    if matched[j]:
-                        continue
-                    iou = _box_iou(p_cls[i], g_cls[j])
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_j = j
-                if best_iou >= iou_threshold and best_j >= 0:
-                    matched[best_j] = True
-                    all_tp.append(1)
-                else:
-                    all_tp.append(0)
-                all_scores.append(float(p_cls_scores[i]))
-
-        if n_gt == 0:
-            aps.append(0.0)
-            result[f"class_{cls}"] = 0.0
-            continue
-
-        # 计算 AP（PR 曲线下面积）
-        if not all_scores:
-            aps.append(0.0)
-            result[f"class_{cls}"] = 0.0
-            continue
-
-        order = np.argsort(-np.asarray(all_scores))
-        tp_arr = np.asarray(all_tp)[order]
-        fp_arr = 1 - tp_arr
-        tp_cum = np.cumsum(tp_arr)
-        fp_cum = np.cumsum(fp_arr)
-        recall = tp_cum / n_gt
-        precision = tp_cum / (tp_cum + fp_cum + 1e-9)
-
-        # 插值 AP（11 点近似）
-        ap = 0.0
-        for t in np.linspace(0, 1, 11):
-            mask = recall >= t
-            ap += float(precision[mask].max()) / 11 if mask.any() else 0.0
-
+        all_scores, all_tp, n_gt = _match_class_detections(
+            preds, gts, cls, iou_threshold
+        )
+        ap = _interpolated_ap(all_scores, all_tp, n_gt)
         aps.append(ap)
         result[f"class_{cls}"] = ap
 

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "change_id": "wave17-v3-first-aid",
+  "title": "v3 第一波止血：det 评估构造 + shm 区域回收(TTL+内联) + on_error 收口",
+  "created_at": "2026-08-17T14:18:26.035336+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "cross_system",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "2026-08-17 用户指令：'/test-driven-development 开始实施第一波止血（修 det 评估构造、shm 小数组内联、on_error 收口）合计不足三人日，报告 §9 有逐条做法' + AskUserQuestion 三项拍板：shm='两者都做'（TTL+内联）/ det 评估='单类语义补全(推荐)' / on_error='统一助手+10处接线(推荐)'；PRD（docs/prd-wave17-v3-first-aid.md，FR-001~005/AC-001~011）按该拍板编制"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "2026-08-17 AskUserQuestion：'G3 执行批准：按 9 任务 TDD 顺序实施（det 评估→TTL→内联 proto+C#→Release 语义→on_error→全量验证）？' → 用户选择'批准，开始执行（推荐）'"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave17-v3-first-aid.md",
+    "design": "",
+    "tasks": "docs/tasks-wave17-v3-first-aid.md"
+  },
+  "traceability": {
+    "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005"],
+    "acceptance": [
+      {"id": "AC-001", "requirements": ["FR-001"]},
+      {"id": "AC-002", "requirements": ["FR-001"]},
+      {"id": "AC-003", "requirements": ["FR-001"]},
+      {"id": "AC-004", "requirements": ["FR-002"]},
+      {"id": "AC-005", "requirements": ["FR-002"]},
+      {"id": "AC-006", "requirements": ["FR-003"]},
+      {"id": "AC-007", "requirements": ["FR-003"]},
+      {"id": "AC-008", "requirements": ["FR-004"]},
+      {"id": "AC-009", "requirements": ["FR-005"]},
+      {"id": "AC-010", "requirements": ["FR-005"]},
+      {"id": "AC-011", "requirements": []}
+    ],
+    "tasks": [
+      {"id": "TASK-001", "requirements": ["FR-001"], "acceptance": ["AC-001", "AC-002", "AC-003"]},
+      {"id": "TASK-002", "requirements": ["FR-001"], "acceptance": ["AC-001", "AC-002", "AC-003"]},
+      {"id": "TASK-003", "requirements": ["FR-002"], "acceptance": ["AC-004", "AC-005"]},
+      {"id": "TASK-004", "requirements": ["FR-002"], "acceptance": ["AC-004", "AC-005"]},
+      {"id": "TASK-005", "requirements": ["FR-003"], "acceptance": ["AC-006"]},
+      {"id": "TASK-006", "requirements": ["FR-003"], "acceptance": ["AC-007"]},
+      {"id": "TASK-007", "requirements": ["FR-004"], "acceptance": ["AC-008"]},
+      {"id": "TASK-008", "requirements": ["FR-005"], "acceptance": ["AC-009", "AC-010"]},
+      {"id": "TASK-009", "requirements": ["FR-001", "FR-002", "FR-003", "FR-004", "FR-005"], "acceptance": ["AC-011"]}
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001/002 det 评估构造修复（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_eval_flow.py tests/test_gui_eval_page.py tests/test_m2_matrix.py tests/test_metrics_supervised.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "75 passed。新增 5 用例先 RED（4 失败均为目标缺陷 IndexError: boolean index did not match；1 处期望值笔误修正——1TP/2GT 的 11 点 AP=6/11≈0.5455）后 GREEN：build_prediction 三数组定长 + det_map 失配防御；既有 eval 相关用例零回归"
+    },
+    {
+      "name": "TASK-003/004 shm 区域 TTL 惰性清扫（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_shm_lifecycle.py tests/test_serving_shm.py tests/test_shm_tail.py tests/test_serving_serialization.py tests/test_serving_server.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "76 passed。新增 4 用例先 RED（3×TypeError 无 region_ttl_seconds 参数 + 1×环境变量被忽略）后 GREEN：区域三元组带 created_at、_write_raw 入口 _reap_expired（锁外 release）、_resolve_region_ttl（构造参数>AVA_SHM_REGION_TTL_SECONDS>默认300，<=0 关闭）；上限/启动清扫/序列化/服务器既有用例零回归"
+    },
+    {
+      "name": "TASK-005/006/007 内联通道+Release 语义（RED→GREEN，双端）",
+      "command": "cd serving/dotnet_client && dotnet test",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "C# 54 passed（49 既有 + 5 新内联用例 DetectionResultMapperInlineTests；proto 加 bytes 字段 10/11 经 Grpc.Tools 编译期再生成，单一真源）。Python 侧同批：pytest tests/test_serving_serialization.py tests/test_serving_server.py tests/test_serving_shm.py tests/test_shm_lifecycle.py tests/test_shm_tail.py tests/test_sv_bridge.py -o addopts= -q 全绿（内联 3 用例先 RED=AttributeError 无 inline 字段；Release miss 用例先 RED 后 GREEN=success=False+非空 error+warning；上限文案补 TTL/Release 指引）；夹具字节经 Python encode_mask_rle/struct.pack 实编验证；grpcio-tools==1.83.0 装入 venv 并追加 requirements.lock.txt"
+    },
+    {
+      "name": "TASK-008 on_error 统一收口（RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_on_error.py tests/test_gui_jobs_migration.py tests/test_gui_predict_tail.py tests/test_gui_predict_flawgen.py tests/test_gui_eval_page.py tests/test_gui_label_page.py tests/test_gui_datamanage_page.py tests/test_w15_j2_jobs_migration.py tests/test_jobs.py tests/test_thread_bridge_types.py tests/test_gui_core_tail.py tests/test_threaded_pages.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "195 passed（13 新 on_error 用例 + GUI 全回归）。新套件先 RED 12 失败后 GREEN：ui_on_error 单元（前缀参数直达 @Slot(str,str)）+ 守卫 6 页 run_job/on_error 计数相等 + 行为兜底 6 页各 1 例（eval IndexError 专例、deploy ModelExportError 专例在内）；附带修复：predict 批量写盘段纳入异常路由并清理 .tmp 残留、deploy TRT 容错/外层元组补 ModelExportError、label _sam_failed 复位 _sam_busy、data_manage _op_buttons 补注册 stats"
+    },
+    {
+      "name": "TASK-009A 全量门禁（Python）",
+      "command": ".venv/Scripts/python.exe -m pytest -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "862 passed / 3 skipped / 覆盖率 92.88%（fail-under=92 达标）/ 55.2s。基线 837→862（+25 新用例：eval 5 + TTL 4 + 内联/Release 4 + on_error 13 - 计数含 parametrize 守卫 6）；覆盖 92.82%→92.88%"
+    },
+    {
+      "name": "TASK-009B C# 全量",
+      "command": "cd serving/dotnet_client && dotnet test",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "54 passed / 0 failed（W16 基线 49 → +5 内联用例；proto 编译期再生成后既有用例零回归）"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    {
+      "note": "三处既有用例随 W17 新契约合法更新（均为断言语义随设计目的变化，非放松）：①test_result_to_proto_masks_via_shm 夹具改不可压缩随机掩码锚定'大数组走 shm'（原全零掩码 RLE 后仅数字节、现走内联）；②test_batch_results_original_intact_when_replace_fails 第二断言改为'按钮恢复+页级 ERROR+.tmp 清理'三断言（异常现经 on_error 路由到 UI，取代 run_job 兜底日志断言）；③test_mask_codec.test_serialization_default_compact 改断言内联通道（稀疏小掩码 RLE 后<<64KiB）。",
+      "resolved": true
+    }
+  ],
+  "request_evidence": "用户指令(2026-08-17): /test-driven-development 开始实施第一波止血（修 det 评估构造、shm 小数组内联、on_error 收口），报告 §9 有逐条做法；AskUserQuestion 拍板: shm='两者都做'(TTL+内联) / det 评估='单类语义补全(推荐)' / on_error='统一助手+10处接线(推荐)'",
+  "final_summary": "v3 第一波止血三组修复全部落地（FR-001~005 / AC-001~011 全过，TDD 每任务先红后绿）：①det 评估构造（P1-2）——build_prediction 三数组定长（labels 恒单类 0、scores 用引擎真实逐框置信度）+ det_map 失配防御，M>0∧N≠M 全组合（含引擎零检出）不再 IndexError、mAP 按真实分数排序，未踩'字符串标签直喂→mAP 归零'陷阱；②shm 区域回收（P1-1，用户拍板两者都做）——TTL 惰性清扫（区域三元组带 created_at、写入口先回收后写盘、AVA_SHM_REGION_TTL_SECONDS 默认 300/<=0 关闭）+ 小数组内联（proto 加 masks_inline/keypoints_inline 字段、RLE 后<64KiB 不建区域、C# Mapper 内联优先解码，跨语言夹具字节实编对齐）+ Release miss 语义修正（success=False+error+warning）与上限可执行文案；③on_error 收口（P2-1）——thread_bridge.ui_on_error（支持槽前缀参数）+ 6 页 10 个 run_job 消费点全接线 + 守卫测试防回退，附带修 predict 批量 .tmp 清理、deploy ModelExportError 双层元组、label SAM busy 复位、data_manage stats 按钮注册。终态：Python 门禁 862 passed/3 skipped/覆盖 92.88%（基线 837/92.82%）、C# 54 passed（基线 49）、grpcio-tools==1.83.0 入 venv+lock。3 处既有用例随新契约合法更新（deviations 已记录）。改动未提交（按惯例留用户决定）。",
+  "status": "complete"
+}

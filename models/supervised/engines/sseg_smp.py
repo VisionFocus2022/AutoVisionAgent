@@ -14,6 +14,7 @@ from typing import Any, Optional
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
 from models.supervised import AbstractTaskEngine, register_engine
+from models.supervised.device import resolve_device
 
 
 @register_engine(TaskType.SSEG)
@@ -38,6 +39,8 @@ class SsegSmpEngine(AbstractTaskEngine):
         - 含 'model' / 'state_dict' 键的 dict
         - 含 'arch' / 'encoder_name' / 'num_classes' 元信息的 dict
         """
+        # W19（v3 第三波 FR-3.1）：cuda 不可用时诚实回退 cpu（lite 派生场景）
+        device = resolve_device(device)
         if not os.path.exists(weights_path):
             raise SupervisedEngineError(
                 f"权重文件不存在: {weights_path}", task=self.task.value

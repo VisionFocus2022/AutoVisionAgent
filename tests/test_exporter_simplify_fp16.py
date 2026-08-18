@@ -19,12 +19,11 @@ onnxsim = pytest.importorskip("onnxsim")  # 0.7.3（W14-C4 装入）
 from exporter.supervised_exporter import SupervisedExporter  # noqa: E402
 
 
-class _Eng:
-    """最小导出引擎：单层 Conv2d。"""
-
-    def __init__(self):
-        self._model = torch.nn.Conv2d(3, 2, kernel_size=3, bias=True)
-        self._model.eval()
+def _make_model():
+    """微型导出模型：单层 Conv2d（W18 起显式参数直传，无需引擎包装）。"""
+    m = torch.nn.Conv2d(3, 2, kernel_size=3, bias=True)
+    m.eval()
+    return m
 
 
 @pytest.fixture
@@ -34,7 +33,7 @@ def exporter():
 
 def _export(exporter, tmp_path, precision="fp32"):
     path = tmp_path / "m.onnx"
-    out = exporter.export_onnx(_Eng(), str(path),
+    out = exporter.export_onnx(_make_model(), "cls", str(path),
                                input_shape=(1, 3, 16, 16), precision=precision)
     assert out == str(path) and path.exists()
     return path

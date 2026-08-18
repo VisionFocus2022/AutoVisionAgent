@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
-from gui.core.thread_bridge import invoke_main
+from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file, pick_directory
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,9 @@ class DeployPage(QWidget):
 
                 self._set_progress_slot(20)
 
-                # 加载模型
+                # P3④：直调 torch.load(weights_only=True) 而不走 _safe_torch_load
+                # ——此处需要完整模型对象（而非 state_dict）供 ONNX 导出；
+                # weights_only=True 已阻断任意代码执行，安全等价。
                 model = torch.load(model_path, map_location="cpu", weights_only=True)
                 if isinstance(model, dict) and "model" in model:
                     model = model["model"]
@@ -171,13 +173,10 @@ class DeployPage(QWidget):
 
                 onnx_path = os.path.join(out_dir, f"{task_value}.onnx")
 
-                # 包装为引擎兼容接口（R4-8: 使用真实 TaskType）
-                class _EngineStub:
-                    task = type("T", (), {"value": task_value})()
-                    _model = model
-
                 self._set_progress_slot(40)
-                exporter.export_onnx(_EngineStub(), onnx_path, precision=precision)
+                # W18（v3 P2-7）：export_onnx 显式参数形态——model/task_value
+                # 直传，消灭引擎桩（engine stub）包装
+                exporter.export_onnx(model, task_value, onnx_path, precision=precision)
                 self._set_progress_slot(70)
 
                 results = {"onnx": onnx_path}
@@ -186,21 +185,28 @@ class DeployPage(QWidget):
                     try:
                         exporter.export_tensorrt(onnx_path, trt_path, precision=precision)
                         results["trt"] = trt_path
-                    except (OSError, RuntimeError, ValueError):
+                    except (OSError, RuntimeError, ValueError, ModelExportError):
+                        # W17（v3 P2-1）：TRT 为可选增强，export_tensorrt 抛
+                        # ModelExportError（如"TRT engine 构建失败"）本应按注释
+                        # 意图容错降级——旧元组不含它会把整个导出打死
                         import logging
                         logging.getLogger(__name__).exception("TensorRT 转换失败（可能未安装 TRT）")
                     self._set_progress_slot(95)
 
                 self._set_progress_slot(100)
                 self._export_done_slot(results)
-            except (OSError, RuntimeError, ValueError) as exc:
+            except (OSError, RuntimeError, ValueError, ModelExportError) as exc:
+                # W17（v3 P2-1）：补 ModelExportError（AppError 家族——ONNX 解析
+                # 失败等本应走失败槽，旧元组不含则击穿到 run_job 日志层、按钮卡死）
                 self._eval_failed_export(str(exc))
 
         # W15-J3（P2-1）：经 gui.core.jobs.run_job 分发——注册表登记 +
         # 协作取消 + 异常路由；task_value 主线程预读值经 partial 随 worker
-        # 入参捕获（W14-C2 形态保持，worker 仍不触碰任何 QWidget）
+        # 入参捕获（W14-C2 形态保持，worker 仍不触碰任何 QWidget）；
+        # W17：on_error 兜底——元组外异常也复位导出按钮
         run_job(
-            functools.partial(_work, task_value), name="deploy_export"
+            functools.partial(_work, task_value), name="deploy_export",
+            on_error=ui_on_error(self, "_on_export_failed"),
         )
 
     def _set_progress_slot(self, pct: int) -> None:

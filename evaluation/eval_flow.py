@@ -118,10 +118,21 @@ def build_prediction(
             # 真引擎 boxes 为 numpy 数组——不得做真值判断（歧义异常）
             p_boxes = result.boxes if result.boxes is not None else boxes
             n_pred = len(p_boxes) if p_boxes is not None else 0
+            # W17（v3 P1-2）：三数组长度恒等于预测框数 N——旧 labels[:n_pred]
+            # 截断在 M≠N 时产生长度失配，det_map 布尔掩码错配抛 IndexError
+            # （实证触发集 M>0∧N≠M，含引擎零检出于有 GT 图）。
+            # scores 用引擎真实逐框置信度（缺失/不足时回退全局 score 均匀填充）；
+            # labels 恒单类 0：GT 提取本就全零（extract_gt 忽略类别字段），
+            # 且引擎 defect_N 字符串不得直喂 det_map 整数比较（==0 全 False → mAP 归零）。
+            per_scores = tuple(getattr(result, "scores", None) or ())
+            if len(per_scores) >= n_pred:
+                out_scores = [float(s) for s in per_scores[:n_pred]]
+            else:
+                out_scores = [float(result.score)] * n_pred
             return {
                 "boxes": p_boxes,
-                "scores": [result.score] * n_pred,
-                "labels": labels[:n_pred] if n_pred else labels,
+                "scores": out_scores,
+                "labels": [0] * n_pred,
             }
         except (ImportError, RuntimeError, OSError, FileNotFoundError):
             logger.exception("推理失败: %s", img_path)
@@ -182,19 +193,26 @@ def run_supervised_eval(
 
 
 def run_generative_eval(
-    model: str, gt_dir: str, task_key: str, translate: Translate = _identity
+    model: str,
+    gt_dir: str,
+    task_key: str,
+    translate: Translate = _identity,
+    max_images: int = 20,
 ) -> Rows:
-    """生成式评估（FID/LPIPS）：model 为目录则递归取图，否则视为单文件。"""
+    """生成式评估（FID/LPIPS）：model 为目录则递归取图，否则视为单文件。
+
+    W18（P3⑥）：样本帽参数化——max_images 默认 20，页侧不传行为不变。
+    """
     from evaluation.generative_metrics import fid_score, perceptual_loss
 
     rows: Rows = []
     gen_imgs = scan_images(model) if os.path.isdir(model) else [model]
     real_imgs = scan_images(gt_dir)
     if task_key == "fid" and gen_imgs and real_imgs:
-        val = fid_score(gen_imgs[:20], real_imgs[:20])
+        val = fid_score(gen_imgs[:max_images], real_imgs[:max_images])
         rows.append(("FID", f"{val:.2f}", translate("生成质量")))
     elif task_key == "lpips" and gen_imgs and real_imgs:
-        val = perceptual_loss(gen_imgs[:20], real_imgs[:20])
+        val = perceptual_loss(gen_imgs[:max_images], real_imgs[:max_images])
         rows.append(("LPIPS", f"{val:.4f}", translate("感知损失")))
     return rows
 
@@ -207,10 +225,14 @@ def run_eval_task(
     translate: Translate = _identity,
     on_warn: Optional[Callable[[str], None]] = None,
     logger: Optional[logging.Logger] = None,
+    max_images: int = 20,
 ) -> Rows:
-    """评估任务入口：按 task_key 分发生成式（fid/lpips）或监督式主流程。"""
+    """评估任务入口：按 task_key 分发生成式（fid/lpips）或监督式主流程。
+
+    W18（P3⑥）：max_images 透传生成式分支（默认 20，页侧不传行为不变）。
+    """
     if task_key in ("fid", "lpips"):
-        return run_generative_eval(model, gt_dir, task_key, translate)
+        return run_generative_eval(model, gt_dir, task_key, translate, max_images)
     return run_supervised_eval(
         model, gt_dir, task_key, on_progress, translate, on_warn, logger
     )

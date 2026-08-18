@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 from core.interfaces_supervised import DetectionResult, TaskType
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
-from gui.core.thread_bridge import invoke_main
+from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
 
 from core.constants import IMG_EXTS as _IMG_EXTS
@@ -240,7 +240,7 @@ class PredictPage(QWidget):
         self._model_path = path
         task = self.cmb_task.currentData()
         try:
-            # 尝试从注册表获取引擎
+            # 尝试从注册表获取引擎——registry 直连为 GUI 正式形态（v3 P2-7）
             from models.supervised.registry import get_default_registry
             reg = get_default_registry()
 
@@ -317,7 +317,8 @@ class PredictPage(QWidget):
                     SupervisedEngineError) as exc:
                 invoke_main(self, "_single_failed", str(exc)[:40])
 
-        run_job(_work, name="predict_single")
+        # W17（v3 P2-1）：on_error 兜底——元组外异常（如 numpy TypeError）也复位按钮
+        run_job(_work, name="predict_single", on_error=ui_on_error(self, "_single_failed"))
 
     @Slot(str, float)
     def _single_done(self, basename: str, score: float) -> None:
@@ -401,10 +402,13 @@ class PredictPage(QWidget):
         engine = self._engine
         total = len(images)
 
-        def _work():
+        # W18（P2-3 退出链补完）：声明 cancel 参数 → run_job 自动注入注册表
+        # threading.Event；退出停机（jobs.request_stop_all）即可协作取消批量，
+        # 不必干等全量跑完。页面私有 _batch_cancel（取消按钮）仍并集生效。
+        def _work(cancel):
             _BATCH_SIZE = 16
             for i in range(0, total, _BATCH_SIZE):
-                if self._batch_cancel:
+                if self._batch_cancel or cancel.is_set():
                     break
                 batch_paths = images[i:i + _BATCH_SIZE]
                 try:
@@ -415,7 +419,7 @@ class PredictPage(QWidget):
                     else:
                         from core.image_io import imread_unicode
                         for img_path in batch_paths:
-                            if self._batch_cancel:
+                            if self._batch_cancel or cancel.is_set():
                                 break
                             img = imread_unicode(img_path)
                             if img is None:
@@ -431,16 +435,26 @@ class PredictPage(QWidget):
                 invoke_main(self, "_batch_set_progress", done, total)
 
             # 保存批量结果（P2-2：temp+os.replace 原子落盘——直写会在写入
-            # 中途截断既有文件，退出杀线程时旧结果即损坏）
+            # 中途截断既有文件，退出杀线程时旧结果即损坏）。
+            # W17（v3 P2-1 附带）：写盘段纳入异常路由——失败清理 .tmp 残留后
+            # 上抛，由 run_job 的 on_error 兜底回 UI（此前游离在路由外：
+            # json.dump TypeError / os.replace PermissionError → 按钮永久禁用）
             out_path = os.path.join(save_dir, "batch_results.json")
             tmp_path = out_path + ".tmp"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                json.dump(self._results, f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, out_path)
+            try:
+                with open(tmp_path, "w", encoding="utf-8") as f:
+                    json.dump(self._results, f, ensure_ascii=False, indent=2)
+                os.replace(tmp_path, out_path)
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
             invoke_main(self, "_batch_done", len(self._results), total)
 
-        run_job(_work, name="predict_batch")
+        run_job(_work, name="predict_batch", on_error=ui_on_error(self, "_batch_failed"))
 
     def _batch_add_row(self, img_path: str, result: DetectionResult) -> None:
         """线程安全地添加结果行（通过 invokeMethod）。"""
@@ -493,6 +507,19 @@ class PredictPage(QWidget):
 
     def _batch_cancel_infer(self) -> None:
         self._batch_cancel = True
+
+    @Slot(str)
+    def _batch_failed(self, err: str) -> None:
+        """槽：批量推理异常兜底（W17 on_error）——恢复按钮/隐藏进度并报错。"""
+        logger.error("批量推理异常终止: %s", err)
+        self.btn_batch.setEnabled(True)
+        self.btn_batch.setText(tr("批量推理"))
+        if hasattr(self, "_btn_cancel_batch"):
+            self._btn_cancel_batch.setVisible(False)
+        if hasattr(self, "_progress"):
+            self._progress.setValue(0)
+            self._progress.setVisible(False)
+        self.status_changed.emit(tr("推理失败"), err[:60])
 
     def _show_result(self, img_path: str, result: DetectionResult) -> None:
         """在预览区显示带标注的图像（W5: supervision 渲染，缺库回退旧画法）。"""

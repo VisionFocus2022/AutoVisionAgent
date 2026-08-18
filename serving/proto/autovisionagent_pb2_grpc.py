@@ -3,11 +3,9 @@
 import grpc
 import warnings
 
-# 修正 grpcio-tools 生成的扁平导入，改为包内相对导入，
-# 使其可作为 serving.proto.autovisionagent_pb2_grpc 正常导入。
-from serving.proto import autovisionagent_pb2 as autovisionagent__pb2
+from serving.proto import autovisionagent_pb2 as serving_dot_proto_dot_autovisionagent__pb2
 
-GRPC_GENERATED_VERSION = '1.82.1'
+GRPC_GENERATED_VERSION = '1.83.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -20,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in autovisionagent_pb2_grpc.py depends on'
+        + ' but the generated code in serving/proto/autovisionagent_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -43,38 +41,43 @@ class AutoVisionAgentServiceStub:
         """
         self.Ping = channel.unary_unary(
                 '/autovisionagent.v1.AutoVisionAgentService/Ping',
-                request_serializer=autovisionagent__pb2.PingRequest.SerializeToString,
-                response_deserializer=autovisionagent__pb2.PongResponse.FromString,
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.PingRequest.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.PongResponse.FromString,
                 _registered_method=True)
         self.ListTasks = channel.unary_unary(
                 '/autovisionagent.v1.AutoVisionAgentService/ListTasks',
-                request_serializer=autovisionagent__pb2.ListTasksRequest.SerializeToString,
-                response_deserializer=autovisionagent__pb2.ListTasksResponse.FromString,
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.ListTasksRequest.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.ListTasksResponse.FromString,
                 _registered_method=True)
         self.GetTaskInfo = channel.unary_unary(
                 '/autovisionagent.v1.AutoVisionAgentService/GetTaskInfo',
-                request_serializer=autovisionagent__pb2.GetTaskInfoRequest.SerializeToString,
-                response_deserializer=autovisionagent__pb2.TaskInfo.FromString,
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.GetTaskInfoRequest.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.TaskInfo.FromString,
                 _registered_method=True)
         self.LoadModel = channel.unary_unary(
                 '/autovisionagent.v1.AutoVisionAgentService/LoadModel',
-                request_serializer=autovisionagent__pb2.LoadModelRequest.SerializeToString,
-                response_deserializer=autovisionagent__pb2.LoadModelResponse.FromString,
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.LoadModelRequest.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.LoadModelResponse.FromString,
                 _registered_method=True)
         self.UnloadModel = channel.unary_unary(
                 '/autovisionagent.v1.AutoVisionAgentService/UnloadModel',
-                request_serializer=autovisionagent__pb2.UnloadModelRequest.SerializeToString,
-                response_deserializer=autovisionagent__pb2.UnloadModelResponse.FromString,
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.UnloadModelRequest.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.UnloadModelResponse.FromString,
                 _registered_method=True)
         self.Detect = channel.unary_unary(
                 '/autovisionagent.v1.AutoVisionAgentService/Detect',
-                request_serializer=autovisionagent__pb2.DetectRequest.SerializeToString,
-                response_deserializer=autovisionagent__pb2.DetectResponse.FromString,
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.DetectRequest.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.DetectResponse.FromString,
                 _registered_method=True)
         self.ReleaseSharedMemory = channel.unary_unary(
                 '/autovisionagent.v1.AutoVisionAgentService/ReleaseSharedMemory',
-                request_serializer=autovisionagent__pb2.ReleaseSharedMemoryRequest.SerializeToString,
-                response_deserializer=autovisionagent__pb2.ReleaseSharedMemoryResponse.FromString,
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.ReleaseSharedMemoryRequest.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.ReleaseSharedMemoryResponse.FromString,
+                _registered_method=True)
+        self.FetchRegion = channel.unary_stream(
+                '/autovisionagent.v1.AutoVisionAgentService/FetchRegion',
+                request_serializer=serving_dot_proto_dot_autovisionagent__pb2.SharedMemoryHandle.SerializeToString,
+                response_deserializer=serving_dot_proto_dot_autovisionagent__pb2.ArrayChunk.FromString,
                 _registered_method=True)
 
 
@@ -135,43 +138,57 @@ class AutoVisionAgentServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def FetchRegion(self, request, context):
+        """W19（v3 第三波 FR-2 方向 B，PoC）：按句柄流式拉取共享内存区域
+        （1 MiB ArrayChunk 流；区域不存在/已被回收 → NOT_FOUND abort）。
+        供无法做同机文件映射的消费端取回大数组；生产路径未启用。
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AutoVisionAgentServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'Ping': grpc.unary_unary_rpc_method_handler(
                     servicer.Ping,
-                    request_deserializer=autovisionagent__pb2.PingRequest.FromString,
-                    response_serializer=autovisionagent__pb2.PongResponse.SerializeToString,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.PingRequest.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.PongResponse.SerializeToString,
             ),
             'ListTasks': grpc.unary_unary_rpc_method_handler(
                     servicer.ListTasks,
-                    request_deserializer=autovisionagent__pb2.ListTasksRequest.FromString,
-                    response_serializer=autovisionagent__pb2.ListTasksResponse.SerializeToString,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.ListTasksRequest.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.ListTasksResponse.SerializeToString,
             ),
             'GetTaskInfo': grpc.unary_unary_rpc_method_handler(
                     servicer.GetTaskInfo,
-                    request_deserializer=autovisionagent__pb2.GetTaskInfoRequest.FromString,
-                    response_serializer=autovisionagent__pb2.TaskInfo.SerializeToString,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.GetTaskInfoRequest.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.TaskInfo.SerializeToString,
             ),
             'LoadModel': grpc.unary_unary_rpc_method_handler(
                     servicer.LoadModel,
-                    request_deserializer=autovisionagent__pb2.LoadModelRequest.FromString,
-                    response_serializer=autovisionagent__pb2.LoadModelResponse.SerializeToString,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.LoadModelRequest.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.LoadModelResponse.SerializeToString,
             ),
             'UnloadModel': grpc.unary_unary_rpc_method_handler(
                     servicer.UnloadModel,
-                    request_deserializer=autovisionagent__pb2.UnloadModelRequest.FromString,
-                    response_serializer=autovisionagent__pb2.UnloadModelResponse.SerializeToString,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.UnloadModelRequest.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.UnloadModelResponse.SerializeToString,
             ),
             'Detect': grpc.unary_unary_rpc_method_handler(
                     servicer.Detect,
-                    request_deserializer=autovisionagent__pb2.DetectRequest.FromString,
-                    response_serializer=autovisionagent__pb2.DetectResponse.SerializeToString,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.DetectRequest.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.DetectResponse.SerializeToString,
             ),
             'ReleaseSharedMemory': grpc.unary_unary_rpc_method_handler(
                     servicer.ReleaseSharedMemory,
-                    request_deserializer=autovisionagent__pb2.ReleaseSharedMemoryRequest.FromString,
-                    response_serializer=autovisionagent__pb2.ReleaseSharedMemoryResponse.SerializeToString,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.ReleaseSharedMemoryRequest.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.ReleaseSharedMemoryResponse.SerializeToString,
+            ),
+            'FetchRegion': grpc.unary_stream_rpc_method_handler(
+                    servicer.FetchRegion,
+                    request_deserializer=serving_dot_proto_dot_autovisionagent__pb2.SharedMemoryHandle.FromString,
+                    response_serializer=serving_dot_proto_dot_autovisionagent__pb2.ArrayChunk.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -204,8 +221,8 @@ class AutoVisionAgentService:
             request,
             target,
             '/autovisionagent.v1.AutoVisionAgentService/Ping',
-            autovisionagent__pb2.PingRequest.SerializeToString,
-            autovisionagent__pb2.PongResponse.FromString,
+            serving_dot_proto_dot_autovisionagent__pb2.PingRequest.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.PongResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -231,8 +248,8 @@ class AutoVisionAgentService:
             request,
             target,
             '/autovisionagent.v1.AutoVisionAgentService/ListTasks',
-            autovisionagent__pb2.ListTasksRequest.SerializeToString,
-            autovisionagent__pb2.ListTasksResponse.FromString,
+            serving_dot_proto_dot_autovisionagent__pb2.ListTasksRequest.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.ListTasksResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -258,8 +275,8 @@ class AutoVisionAgentService:
             request,
             target,
             '/autovisionagent.v1.AutoVisionAgentService/GetTaskInfo',
-            autovisionagent__pb2.GetTaskInfoRequest.SerializeToString,
-            autovisionagent__pb2.TaskInfo.FromString,
+            serving_dot_proto_dot_autovisionagent__pb2.GetTaskInfoRequest.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.TaskInfo.FromString,
             options,
             channel_credentials,
             insecure,
@@ -285,8 +302,8 @@ class AutoVisionAgentService:
             request,
             target,
             '/autovisionagent.v1.AutoVisionAgentService/LoadModel',
-            autovisionagent__pb2.LoadModelRequest.SerializeToString,
-            autovisionagent__pb2.LoadModelResponse.FromString,
+            serving_dot_proto_dot_autovisionagent__pb2.LoadModelRequest.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.LoadModelResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -312,8 +329,8 @@ class AutoVisionAgentService:
             request,
             target,
             '/autovisionagent.v1.AutoVisionAgentService/UnloadModel',
-            autovisionagent__pb2.UnloadModelRequest.SerializeToString,
-            autovisionagent__pb2.UnloadModelResponse.FromString,
+            serving_dot_proto_dot_autovisionagent__pb2.UnloadModelRequest.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.UnloadModelResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -339,8 +356,8 @@ class AutoVisionAgentService:
             request,
             target,
             '/autovisionagent.v1.AutoVisionAgentService/Detect',
-            autovisionagent__pb2.DetectRequest.SerializeToString,
-            autovisionagent__pb2.DetectResponse.FromString,
+            serving_dot_proto_dot_autovisionagent__pb2.DetectRequest.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.DetectResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -366,8 +383,35 @@ class AutoVisionAgentService:
             request,
             target,
             '/autovisionagent.v1.AutoVisionAgentService/ReleaseSharedMemory',
-            autovisionagent__pb2.ReleaseSharedMemoryRequest.SerializeToString,
-            autovisionagent__pb2.ReleaseSharedMemoryResponse.FromString,
+            serving_dot_proto_dot_autovisionagent__pb2.ReleaseSharedMemoryRequest.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.ReleaseSharedMemoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FetchRegion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/autovisionagent.v1.AutoVisionAgentService/FetchRegion',
+            serving_dot_proto_dot_autovisionagent__pb2.SharedMemoryHandle.SerializeToString,
+            serving_dot_proto_dot_autovisionagent__pb2.ArrayChunk.FromString,
             options,
             channel_credentials,
             insecure,

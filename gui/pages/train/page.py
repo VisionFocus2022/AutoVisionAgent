@@ -296,12 +296,35 @@ class TrainPage(QWidget):
             self._on_failed(str(exc))
             return
 
-        self._worker = TrainWorker(trainer, cfg, self)
+        # W18（P3①）：无 parent 构造——页面持 self._worker 引用自管生命周期。
+        # 以页面作 parent 会在窗口析构链上连带销毁（可能在仍运行时的）QThread
+        # （"QThread: Destroyed while thread is still running" 崩溃路径）。
+        self._worker = TrainWorker(trainer, cfg)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_sig.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
+
+        # W18（P3①）：QThread.finished → 先清页面引用、再 deleteLater（顺序
+        # 关键：closeEvent 的 getattr(self, "_worker").isRunning() 若拿到已
+        # deleteLater 的 C++ 包装，PySide6 会抛 RuntimeError——引用先清，
+        # closeEvent 只会见到 None）。
+        worker = self._worker
+
+        def _on_thread_finished() -> None:
+            if getattr(self, "_worker", None) is worker:
+                self._worker = None
+            worker.deleteLater()
+
+        qt_finished = getattr(worker, "finished", None)  # 测试替身可无该信号
+        if qt_finished is not None:
+            qt_finished.connect(_on_thread_finished)
         self._worker.start()
 
+        # W18（P3① 留痕）：训练开始 INFO——操作 + 关键参数（日志可见性）
+        logger.info(
+            "训练开始: task=%s, epochs=%d, batch_size=%d, backbone=%s, device=%s",
+            cfg.task.value, cfg.epochs, cfg.batch_size, cfg.backbone, cfg.device,
+        )
         self.status_changed.emit(tr("训练已启动"), cfg.task.value)
 
     def _make_trainer(self, cfg: TrainConfig):
@@ -313,6 +336,7 @@ class TrainPage(QWidget):
         from training.generic_trainer import GenericTrainer
 
         # 尝试从注册表获取引擎并构建真实训练策略
+        # registry 直连为 GUI 正式形态（v3 P2-7）
         try:
             from models.supervised.registry import get_default_registry
             reg = get_default_registry()
@@ -379,6 +403,11 @@ class TrainPage(QWidget):
 
     def _on_finished(self, artifact) -> None:
         """训练完成回调。"""
+        # W18（P3① 留痕）：训练完成 INFO——操作 + 关键参数（日志可见性）
+        logger.info(
+            "训练完成: task=%s, epochs_completed=%s",
+            artifact.task.value, getattr(artifact, "epochs_completed", None),
+        )
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.progress_bar.setValue(100)

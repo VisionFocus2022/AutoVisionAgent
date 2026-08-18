@@ -45,24 +45,33 @@ namespace VisionAgent.Shared.Services.Vision
         /// <summary>
         /// 读取 (N,H,W) bool 掩码为三维数组 [N,H,W]。
         /// 用于 <see cref="DetectionResultProto.MasksShm"/>。
-        /// dtype 支持：
+        /// </summary>
+        public bool[,,] ReadMasks(SharedMemoryHandle handle)
+        {
+            if (handle is null || handle.Length <= 0) return EmptyBool3D();
+            return DecodeMasks(ReadBytes(handle), handle);
+        }
+
+        /// <summary>
+        /// 从载荷字节解码 (N,H,W) bool 掩码（W17：共享内存与 proto 内联两路共用）。
+        /// <paramref name="meta"/> 携带 dtype/shape；dtype 支持：
         /// <list type="bullet">
         /// <item><c>bool</c>：原始字节（每元素 1 字节）。</item>
         /// <item><c>bool_rle</c>（W7）：int32 小端交替游程、False 起始、C 序展平，
         /// 与 Python <c>serving.mask_codec</c> 契约一致（大掩码压缩传输）。</item>
         /// </list>
         /// </summary>
-        public bool[,,] ReadMasks(SharedMemoryHandle handle)
+        public static bool[,,] DecodeMasks(byte[] raw, SharedMemoryHandle meta)
         {
-            if (handle is null || handle.Length <= 0) return EmptyBool3D();
+            if (raw is null) throw new ArgumentNullException(nameof(raw));
+            if (meta is null) throw new ArgumentNullException(nameof(meta));
 
-            var isRaw = string.Equals(handle.Dtype, "bool", StringComparison.OrdinalIgnoreCase);
-            var isRle = string.Equals(handle.Dtype, "bool_rle", StringComparison.OrdinalIgnoreCase);
+            var isRaw = string.Equals(meta.Dtype, "bool", StringComparison.OrdinalIgnoreCase);
+            var isRle = string.Equals(meta.Dtype, "bool_rle", StringComparison.OrdinalIgnoreCase);
             if (!isRaw && !isRle)
-                throw new InvalidOperationException($"掩码 dtype 不匹配：期望 bool/bool_rle，实际 {handle.Dtype}");
+                throw new InvalidOperationException($"掩码 dtype 不匹配：期望 bool/bool_rle，实际 {meta.Dtype}");
 
-            var raw = ReadBytes(handle);
-            var shape = handle.Shape;
+            var shape = meta.Shape;
             int n = shape.Count > 0 ? shape[0] : 0;
             int h = shape.Count > 1 ? shape[1] : 0;
             int w = shape.Count > 2 ? shape[2] : 0;
@@ -125,15 +134,25 @@ namespace VisionAgent.Shared.Services.Vision
         public double[,,] ReadKeypoints(SharedMemoryHandle handle)
         {
             if (handle is null || handle.Length <= 0) return EmptyDouble3D();
+            return DecodeKeypoints(ReadBytes(handle), handle);
+        }
 
-            var raw = ReadBytes(handle);
-            var shape = handle.Shape;
+        /// <summary>
+        /// 从载荷字节解码 (N,K,D) 关键点（W17：共享内存与 proto 内联两路共用）。
+        /// <paramref name="meta"/> 携带 dtype/shape；float32/float64 统一提升为 double。
+        /// </summary>
+        public static double[,,] DecodeKeypoints(byte[] raw, SharedMemoryHandle meta)
+        {
+            if (raw is null) throw new ArgumentNullException(nameof(raw));
+            if (meta is null) throw new ArgumentNullException(nameof(meta));
+
+            var shape = meta.Shape;
             int n = shape.Count > 0 ? shape[0] : 0;
             int k = shape.Count > 1 ? shape[1] : 0;
             int d = shape.Count > 2 ? shape[2] : 0;
 
             var values = new double[n * k * d];
-            if (string.Equals(handle.Dtype, "float32", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(meta.Dtype, "float32", StringComparison.OrdinalIgnoreCase))
             {
                 if (raw.Length != values.Length * 4)
                     throw new InvalidOperationException("关键点数据长度与 float32 形状不匹配。");
@@ -142,7 +161,7 @@ namespace VisionAgent.Shared.Services.Vision
                 Buffer.BlockCopy(raw, 0, floats, 0, raw.Length);
                 for (int i = 0; i < floats.Length; i++) values[i] = floats[i];
             }
-            else if (string.Equals(handle.Dtype, "float64", StringComparison.OrdinalIgnoreCase))
+            else if (string.Equals(meta.Dtype, "float64", StringComparison.OrdinalIgnoreCase))
             {
                 if (raw.Length != values.Length * 8)
                     throw new InvalidOperationException("关键点数据长度与 float64 形状不匹配。");
@@ -150,7 +169,7 @@ namespace VisionAgent.Shared.Services.Vision
             }
             else
             {
-                throw new InvalidOperationException($"关键点 dtype 不支持：{handle.Dtype}");
+                throw new InvalidOperationException($"关键点 dtype 不支持：{meta.Dtype}");
             }
 
             var kps = new double[n, k, d];

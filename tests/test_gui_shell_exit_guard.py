@@ -23,6 +23,7 @@ still running" 确定性崩溃路径）、不清空/等待两个缩略图 QThrea
 """
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -291,6 +292,46 @@ def test_close_event_yes_stops_qthread_and_pools_bounded(win, monkeypatch):
     assert pool.clear_calls == [True]                   # 排队任务丢弃
     assert pool.wait_ms == [_EXIT_POOL_WAIT_MS]         # 有界池等待
     assert 0 <= pool.wait_ms[0] <= 3000
+
+
+# ================ W18（TASK-001 / P2-3 退出链）：停机超时告警 ================ #
+
+
+@pytest.mark.unit
+def test_close_event_worker_stop_timeout_logs_warning(win, monkeypatch, caplog):
+    """W18（RED）：确认退出后训练线程 stop()/wait(有界 ms) 超时仍 isRunning →
+    不得静默 continue，须落 warning——含"将随进程退出被强制终止、可能丢失
+    未保存进度"语义并引用 _EXIT_WORKER_WAIT_MS 常量值。"""
+    from gui.core.shell import _EXIT_WORKER_WAIT_MS
+
+    class _StubbornWorker(_FakeTrainWorker):
+        """顽固 worker：wait() 返回超时且 isRunning 恒 True（不协作停止）。"""
+
+        def wait(self, msecs=None) -> bool:
+            self.wait_ms.append(msecs)
+            return False  # 超时：_running 不翻转
+
+    stubborn = _StubbornWorker(running=True)
+    page_w = QWidget()
+    page_w._worker = stubborn
+    win.add_page("train", "i", "T", page_w)
+
+    _patch_question(monkeypatch, QMessageBox.StandardButton.Yes)
+
+    with caplog.at_level(logging.WARNING, logger="gui.core.shell"):
+        ev = _close_evt()
+        win.closeEvent(ev)
+
+    assert ev.isAccepted() is True                 # 告警不阻断退出
+    assert stubborn.stop_calls == [True]           # 停止请求仍发出
+    assert stubborn.wait_ms == [_EXIT_WORKER_WAIT_MS]
+    warnings = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+    ]
+    assert any(
+        "强制终止" in m and "未保存" in m and str(_EXIT_WORKER_WAIT_MS) in m
+        for m in warnings
+    ), f"stop/wait 超时必须留痕（含丢进度语义与预算值），got={warnings}"
 
 
 # ============================== 原顺序保留（特征化守卫） ============================== #

@@ -1,5 +1,9 @@
 """VisionModelSystem 双范式分发（FR-F）— T-AVA-14
 
+正式架构声明（v3 P2-7 决策，2026-08-17 用户拍板）：dispatcher 为 serving
+进程专用（多引擎 LRU 显存治理）；GUI 进程为 registry 直连（页面自持引擎、
+持久使用，LRU 驱逐语义不适用）——gui/ 包不得 import 本模块。
+
 统一调度接口：
 - 零样本范式：可注入的零样本检测器（仅预留注入点 load_zero_shot，
   当前无内置实现——DINOv3/CLIP 方案已随 W13 config 收敛移除——

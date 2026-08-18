@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 from evaluation.eval_flow import run_eval_task
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
-from gui.core.thread_bridge import invoke_main
+from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file, pick_directory
 
 logger = logging.getLogger(__name__)
@@ -296,7 +296,9 @@ class EvalPage(QWidget):
 
         # W15-J2（P2-1 批次 A）：经 gui.core.jobs 统一调度——注册表登记 +
         # 协作取消 + 异常路由（_work 内 except 元组含 TypeError 的 W8 语义不变）
-        run_job(_work, name="eval.run")
+        # W17（v3 P2-1）：on_error 兜底——元组外异常（含 IndexError 一族）
+        # 也复位评估按钮，杜绝"按钮永久禁用"
+        run_job(_work, name="eval.run", on_error=ui_on_error(self, "_eval_failed_slot"))
 
     @Slot(int)
     def _eval_progress_slot(self, pct: int) -> None:

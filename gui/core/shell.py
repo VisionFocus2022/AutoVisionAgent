@@ -260,6 +260,30 @@ class MainWindow(QMainWindow):
 
     # ============================== 优雅退出 ============================== #
 
+    def _collect_active_busy(self) -> "tuple[list, list, list]":
+        """活跃任务三路并集检测（W18 自 closeEvent 抽出，v3 AC-012）。
+
+        ① gui.core.jobs 注册表（run_job 任务真相源）；② 各页 TrainWorker
+        (QThread) isRunning；③ 批量按钮禁用约定页（未迁移过渡期——按钮名
+        btn_batch/_btn_batch 双名兼容，P2-2）。
+        """
+        from gui.core import jobs
+
+        registry_names = jobs.active_jobs()
+        running_worker_keys: list = []
+        batch_keys: list = []
+        for key, widget in self._pages.items():
+            worker = getattr(widget, "_worker", None)
+            if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
+                running_worker_keys.append(key)
+            if hasattr(widget, "_batch_cancel"):
+                for attr in ("_btn_batch", "btn_batch"):
+                    batch_btn = getattr(widget, attr, None)
+                    if batch_btn is not None and not batch_btn.isEnabled():
+                        batch_keys.append(key)
+                        break
+        return registry_names, running_worker_keys, batch_keys
+
     def closeEvent(self, event) -> None:
         """窗口关闭事件：检查活动任务 + 有界停机 + 释放资源。
 
@@ -276,23 +300,8 @@ class MainWindow(QMainWindow):
 
         from gui.core import jobs
 
-        # ---- 活跃检测（三路并集）----
-        registry_names = jobs.active_jobs()  # ① 注册表：run_job 任务真相源
-        running_worker_keys = []             # ② TrainWorker(QThread) 页
-        batch_keys = []                      # ③ 批量按钮禁用约定页（未迁移）
-        for key, widget in self._pages.items():
-            worker = getattr(widget, "_worker", None)
-            if worker is not None and hasattr(worker, "isRunning") and worker.isRunning():
-                running_worker_keys.append(key)
-            if hasattr(widget, "_batch_cancel"):
-                # 批量推理进行中的既有约定：按钮禁用。P2-2：predict 页
-                # 按钮名实为 btn_batch（无下划线），旧探测只认 _btn_batch
-                # → getattr 恒 None → 批量中退出无确认；两个名字都认。
-                for attr in ("_btn_batch", "btn_batch"):
-                    batch_btn = getattr(widget, attr, None)
-                    if batch_btn is not None and not batch_btn.isEnabled():
-                        batch_keys.append(key)
-                        break
+        # ---- 活跃检测（三路并集，W18 抽为 _collect_active_busy）----
+        registry_names, running_worker_keys, batch_keys = self._collect_active_busy()
 
         if registry_names or running_worker_keys or batch_keys:
             from PySide6.QtWidgets import QMessageBox
@@ -329,6 +338,13 @@ class MainWindow(QMainWindow):
                 do_wait = getattr(worker, "wait", None)
                 if callable(do_wait):
                     do_wait(_EXIT_WORKER_WAIT_MS)
+                if worker.isRunning():
+                    # W18（P2-3 退出链补完）：stop/wait 超时不得静默 continue
+                    # ——留痕"将随进程退出被强制终止、可能丢失未保存进度"。
+                    _logger.warning(
+                        "训练线程(%s)未在 %dms 内停止，将随进程退出被强制"
+                        "终止，可能丢失未保存进度", key, _EXIT_WORKER_WAIT_MS,
+                    )
 
             for widget in self._pages.values():
                 pool = getattr(widget, "_thumb_pool", None)
@@ -340,7 +356,7 @@ class MainWindow(QMainWindow):
                 except Exception:
                     _logger.debug("等待缩略图线程池退出时出错", exc_info=True)
 
-        # 释放引擎缓存（GPU 显存）
+        # 释放引擎缓存（GPU 显存）——registry 直连为 GUI 正式形态（v3 P2-7）
         try:
             from models.supervised.registry import get_default_registry
             get_default_registry().clear_cache()

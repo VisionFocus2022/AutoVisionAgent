@@ -9,7 +9,7 @@
 .venv/Scripts/python.exe -m pytest
 ```
 
-预期：全绿，覆盖率 ≥ fail-under（**以 pytest.ini 的 --cov-fail-under 为单一真源**，W10 起为 89；本单不写死数字以免与棘轮脱节——W11 审查曾发现此处滞留旧值 64%）。
+预期：全绿，覆盖率 ≥ fail-under（**以 pytest.ini 的 --cov-fail-under 为单一真源**，W14 起为 92；本单不写死数字以免与棘轮脱节——W11 审查曾发现此处滞留旧值 64%、v3 审查发现滞留 89）。
 
 ## 2. 打包
 
@@ -18,6 +18,15 @@
 ```
 
 确认 `dist/AutoVisionAgent/AutoVisionAgent.exe` 生成且时间戳更新。
+
+可选：派生 CPU-only lite 产物（W19 双产物方案——复制全量产物并裁剪
+`_internal/torch/lib` 内 CUDA DLL 栈，目标 <2GiB；引擎侧已做 cuda 不可用
+→ cpu 回退，蒸馏冒烟见 `scripts/make_lite_dist.py` 与
+`tests/test_w19_lite_dist.py` 守卫）：
+
+```bash
+.venv/Scripts/python.exe scripts/make_lite_dist.py
+```
 
 ## 3. UIA 真窗端到端（需桌面会话 + 打包 exe，手动执行）
 
@@ -28,7 +37,7 @@
 前提：
 - 交互桌面会话（无头环境 conftest 会自动 skip 而非报错）；
 - 目标 exe 未在运行（同名单实例会找不到窗口）；
-- 预创建空 `configs/license.key` 可进离线模式免登录。
+- 无需预创建 `configs/license.key`：点"离线模式"在确认框选"是"即可进入（单工位模式，无许可证校验）；预创建空文件可跳过确认框直入。
 
 ## 4. 冒烟（人工，~2 分钟）
 

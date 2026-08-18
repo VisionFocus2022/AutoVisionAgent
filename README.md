@@ -18,7 +18,7 @@ python -m venv .venv
 .venv/Scripts/python -m pytest
 ```
 
-注意：全量 `pytest` 自带覆盖率门禁（`--cov-fail-under=89`，配置见 `pytest.ini`，分母含 core/gui 等 12 个包），覆盖率不足时整体失败。只跑单个测试文件时可用 `-o addopts=` 清掉覆盖率参数快跑：
+注意：全量 `pytest` 自带覆盖率门禁（`--cov-fail-under=92`，配置见 `pytest.ini`，分母含 core/gui 等 12 个包），覆盖率不足时整体失败。只跑单个测试文件时可用 `-o addopts=` 清掉覆盖率参数快跑：
 
 ```bash
 .venv/Scripts/python -m pytest tests/test_xxx.py -o addopts= -q
@@ -39,5 +39,6 @@ python -m venv .venv
 
 ## 架构文档
 
-- 权威版（v2）：[docs/AutoVisionAgent-架构解析与优化方案-v2.md](docs/AutoVisionAgent-架构解析与优化方案-v2.md)
+- 权威版（v3）：[docs/AutoVisionAgent-架构解析与优化方案-v3.md](docs/AutoVisionAgent-架构解析与优化方案-v3.md)
+- 历史版（v2）：[docs/AutoVisionAgent-架构解析与优化方案-v2.md](docs/AutoVisionAgent-架构解析与优化方案-v2.md)
 - 历史版（v1）：[docs/AutoVisionAgent-架构解析与优化方案.md](docs/AutoVisionAgent-架构解析与优化方案.md)

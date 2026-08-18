@@ -1,11 +1,14 @@
-"""SupervisedExporter 深度测试（W10-T2 填洼）。
+"""SupervisedExporter 深度测试（W10-T2 填洼；W18 签名改显式参数）。
 
 exporter/supervised_exporter.py 覆盖推进：
 - export_onnx 真路径（torch.onnx.export 真 IO）+ 自动 input_shape 全任务分支
+  （W18：export_onnx(model, task_value, path, ...) 显式参数——不再吃 engine
+  对象内取 .task.value/._model，消灭调用方引擎桩）
 - 模型未加载 / 前向抛错 → ModelExportError 显式报错
 - _validate_onnx 成功/失败；_try_simplify、fp16 量化缺依赖时的显式跳过分支
 - int8 静态量化真路径 + 静态失败回退动态量化（故障注入 onnxruntime.quantize_static）
 - export_tensorrt 未装 TensorRT 时的显式跳过；export_supervised_engine 便捷函数
+  （引擎门面保留：内部提取 task_value/_model 后转调显式参数形态）
 
 依赖缺失纪律：onnxsim / onnxconverter_common / tensorrt 未装时只测
 "显式跳过"分支（按实际环境探测决定），不伪造依赖可用假象；
@@ -75,7 +78,7 @@ class _BoomNet:
 
 
 class _StubEngine:
-    """最小引擎替身：task + _model 即满足 export 路径。"""
+    """最小引擎替身：task + _model（仅 export_supervised_engine 引擎门面用）。"""
 
     def __init__(self, task, model):
         self.task = task
@@ -112,9 +115,7 @@ class TestExportOnnx:
         from exporter.supervised_exporter import SupervisedExporter
 
         out = tmp_path / "cls_model.onnx"
-        ret = SupervisedExporter().export_onnx(
-            _make_engine("cls", _TinyNet()), str(out)
-        )
+        ret = SupervisedExporter().export_onnx(_TinyNet(), "cls", str(out))
         assert str(out) == ret
         assert out.exists() and out.stat().st_size > 0
         # 自动形状选择：cls → 224
@@ -143,7 +144,7 @@ class TestExportOnnx:
         from exporter.supervised_exporter import SupervisedExporter
 
         out = tmp_path / f"{task_value}_model.onnx"
-        SupervisedExporter().export_onnx(_make_engine(task_value, _TinyNet()), str(out))
+        SupervisedExporter().export_onnx(_TinyNet(), task_value, str(out))
         assert spy_randn == [expected]
         assert out.exists() and out.stat().st_size > 0
 
@@ -153,19 +154,18 @@ class TestExportOnnx:
 
         out = tmp_path / "explicit.onnx"
         SupervisedExporter().export_onnx(
-            _make_engine("cls", _TinyNet()), str(out), input_shape=(1, 3, 64, 64)
+            _TinyNet(), "cls", str(out), input_shape=(1, 3, 64, 64)
         )
         assert spy_randn == [(1, 3, 64, 64)]  # 未被 224 覆盖
         assert out.exists()
 
-    def test_engine_without_model_raises(self, tmp_path):
-        """引擎未加载模型 → ModelExportError。"""
+    def test_model_none_raises(self, tmp_path):
+        """模型未加载（model=None）→ ModelExportError。"""
         from core.exceptions import ModelExportError
         from exporter.supervised_exporter import SupervisedExporter
 
-        engine = _make_engine("cls", None)
-        with pytest.raises(ModelExportError, match="引擎未加载模型"):
-            SupervisedExporter().export_onnx(engine, str(tmp_path / "x.onnx"))
+        with pytest.raises(ModelExportError, match="模型未加载"):
+            SupervisedExporter().export_onnx(None, "cls", str(tmp_path / "x.onnx"))
 
     def test_forward_failure_wrapped_as_export_error(self, tmp_path):
         """前向抛错被包装为 ModelExportError，details 携带路径。"""
@@ -175,7 +175,7 @@ class TestExportOnnx:
         out = tmp_path / "boom.onnx"
         with pytest.raises(ModelExportError, match="ONNX 导出失败") as exc:
             SupervisedExporter().export_onnx(
-                _make_engine("cls", _BoomNet()), str(out), input_shape=(1, 3, 32, 32)
+                _BoomNet(), "cls", str(out), input_shape=(1, 3, 32, 32)
             )
         assert exc.value.details.get("path") == str(out)
         assert not out.exists()  # 失败时不落盘
@@ -196,9 +196,7 @@ class TestExportOnnx:
         out = tmp_path / "plain.onnx"
         with pytest.raises(ModelExportError, match="ONNX 导出失败"):
             SupervisedExporter().export_onnx(
-                _StubEngine(type("T", (), {"value": "cls"})(), _PlainCallable()),
-                str(out),
-                input_shape=(1, 3, 32, 32),
+                _PlainCallable(), "cls", str(out), input_shape=(1, 3, 32, 32)
             )
         assert not out.exists()
 
@@ -261,7 +259,7 @@ class TestQuantize:
         out = tmp_path / "fp16.onnx"
         caplog.set_level(logging.DEBUG, logger=_LOGGER_NAME)
         ret = SupervisedExporter().export_onnx(
-            _make_engine("cls", _TinyNet()), str(out),
+            _TinyNet(), "cls", str(out),
             input_shape=(1, 3, 32, 32), precision="fp16",
         )
         assert ret == str(out) and out.exists()  # 导出本身不受量化缺依赖影响
@@ -275,7 +273,7 @@ class TestQuantize:
         out = tmp_path / "int8.onnx"
         caplog.set_level(logging.INFO, logger=_LOGGER_NAME)
         SupervisedExporter().export_onnx(
-            _make_engine("cls", _TinyNet()), str(out),
+            _TinyNet(), "cls", str(out),
             input_shape=(1, 3, 32, 32), precision="int8",
         )
         int8_path = out.with_suffix(".int8.onnx")

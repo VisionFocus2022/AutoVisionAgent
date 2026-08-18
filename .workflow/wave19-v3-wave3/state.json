@@ -1,0 +1,370 @@
+{
+  "schema_version": 1,
+  "change_id": "wave19-v3-wave3",
+  "title": "v3第三波现代化全项+第一波尾巴",
+  "created_at": "2026-08-17T22:12:03.884168+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "cross_system",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "AskUserQuestion 2026-08-18 四问全选推荐项：①范围=四项全做+两个尾巴（P2-2 密码/lock 6 包）②dist=双产物派生 lite ③协议=双方向 PoC+ADR-0002 ④版本管理=核心库+data_manage 入口"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "AskUserQuestion 2026-08-18 G3：wave19（第三波全项+两个尾巴）PRD 与任务清单已就绪，是否批准开始执行？→ 批准，开始执行（推荐）"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave19-v3-wave3.md",
+    "design": "",
+    "tasks": "docs/tasks-wave19-v3-wave3.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005",
+      "FR-006"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-004",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-005",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-006",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-007",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-008",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-009",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-010",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-011",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-012",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-013",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-014",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-015",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-016",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-017",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-018",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-019",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-020",
+        "requirements": [
+          "FR-006"
+        ]
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-002",
+          "AC-003"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-002"
+        ],
+        "acceptance": [
+          "AC-004",
+          "AC-005",
+          "AC-006",
+          "AC-007"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-008",
+          "AC-009",
+          "AC-010"
+        ]
+      },
+      {
+        "id": "TASK-004",
+        "requirements": [
+          "FR-004"
+        ],
+        "acceptance": [
+          "AC-011",
+          "AC-012",
+          "AC-013",
+          "AC-014"
+        ]
+      },
+      {
+        "id": "TASK-005",
+        "requirements": [
+          "FR-005",
+          "FR-006"
+        ],
+        "acceptance": [
+          "AC-015",
+          "AC-016",
+          "AC-017",
+          "AC-018",
+          "AC-019",
+          "AC-020"
+        ]
+      },
+      {
+        "id": "TASK-006",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004",
+          "FR-005",
+          "FR-006"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-006",
+          "AC-009",
+          "AC-010",
+          "AC-020"
+        ]
+      }
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001 簇A GREEN+基线落档",
+      "command": ".venv/Scripts/python.exe -m pytest benchmarks -o addopts= -q（+ summarize.py）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED：元守卫首跑 rc=1（benchmarks/ 缺失 → 被测 subprocess collect rc=4，缺失行为式失败）。6 passed 63.77s：det CPU p50 516.6ms/p99 937.3ms（conf=0.0 满载口径）、seg 844.4/1308.5ms、cls 20.5/24.8ms、GPU 显存峰值 38.8MiB（RTX3060 实测）、冷启动 gui.main p50 0.678s/serving.server 0.635s；docs/benchmarks/baseline-2026-08-18.json+md 落档；元守卫 1 passed"
+    },
+    {
+      "name": "TASK-002 簇B GREEN+回归（offset 语义修正后复跑）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w19_lease.py tests/test_w19_fetch_region.py tests/test_serving_server.py tests/test_serving_serialization.py tests/test_shm_lifecycle.py tests/test_mask_codec.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED：首跑 7 failed rc=1（acquire_lease/FetchRegion AttributeError、lease_id 字段未演进，全缺失行为式；首跑 2 个 fixture 笔误 ERROR 修正后 RED 干净）。77 passed：lease 四态（正确释放/错误拒绝/活跃租约豁免 TTL/到期恢复回收）+ FetchRegion 三例（首块 offset=0 起始位移语义，W19 验证修正后）+ serving 全家零回归（AC-2.4 serialization 默认路径未动）"
+    },
+    {
+      "name": "TASK-002 簇B 微基准+ADR",
+      "command": ".venv/Scripts/python.exe scripts/bench_region_transfer.py",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "64MiB：直读中位 18.91ms/3.549GB/s vs FetchRegion 222.14ms/0.302GB/s（11.7x）；docs/adr/0002-serving-large-payload-evolution.md 落数字成文"
+    },
+    {
+      "name": "TASK-003 簇C GREEN+回归（验证员合并复跑）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w19_device_guard.py tests/test_w19_lite_dist.py tests/test_engines_family_deep.py tests/test_engine_m2_contracts.py tests/test_m2_matrix.py tests/test_engine_det_real.py tests/test_engine_abdet_real.py tests/test_engine_sseg.py tests/test_engine_sgan.py tests/test_eval_flow.py tests/test_dynamic_import_guard.py tests/test_m2_e2e.py tests/test_dispatcher_threading.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED：device 守卫首跑 9 failed/3 errors rc=1（7 引擎参数化全红+resolve_device ImportError+两时序例）；lite 单独 RED rc=2（脚本缺失 collection FileNotFoundError）。207 passed 2 skipped：resolve_device 护栏 7 torch 引擎接入（super_cv2/sgan_blend 非 torch 跳过）+ allowlist 18 正例/8 负例（torch_cpu/c10/mycudnn/torchcudart 不误删）+ derive_lite marker/超限 exit(1)/拒覆盖 exit(2)"
+    },
+    {
+      "name": "TASK-004 簇D GREEN+回归（conftest 堆损坏修复后 13 文件复跑）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w19_versioning.py tests/test_w19_gui_versioning.py tests/test_project_store.py tests/test_gui_datamanage_page.py tests/test_w15_j2_jobs_migration.py tests/test_gui_on_error.py tests/test_gui_pages_more.py tests/test_gui_predict_flawgen.py tests/test_threaded_pages.py tests/test_jobs.py tests/test_gui.py tests/test_gui_shell_exit_guard.py tests/test_format_export.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED：第一轮 rc=2（ImportError project.versioning，12 用例不可达）；GUI 轮 rc=1（8 failed AttributeError btn_snapshot）。148 passed rc=0 ×4 连跑：核心库 12（生命周期/diff 三类/硬链 st_nlink≥2/污染检出/非破坏恢复）+ 页面 8（入口/回执/失败复位/对比对话框/示例上限/retranslate）"
+    },
+    {
+      "name": "TASK-005 簇E GREEN+回归（验证员复跑）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w19_password_hygiene.py tests/test_gui_login_page.py tests/test_w18_role_enum.py tests/test_gui_pages_more.py tests/test_gui.py tests/test_m2_e2e.py tests/test_gui_misc_pages.py tests/test_m1_e2e.py -o addopts= -q --timeout=180",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED：首跑 6 failed rc=1（凭据文件缺失/新哈希未生效/取消路径未拦截/三处 ImportError，全缺失行为式）。92 passed：日志零明文（11 处 logger 调用逐个核验）/initial_credentials.txt/must_change 强制拦截双向/敏感过滤/lock 6 行（PEP503 归一 diff 三列表空 PASS）"
+    },
+    {
+      "name": "TASK-006 主审：offscreen 堆损坏根因与修复",
+      "command": "复现：pytest tests/test_gui_shell_exit_guard.py tests/test_format_export.py -o addopts= -q（3/3 rc=127，原生 0xC0000374 STATUS_HEAP_CORRUPTION）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "修复=tests/conftest.py pytest_sessionfinish：无头平台会话收尾逐轮重查 topLevelWidgets+shiboken6.isValid 防护逐个析构、最后 shiboken6.delete(QApplication)（初版快照列表 double-free 已排除）。修复后：原毒对 ×3、13 文件合并 ×4、两单文件 ×2 全 rc=0。归因链：验证员 Fisher p≈0.001 指认 D hunk → 主审对照剔除 D 仍 1/4 崩 → 真因=泄漏顶层 QWidget×QApplication 卸载乱序（D hunk 仅抬升显形概率）；minimal 平台与单文件不触发佐证"
+    },
+    {
+      "name": "TASK-006 主审：AST 巨石守卫",
+      "command": "内联 ast 脚本全仓扫描（排除 .venv/build/dist 等）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "2351 函数：生产代码 >100 行仅剩豁免 _extract_state_dict_safe（201，声明豁免）；tests/uia 3 处（_step_annotate 114/test_pole 111/enter_path 115）为 W11 既有、本波未触碰"
+    },
+    {
+      "name": "TASK-006 主审：全量门禁",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "951 passed / 4 skipped / 51.02s（W18 基线 894/3 → +57 用例；skip 4=既有 3+lite 真产物守卫派生后激活）；覆盖 93.03%（棘轮 92 保持）"
+    },
+    {
+      "name": "TASK-006 主审：C# 编译+测试（proto 再生成后）",
+      "command": "cd serving/dotnet_client && dotnet build && dotnet test",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "build 0 错误（38 CS8632 全为预存）；54 passed / 0 failed / 219ms——proto additive 字段（lease 6/7、Release lease_id、ArrayChunk/FetchRegion）跨语言兼容坐实"
+    },
+    {
+      "name": "TASK-006 主审：exe 重打包",
+      "command": ".venv/Scripts/python.exe -m PyInstaller autovisionagent.spec --noconfirm",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "Build complete（08-18 07:10，AutoVisionAgent.exe 88.4MB 时间戳更新）；full 产物 dist/AutoVisionAgent 4.4G 保持含 CUDA（AC-3.3）"
+    },
+    {
+      "name": "TASK-006 主审：make_lite_dist v2 RED→GREEN（CPU 轮子替换）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w19_lite_dist.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED：v2 测试首跑 8 failed rc=1（新前缀未命中/替换参数不存在/--offline 未定义/真产物 +cpu 守卫缺失行为式）。RED 8 failed（新前缀/替换参数/--offline/+cpu 守卫缺失行为式）→ v2 实现（裁剪留档+CPU 轮子整目录替换 torch/torchvision+marker v2 replaced_packages+版本严格对应 exit(3)）→ 27 passed；伪造轮子 zip 单测不触网，真轮子 torch-2.5.1+cpu(205MB)/torchvision-0.20.1+cpu 经 pip download 落 build/cpu_wheels"
+    },
+    {
+      "name": "TASK-006 主审：lite 真派生（v2）+蒸馏冒烟",
+      "command": ".venv/Scripts/python.exe scripts/make_lite_dist.py --offline && PYTHONPATH=dist/AutoVisionAgent-lite/_internal python -c \"import torch,torchvision;...\"",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "派生 rc=0：裁 25 DLL 共 3,396,174,672 字节（3.16GiB）、双轮子替换、产品字节 1.97GiB<2GiB（AC-3.2）；冒烟两轮 rc=0：torch 2.5.1+cpu 导入+算子执行、torchvision 0.20.1+cpu、cuda.is_available()==False、resolve_device('cuda')=='cpu'；冒烟后真产物守卫复跑仍绿（marker/守卫统一产品口径排 __pycache__/.pyc）"
+    },
+    {
+      "name": "TASK-006 主审：全量门禁（终态）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "955 passed / 3 skipped / 67.07s rc=0、覆盖 93.03%（棘轮 92）——skip 4→3：lite 真产物守卫由 skip 转真跑通过；较 W18 基线 894/3 净增 61 用例"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    "簇A：自报 numbers.vram_baseline_allocated_mib=37.9 与落档 12.1 不符（baseline json/raw json 均为 12.1，自报为探测期陈旧值）——以落档产物为准，验证员实证",
+    "簇A：det/seg 时延为 conf=0.0 满载口径（随机权重 0.25 下 0 检出，0.0 强制 300 框全解析，同 test_engines_family_deep 口径）；cls 经 I/O 边界 mock 注入网络对象（本机无 .pt 资产）；--benchmark-only 未用（手动 perf_counter 计时，pytest-benchmark stats 无 p99）；CPU 基准显式钉死 overrides device=cpu（本机有 GPU 否则口径失真）",
+    "簇B：protoc 重生成命令改仓库根 -I .（任务字面命令会生成顶层 import，与现存 pb2 包内导入形态不符；改动前 diff 实证可逐字节复现 W17 生成物）；lease 测试超任务三态补第 4 例（到期恢复回收）；fetch_region 补 1MiB 单块与 NOT_FOUND abort 两例",
+    "簇B 验证员 issue 两处已修：①ArrayChunk.offset 语义——proto 注释承诺首块 0（起始位移），实现却产出结束位移（单块 2048B 首块 offset=2048）→ 改 server.py FetchRegion 为起始位移 + 两处测试断言更新（首块 0），跨语言契约与实现/测试三方对齐；②bench_region_transfer.py 文档串逐轮校验失实 → 改为计时轮仅收齐、每路径收齐后整体校验一次（ADR 同步），代码行为未变",
+    "簇C：super_cv2/sgan_blend 带 device 形参但非 torch 后端，按 PRD 跳过；make_lite_dist 体积超限 exit(1)/源缺失或 dst 已存在 exit(2) 区分；LITE_MARKER total_bytes 为写 marker 前口径（守卫以差值==marker 文件大小校验）",
+    "簇D：退出码毒化事件——构建代理归因既有环境怪癖被验证员差分实验推翻（Fisher p≈0.001 指认 D hunk）；主审进一步复验：剔除 D hunk 对照也 1/4 崩 → 真因为 offscreen 下泄漏顶层 QWidget×QApplication 卸载乱序原生堆损坏（D hunk 仅抬升显形概率，非载体）；修复落在 tests/conftest.py 会话收尾有序析构（见 verification），D hunk 代码零改动保留",
+    "簇D 轻微：自报行数 329/653→756/34 函数，实测 328/644→755/36（±2 内，不影响行为）；GUI GREEN 首跑 1 用例红为测试自身对禁用按钮 click 的错误，修测试未改生产码",
+    "簇E：test_login_must_change_flag_flipped 按新拦截行为合法更新（任务第 4 条授权）；lock 新增 et-xmlfile==2.0.0 与 freeze 实拼 et_xmlfile 差一字符——PEP 503 名字归一后 diff 三列表空；gui/core/i18n.py:356 首次登录译文键成无引用残留（不在簇文件面未动，tr 缺失键直通）",
+    "主审：release-checklist 打包节新增可选 lite 派生步骤（make_lite_dist）；README 无涉及 dist 体积/基线陈述、无需改动",
+    "主审重大方案修正（FR-3.2 机制级）：PRD 原设计\"复制→裁 CUDA DLL\"对 CUDA 构建 torch 2.5.1+cu121（Windows wheel）结构性不可行——torch_python.dll/shm.dll/torch.dll/torchvision._C.pyd PE 导入表硬链 torch_cuda/c10_cuda/cudart/cudnn64_9 且 torch/__init__._load_dll_libraries 对 lib 内每 DLL 强制加载，蒸馏冒烟三次递进实证（WinError 126）。修正为 v2：裁剪留档 + CPU 轮子（版本严格对应，torch 2.5.1+cpu / torchvision 0.20.1+cpu）整目录替换 _internal/{torch,torchvision} + marker v2 replaced_packages 留档；CLI 默认 build/cpu_wheels 轮子目录、缺失自动 pip download（--offline 禁网 exit 3）。用户拍板的\"双产物派生 lite\"产品语义（full 保 GPU/lite<2G）不变，实现机制替换并全程 TDD 留痕",
+    "主审：lite 体积口径发现与统一——du 报 2.1G 为块分配虚高，文件字节 1.97GiB<2GiB 达标；marker 与真产物守卫统一\"产品字节\"口径（排 __pycache__/*.pyc：蒸馏冒烟任何 PYTHONPATH=_internal 使用都会写入运行时字节码缓存，且 PyInstaller 产物自带少量 .pyc——首版口径差 6719B/20MB 两轮实证后统一）",
+    "主审：tests/conftest.py pytest_sessionfinish 新增无头平台 Qt 有序析构钩子（超出五簇文件面，主审权限内）——见 verification 对应条目；release-checklist 打包节补 lite 派生步骤（含 CPU 轮子说明）"
+  ],
+  "request_evidence": "AskUserQuestion 2026-08-18：①四项全做+两个尾巴（P2-2/lock）②dist 双产物派生 lite ③协议演进双方向 PoC+ADR-0002 ④版本管理核心库+data_manage 入口",
+  "final_summary": "v3 第三波全项+第一波两尾巴落地（G1 四问拍板 2026-08-18，G3 批准执行）：①性能基线（FR-1）：benchmarks/ 三件套（det/cls/seg CPU 时延 p50-p99、RTX3060 显存峰值 38.8MiB 实测、双模块冷启动）+ docs/benchmarks/baseline-2026-08-18 落档 + 门禁内 collect 元守卫；②协议演进双方向 PoC（FR-2）：proto additive lease 字段（服务端 lease 注册表四态测试）+ FetchRegion 流式 rpc（1MiB 块，offset 起始位移语义经对抗验证修正对齐）+ 64MiB 微基准（直读 3.549GB/s vs 流式 0.302GB/s，11.7x）+ ADR-0002 数据成文决策（默认路径不动，serialization 零改动）；C# Grpc.Tools 编译期再生成 build 0 错 + 54 测试全绿；③dist 双产物 lite（FR-3）：resolve_device cuda→cpu 护栏接入 7 torch 引擎（TDD）；蒸馏冒烟实证\"仅裁 DLL\"不可行后方案 v2=CPU 轮子整目录替换（torch/torchvision 版本严格对应）——full 4.4G 保持 GPU / lite 1.97GiB<2GiB，双轮冒烟+真产物守卫全绿；④数据集版本管理（FR-4）：project/versioning.py（sha256 manifest/NTFS 硬链快照/diff 三类/verify 污染检出/非破坏恢复）+ data_manage 页两入口（run_job+on_error）20 用例；⑤P2-2 密码卫生（FR-5）：初始密码改一次性文件+日志零明文+must_change 强制改密拦截+敏感过滤器；⑥lock 补 6 包重冻结（FR-6）diff 三列表清零。主审额外根治一桩会毒化门禁的隐藏原生缺陷：offscreen 下泄漏顶层 QWidget×QApplication 卸载乱序堆损坏（0xC0000374，用例全过但退出码 127/3）——conftest 会话收尾有序析构修复，13 文件合并×4+毒对×3 复验全绿。终态门禁 955 passed/3 skipped/93.03%（W18 基线 894/92.88% 之上 +61 用例）、C# 54、AST 生产零违例、workflow 验证器 rc=0。改动未提交。",
+  "status": "complete"
+}

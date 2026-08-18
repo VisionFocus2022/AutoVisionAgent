@@ -34,16 +34,32 @@ namespace VisionAgent.Shared.Services.Vision
                 Extra = proto.Extra.ToDictionary(p => p.Key, p => (object)p.Value),
             };
 
-            if (shmReader is not null)
+            // W17（v3 P1-1）：小数组内联优先——inline 字段非空时，以同名 shm
+            // 句柄携带的 dtype/shape 为元数据解码内联字节（句柄 file_path 空、
+            // length 0，不触碰共享内存文件、无需回收）；否则大数组按句柄走
+            // 共享内存读取（既有路径不变）。
+            if (!proto.MasksInline.IsEmpty
+                && proto.MasksShm is not null
+                && !string.IsNullOrEmpty(proto.MasksShm.Dtype))
             {
-                if (proto.MasksShm is not null && proto.MasksShm.Length > 0)
-                {
-                    result.Masks = SplitMasks(shmReader.ReadMasks(proto.MasksShm));
-                }
-                if (proto.KeypointsShm is not null && proto.KeypointsShm.Length > 0)
-                {
-                    result.Keypoints = SplitKeypoints(shmReader.ReadKeypoints(proto.KeypointsShm));
-                }
+                result.Masks = SplitMasks(SharedMemoryReader.DecodeMasks(
+                    proto.MasksInline.ToByteArray(), proto.MasksShm));
+            }
+            else if (shmReader is not null && proto.MasksShm is not null && proto.MasksShm.Length > 0)
+            {
+                result.Masks = SplitMasks(shmReader.ReadMasks(proto.MasksShm));
+            }
+
+            if (!proto.KeypointsInline.IsEmpty
+                && proto.KeypointsShm is not null
+                && !string.IsNullOrEmpty(proto.KeypointsShm.Dtype))
+            {
+                result.Keypoints = SplitKeypoints(SharedMemoryReader.DecodeKeypoints(
+                    proto.KeypointsInline.ToByteArray(), proto.KeypointsShm));
+            }
+            else if (shmReader is not null && proto.KeypointsShm is not null && proto.KeypointsShm.Length > 0)
+            {
+                result.Keypoints = SplitKeypoints(shmReader.ReadKeypoints(proto.KeypointsShm));
             }
 
             return result;

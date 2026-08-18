@@ -18,6 +18,7 @@ from typing import Any, Optional
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
 from models.supervised import AbstractTaskEngine, register_engine
+from models.supervised.device import resolve_device
 
 
 @register_engine(TaskType.ABDET)
@@ -29,6 +30,9 @@ class AbdetAnomalibEngine(AbstractTaskEngine):
 
     def load(self, weights_path: str, device: str = "cuda") -> None:
         """加载已拟合的 anomalib Patchcore checkpoint。"""
+        # W19（v3 第三波 FR-3.1）：cuda 不可用时诚实回退 cpu（lite 派生场景）；
+        # 归一必须在 load_from_checkpoint(map_location=) 之前生效
+        device = resolve_device(device)
         if not os.path.exists(weights_path):
             raise SupervisedEngineError(
                 f"权重文件不存在: {weights_path}", task=self.task.value

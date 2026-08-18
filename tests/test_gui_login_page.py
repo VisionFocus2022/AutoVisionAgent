@@ -159,7 +159,7 @@ def test_login_lockout_expires_and_clears(qapp, tmp_path, monkeypatch):
     # 跳到锁定期之后：登录成功且清除锁定字段
     monkeypatch.setattr(_time, "time", lambda: lock_until + 1)
     _try_login(page)
-    assert page._logged == [(USER, "工程师")]
+    assert page._logged == [(USER, "engineer")]  # W18: 旧值"工程师"迁移为枚举
     assert "lockout_until" not in _read_db(tmp_path)[USER]
 
 
@@ -170,7 +170,7 @@ def test_login_migrates_legacy_hash_to_600k(qapp, tmp_path, monkeypatch):
 
     page = _make_page(tmp_path, monkeypatch, qapp)  # 库内 iterations=1000
     _try_login(page)
-    assert page._logged == [(USER, "工程师")]
+    assert page._logged == [(USER, "engineer")]  # W18: 枚举迁移
 
     rec = _read_db(tmp_path)[USER]
     assert rec["iterations"] == 600_000  # 迁移到 OWASP 2023 迭代
@@ -179,6 +179,11 @@ def test_login_migrates_legacy_hash_to_600k(qapp, tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_login_must_change_flag_flipped(qapp, tmp_path, monkeypatch):
+    """W19（v3 第三波 FR-5.3）后语义：must_change 用户须改密成功才放行。
+
+    旧行为=提示即清标志并登录；本波改为强制拦截（取消/失败路径见
+    tests/test_w19_password_hygiene.py）。此处以假对话框模拟改密成功。
+    """
     _write_db(tmp_path)  # 先落默认记录，取其哈希三元组
     db = _read_db(tmp_path)
     db[USER]["must_change"] = True
@@ -189,14 +194,24 @@ def test_login_must_change_flag_flipped(qapp, tmp_path, monkeypatch):
     from gui.pages.login import page as login_mod
 
     monkeypatch.setattr(login_mod, "_CONFIG_DIR", tmp_path)
+
+    class _FakeDialog:
+        # 改密成功：返回可验证的新哈希三元组（offscreen 不阻塞 exec）
+        def __init__(self, record, parent=None):
+            h, s, i = login_mod._hash_password("brand-new-pw", iterations=1_000)
+            self.new_hash_record = (h, s, i)
+
+        def exec(self):  # noqa: A003
+            return 1  # QDialog.Accepted
+
+    monkeypatch.setattr(login_mod, "_ChangePasswordDialog", _FakeDialog)
     page = login_mod.LoginPage()
     msgs, logged = [], []
     page.status_changed.connect(lambda t, a: msgs.append((t, a)))
     page.login_success.connect(lambda u, r: logged.append((u, r)))
 
     _try_login(page)
-    assert logged == [(USER, "工程师")]
-    assert any("首次登录" in t for t, _ in msgs)
+    assert logged == [(USER, "engineer")]  # W18: 枚举迁移；改密成功放行
     assert _read_db(tmp_path)[USER]["must_change"] is False
 
 
@@ -210,7 +225,7 @@ def test_ensure_default_admin_first_boot_random(qapp, tmp_path, monkeypatch):
     db = _read_db(tmp_path)
     assert set(db) == {"admin"}
     rec = db["admin"]
-    assert rec["role"] == "管理员"
+    assert rec["role"] == "admin"  # W18/P2-8: 落稳定枚举
     assert rec["must_change"] is True
     assert rec["iterations"] == 600_000
 
@@ -252,7 +267,7 @@ def test_login_success_sets_session_user_and_audits(qapp, tmp_path, monkeypatch)
     try:
         page = _make_page(tmp_path, monkeypatch, qapp)
         _try_login(page)
-        assert page._logged == [(USER, "工程师")]
+        assert page._logged == [(USER, "engineer")]  # W18: 枚举迁移
         # 会话当前用户 = 登录名
         assert get_current_user() == USER
         # 恰落一条 login 审计，user=登录名
@@ -290,7 +305,7 @@ def test_offline_mode_sets_offline_user_and_audits(qapp, tmp_path, monkeypatch):
         reset_current_user()
 
 
-# ============ W14-C3 追加：初始密码单通道（P2-17 部分）+ 角色 tr() 统一（P2-23） ============ #
+# ============ W14-C3 追加：初始密码单通道（P2-17 部分）+ 角色稳定枚举（P2-23→W18/P2-8） ============ #
 @pytest.mark.unit
 def test_default_admin_password_not_printed_to_stdout(qapp, tmp_path, monkeypatch, caplog):
     """RED（P2-17 部分）：初始密码此前 logger.info + print 双通道——
@@ -316,9 +331,9 @@ def test_default_admin_password_not_printed_to_stdout(qapp, tmp_path, monkeypatc
 
 
 @pytest.mark.unit
-def test_default_admin_role_unified_via_tr(qapp, tmp_path, monkeypatch):
-    """RED（P2-23）：注册写角色用中文字面量，与读取默认值 tr("操作员")
-    混用——en_US 下历史账户角色显示与比较错乱；持久层统一经 tr()。"""
+def test_default_admin_role_stable_enum_across_languages(qapp, tmp_path, monkeypatch):
+    """W18/P2-8（取代 P2-23 的 tr 统一方案）：角色落稳定枚举 "admin"，
+    与界面语言彻底解耦——en_US 首启落库值与 ch_CN 完全一致。"""
     from gui.core.i18n import set_language
 
     from gui.pages.login import page as login_mod
@@ -330,4 +345,4 @@ def test_default_admin_role_unified_via_tr(qapp, tmp_path, monkeypatch):
     finally:
         set_language("ch_CN")
     db = _read_db(tmp_path)
-    assert db["admin"]["role"] == "Admin"  # tr("管理员") 在 en_US 下的落库值
+    assert db["admin"]["role"] == "admin"  # 枚举稳定，不随语言漂移

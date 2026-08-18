@@ -40,3 +40,40 @@ def _apply_offscreen_fallback(has_desktop: bool) -> None:
 
 # 模块加载期执行：pytest 在收集任何测试模块（可能的 Qt import）之前加载本文件
 _apply_offscreen_fallback(_has_interactive_desktop())
+
+
+def pytest_sessionfinish(session, exitstatus) -> None:
+    """无头平台下会话收尾有序析构 Qt 对象树（W19 主审）。
+
+    背景：offscreen 平台下解释器卸载期随机原生堆损坏（实证 0xC0000374，
+    用例全过但退出码 127/3；exit_guard × format_export 合跑触发、单文件
+    不触发、minimal 平台不触发）。根因形态：会话泄漏的顶层 QWidget 与
+    QApplication 在卸载期乱序析构。收尾时先逐个析构顶层 widget（每轮
+    重查 topLevelWidgets——删父会级联析构子 wrapper，快照列表中的失效
+    wrapper 再删即 double-free，isValid 防护），最后析构 QApplication，
+    让 C++ 对象树在 DLL 卸载前有序销毁。仅无头平台生效；真窗平台
+    （UIA）不受影响。
+    """
+    if os.environ.get("QT_QPA_PLATFORM", "") not in ("offscreen", "minimal"):
+        return
+    try:
+        import shiboken6
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        app.processEvents()
+        for _ in range(200):
+            pending = [
+                w for w in app.topLevelWidgets() if shiboken6.isValid(w)
+            ]
+            if not pending:
+                break
+            try:
+                shiboken6.delete(pending[0])
+            except Exception:  # noqa: BLE001  # 单个失败继续清余下对象
+                break
+        shiboken6.delete(app)
+    except Exception:  # noqa: BLE001  # 收尾兜底：任何失败不得改写退出码语义
+        pass

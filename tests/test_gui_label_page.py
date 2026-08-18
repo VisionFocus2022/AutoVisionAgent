@@ -2,8 +2,8 @@
 
 文件夹批量加载（递归/上限 500/空目录/坏图）、单图与取消、导航边界、
 五模式切换与 dragMode、标签应用、撤销重做接线、删除/复制/粘贴、
-保存三态 + 自动切下一张（QTimer 真实触发）、run_ai_prelabel 双路径
-（DET 引擎 / 零样本 dispatcher 回退）。
+保存三态 + 自动切下一张（QTimer 真实触发）、run_ai_prelabel registry 直连路径
+（DET 引擎；W18 起零样本 dispatcher 回退已删——引擎不可用时诚实提示"零样本未实装"）。
 """
 from __future__ import annotations
 
@@ -321,6 +321,8 @@ def test_ai_prelabel_requires_image_then_lands_shapes(
     label_page._ai_prelabel()
     assert any(t == "请先打开图像" for t, _ in label_page._msgs)
 
+    # W18（v3 P2-7）：预检放行（本用例锚定落形状路径，不测引擎可用性）
+    monkeypatch.setattr(label_mod, "det_engine_available", lambda: True)
     monkeypatch.setattr(label_mod, "pick_directory", lambda *a, **k: str(folder3))
     label_page.open_folder()
     shapes = [
@@ -334,6 +336,89 @@ def test_ai_prelabel_requires_image_then_lands_shapes(
     assert len(label_page.canvas.shapes) == 2
     assert label_page.btn_ai_prelabel.isEnabled() is True
     assert any(t == "AI预标注完成" for t, _ in label_page._msgs)
+
+
+# ==================== W18（v3 P2-7）：零样本桥删除后的诚实路径 ==================== #
+@pytest.mark.unit
+def test_ai_prelabel_without_det_engine_honest_status(
+    label_page, monkeypatch, tmp_path
+):
+    """W18：DET 引擎不可用 → 状态栏明确提示"零样本未实装"，不派发任务。
+
+    RED：旧实现静默走零样本 dispatcher 回退（必失败返回空，用户零感知）。
+    """
+    import models.supervised.registry as reg_mod
+
+    class _NoReg:
+        def has(self, t):
+            return False
+
+    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _NoReg())
+    label_page._image_path = str(tmp_path / "a.png")
+
+    label_page._ai_prelabel()
+
+    assert any(
+        "零样本未实装" in t or "零样本未实装" in a
+        for t, a in label_page._msgs
+    ), f"状态栏应含诚实文案'零样本未实装'，got: {label_page._msgs}"
+    # 未派发任务 → 按钮不应被禁用（不存在禁用后等空结果的路径）
+    assert label_page.btn_ai_prelabel.isEnabled() is True
+
+
+@pytest.mark.unit
+def test_run_ai_prelabel_no_det_engine_returns_empty_without_dispatcher(
+    tmp_path, monkeypatch
+):
+    """W18：无 DET 引擎时诚实返回空列表，绝不触碰 dispatcher（GUI 为
+    registry 直连正式形态，v3 P2-7）。"""
+    from gui.pages.label.page import run_ai_prelabel
+    import models.supervised.registry as reg_mod
+
+    class _NoReg:
+        def has(self, t):
+            return False
+
+    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _NoReg())
+
+    import industrial_vision_platform.vision_dispatcher as disp_mod
+
+    # 用调用记录器而非"抛异常哨兵"——AutoLabeler.run 会吞 Exception，
+    # 抛哨兵无法证明未调用（W18 实测：原 RED 波次被吞掉静默通过）
+    calls = []
+    monkeypatch.setattr(disp_mod, "get_dispatcher", lambda: calls.append(1))
+
+    img = tmp_path / "img.png"
+    _png(img)
+    assert run_ai_prelabel(str(img)) == []
+    assert calls == [], "run_ai_prelabel 不得再走 dispatcher 桥（v3 P2-7）"
+
+
+@pytest.mark.unit
+def test_run_ai_prelabel_det_engine_bad_image_returns_empty(
+    tmp_path, monkeypatch
+):
+    """W18：DET 引擎在位但坏图读不出 → 诚实返回空（无零样本回退可走）。"""
+    from core.interfaces_supervised import DetectionResult, TaskType
+    from gui.pages.label.page import run_ai_prelabel
+    import models.supervised.registry as reg_mod
+
+    class _Engine:
+        def infer(self, im):
+            return DetectionResult(task=TaskType.DET, score=0.0)
+
+    class _Reg:
+        def has(self, t):
+            return True
+
+        def get(self, t):
+            return _Engine()
+
+    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _Reg())
+
+    bad = tmp_path / "bad.png"
+    bad.write_bytes(b"junk")
+    assert run_ai_prelabel(str(bad)) == []
 
 
 @pytest.mark.unit
@@ -367,43 +452,8 @@ def test_run_ai_prelabel_det_engine_path(tmp_path, monkeypatch):
     assert shapes[0].mode is AnnotationMode.RECTANGLE
 
 
-@pytest.mark.unit
-def test_run_ai_prelabel_zero_shot_fallback_and_bad_image(
-    tmp_path, monkeypatch
-):
-    from gui.pages.label.page import run_ai_prelabel
-    import models.supervised.registry as reg_mod
-
-    class _NoReg:
-        def has(self, t):
-            return False
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _NoReg())
-
-    img = tmp_path / "img.png"
-    _png(img)
-
-    from core.interfaces_supervised import DetectionResult, TaskType
-
-    class _Disp:
-        def infer(self, task, image):
-            return DetectionResult(
-                task=TaskType.ABDET, score=0.7,
-                boxes=np.array([[2.0, 2.0, 20.0, 18.0]]),
-                labels=("defect",), scores=(0.7,),
-            )
-
-    import industrial_vision_platform.vision_dispatcher as disp_mod
-
-    monkeypatch.setattr(disp_mod, "get_dispatcher", lambda: _Disp())
-    shapes = run_ai_prelabel(str(img))
-    assert len(shapes) == 1
-    assert shapes[0].label == "defect"
-
-    # 坏图：两条路径都读不出 → []
-    bad = tmp_path / "bad.png"
-    bad.write_bytes(b"junk")
-    assert run_ai_prelabel(str(bad)) == []
+# （W18：原 test_run_ai_prelabel_zero_shot_fallback_and_bad_image 已删——
+#  零样本 dispatcher 回退桥随 v3 P2-7 正式化移除，改为上方两个诚实路径用例）
 
 
 # ============================== 显隐与杂项 ============================== #

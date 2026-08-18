@@ -30,6 +30,7 @@ TASK_LABELS = {
 def registered_tasks() -> set:
     """返回已注册引擎的任务集合（顺带触发惰性注册）。"""
     try:
+        # registry 直连为 GUI 正式形态（v3 P2-7）
         from models.supervised.engines import register_all_engines
         from models.supervised.registry import get_default_registry
         register_all_engines()

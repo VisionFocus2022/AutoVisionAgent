@@ -186,6 +186,12 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
         只允许反序列化 tensor 和 OrderedDict 等安全类型。
         W12-F4: 覆写 persistent_load，从同一 zip 容器的 data/<key>
         条目按白名单 storage 类型回填 tensor 存储（绝不执行任意代码）。
+
+        形态豁免声明（v3 P2-10）：本函数约 195 行，为函数+嵌套
+        RestrictedUnpickler 安全类的内聚安全单元，有专项测试覆盖
+        （tests/test_interfaces_safe_extract.py）；机械拆分会损害
+        安全审计可读性，经架构审查 v3 对抗复核裁定保持整块
+        （阈值超 100 行的有意豁免）。
         """
         import io
         import pickle

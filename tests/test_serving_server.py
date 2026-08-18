@@ -257,6 +257,20 @@ def test_release_shared_memory(servicer, shm):
     assert not os.path.exists(handle.file_path)
 
 
+@pytest.mark.unit
+def test_release_shared_memory_miss_returns_false_with_error(servicer, shm):
+    """W17（v3 P1-1 附带）：未命中本进程区域的 Release 不得假报成功——
+
+    旧行为恒 success=True，客户端把"什么都没回收到"当成功 ACK，
+    与区域泄漏互为盲区（v2/v3 审查点名）。未命中须 success=False + 非空 error。
+    """
+    resp = servicer.ReleaseSharedMemory(
+        pb.ReleaseSharedMemoryRequest(file_path=r"C:\nonexistent\ava_x.bin"), _ctx()
+    )
+    assert resp.success is False
+    assert resp.error  # 非空错误说明（供客户端/排障分辨"未命中"与"异常"）
+
+
 # ------------------------------- create_server ------------------------------- #
 @pytest.mark.unit
 def test_create_server_assembles_with_injected_dispatcher(shm):
@@ -619,3 +633,48 @@ def test_serve_file_logging_failure_does_not_block_startup(
     assert started == [True], "文件日志失败后服务仍应启动"
     warns = [r for r in caplog.records if r.levelno >= logging.WARNING]
     assert warns, "文件日志失败必须落 WARNING 留痕"
+
+
+# ============ W17 簇C 追加：P2-9 非回环绑定告警 ============ #
+
+
+@pytest.mark.unit
+def test_create_server_non_loopback_host_logs_warning(shm, caplog):
+    """RED（P2-9）：host 非回环时绑定前必须落 WARNING——本服务无
+    TLS/token 鉴权（ADR-0001），非回环监听等于把 gRPC 接口裸奔给整个
+    网段，用户须被显式提醒暴露风险。"""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="serving.server"):
+        server = create_server(
+            host="0.0.0.0", dispatcher=FakeDispatcher(), shm=shm, port=50098
+        )
+    server.stop(grace=0)
+
+    warns = [
+        r for r in caplog.records
+        if r.name == "serving.server" and r.levelno == logging.WARNING
+    ]
+    assert warns, "非回环绑定应落 WARNING"
+    msg = warns[0].getMessage()
+    assert "非回环绑定" in msg
+    assert "鉴权" in msg, "告警须点明无鉴权 gRPC 暴露风险"
+    assert "ADR-0001" in msg, "告警须引用 ADR-0001"
+
+
+@pytest.mark.unit
+def test_create_server_loopback_host_no_warning(shm, caplog):
+    """RED（P2-9）：回环绑定（默认推荐，ADR-0001）不得产生告警。"""
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="serving.server"):
+        server = create_server(
+            host="127.0.0.1", dispatcher=FakeDispatcher(), shm=shm, port=50099
+        )
+    server.stop(grace=0)
+
+    warns = [
+        r for r in caplog.records
+        if r.name == "serving.server" and r.levelno >= logging.WARNING
+    ]
+    assert not warns, f"回环绑定不应告警: {[r.getMessage() for r in warns]}"

@@ -26,6 +26,15 @@ gRPC 消息仅携带 ``SharedMemoryHandle``（路径/偏移/长度/dtype/shape�
 - 进程崩溃/强杀残留的 ava_*.bin 由下次启动清扫（mtime 年龄超 2 小时，
   W11 v2 P1-1）；区域登记数量有上限（默认 64，``AVA_SHM_MAX_REGIONS``
   或构造参数可调），写满即 RuntimeError，防静默泄漏。
+- 区域 TTL（W17，v3 P1-1）：结果区域由客户端在 RPC 返回后即读，正常
+  消费窗口远小于 TTL；超期未 release 的区域在下次写入前被惰性回收
+  （不设后台线程），避免随附 C# 客户端无法回收结果区域时累积触顶上限。
+  ``AVA_SHM_REGION_TTL_SECONDS`` 或构造参数可调，默认 300 秒，<=0 关闭。
+- 区域租约（W19，v3 第三波 FR-2 方向 A，PoC）：``acquire_lease`` 在
+  区域上登记一个有限时长的租约；租约未到期期间 ``_reap_expired``
+  跳过该区域（与区域 TTL 是两个独立时钟，取长者保护）；
+  ``release_leased`` 校验 lease_id 归属后才释放。生产路径
+  （serialization 默认不建租约）行为不变——见 ADR-0002。
 """
 from __future__ import annotations
 
@@ -58,6 +67,9 @@ _STALE_FILE_MAX_AGE_SECONDS = 2 * 60 * 60
 # 区域登记上限（防忘 release 的静默泄漏）；可经构造参数或环境变量注入。
 _MAX_REGIONS_ENV = "AVA_SHM_MAX_REGIONS"
 _DEFAULT_MAX_REGIONS = 64
+# 区域 TTL（W17 v3 P1-1）：登记时长超过该秒数的区域在下次写入前被惰性回收。
+_REGION_TTL_ENV = "AVA_SHM_REGION_TTL_SECONDS"
+_DEFAULT_REGION_TTL_SECONDS = 300.0
 
 
 @dataclass(frozen=True)
@@ -117,6 +129,7 @@ class SharedMemoryManager:
         self,
         base_dir: Optional[str] = None,
         max_regions: Optional[int] = None,
+        region_ttl_seconds: Optional[float] = None,
     ) -> None:
         # 默认放到系统临时目录下的 autovisionagent_shm 子目录，便于统一清理
         if base_dir is None:
@@ -127,11 +140,17 @@ class SharedMemoryManager:
         self._base_dir = Path(base_dir)
         self._base_dir.mkdir(parents=True, exist_ok=True)
         self._max_regions = _resolve_max_regions(max_regions)
+        self._region_ttl_seconds = _resolve_region_ttl(region_ttl_seconds)
         self._sweep_stale_files()
 
         self._lock = threading.Lock()
-        # file_path -> (fd, mmap_obj)：仅记录本进程创建的区域，用于回收
-        self._regions: Dict[str, Tuple[int, mmap.mmap]] = {}
+        # file_path -> (fd, mmap_obj, created_at_monotonic)：
+        # 仅记录本进程创建的区域，用于回收与 TTL 计龄（W17 起三元组）
+        self._regions: Dict[str, Tuple[int, mmap.mmap, float]] = {}
+        # W19（v3 第三波 FR-2 方向 A）：区域租约登记表
+        # file_path -> (lease_id, expires_at_monotonic)；lease_id 进程内自增。
+        self._leases: Dict[str, Tuple[int, float]] = {}
+        self._next_lease_id = 0
 
         import atexit
         atexit.register(self.cleanup)
@@ -168,6 +187,81 @@ class SharedMemoryManager:
             )
         return removed
 
+    # ---------- TTL 惰性回收（W17 v3 P1-1）----------
+
+    def _reap_expired(self) -> int:
+        """回收登记时长超过 TTL 的区域（写路径入口调用，不设后台线程）。
+
+        结果区域由客户端在 RPC 返回后即读，正常消费窗口远小于 TTL；超期
+        未 release 的视为泄漏（随附 C# 客户端结构性无法回收结果区域），
+        回收以避免累积触顶 ``AVA_SHM_MAX_REGIONS``。TTL<=0 时直接跳过。
+        锁不可重入：快照在锁内取、release 在锁外做（与 cleanup 同模式）。
+
+        Returns:
+            本次回收的区域数。
+        """
+        ttl = self._region_ttl_seconds
+        if ttl is None or ttl <= 0:
+            return 0
+        now = time.monotonic()
+        with self._lock:
+            expired = []
+            for path, (_fd, _mm, created) in self._regions.items():
+                if now - created <= ttl:
+                    continue
+                # W19（v3 第三波 FR-2 方向 A）：租约未到期的区域豁免回收——
+                # 租约到期时钟与区域 TTL 时钟独立（取长者保护区域）。
+                lease = self._leases.get(path)
+                if lease is not None and lease[1] > now:
+                    continue
+                expired.append(path)
+        for path in expired:
+            if self.release(path):
+                logger.info(
+                    "TTL 回收共享内存区域: %s (TTL=%.1fs)", path, ttl
+                )
+        return len(expired)
+
+    # ---------- 区域租约（W19 v3 第三波 FR-2 方向 A，PoC）----------
+
+    def acquire_lease(self, key: str, ttl_ms: float) -> int:
+        """在区域上登记租约，返回自增 lease_id。
+
+        Args:
+            key: 区域文件路径（须为本进程在册区域才有保护意义）。
+            ttl_ms: 租约时长（毫秒）；到期后 TTL 回收恢复。
+
+        同一区域重复 acquire 以最后一张租约为准（PoC 单租约模型，
+        覆盖式登记，不维护多租约集合）。
+        """
+        expires_at = time.monotonic() + float(ttl_ms) / 1000.0
+        with self._lock:
+            self._next_lease_id += 1
+            lease_id = self._next_lease_id
+            self._leases[key] = (lease_id, expires_at)
+        logger.debug("共享内存租约登记: %s (lease_id=%d, ttl_ms=%.0f)", key, lease_id, ttl_ms)
+        return lease_id
+
+    def release_leased(self, file_path: str, lease_id: int) -> bool:
+        """校验租约归属后释放区域（lease_id 不符 → 拒绝，区域不动）。
+
+        Returns:
+            True=校验通过且区域命中回收；False=无在册租约 / 归属不符 /
+            区域不存在（可能已被回收）。锁不可重入：归属校验与租约摘除
+            在锁内完成，实际释放复用 :meth:`release`（锁外，与
+            _reap_expired 同模式）。
+        """
+        with self._lock:
+            lease = self._leases.get(file_path)
+            if lease is None or lease[0] != lease_id:
+                logger.warning(
+                    "租约释放被拒（无在册租约或归属不符）: %s (lease_id=%s)",
+                    file_path, lease_id,
+                )
+                return False
+            del self._leases[file_path]
+        return self.release(file_path)
+
     # ---------- 写出 ----------
 
     def write_array(self, array, dtype: Optional[str] = None) -> SharedMemoryHandle:
@@ -194,9 +288,16 @@ class SharedMemoryManager:
         return self._write_raw(raw, dt_name, tuple(int(s) for s in arr.shape))
 
     def write_bytes(self, data: bytes, dtype: str = "uint8", shape: Tuple[int, ...] = ()) -> SharedMemoryHandle:
-        """写入裸字节并给定 dtype/shape（用于非 numpy 来源）。"""
-        if dtype not in _DTYPE_MAP:
-            raise ValueError(f"不支持的 dtype: {dtype}，仅支持 {list(_DTYPE_MAP)}")
+        """写入裸字节并给定 dtype/shape（用于非 numpy 来源）。
+
+        W17：``dtype="bool_rle"`` 合法——data 须为 mask_codec 已编码的
+        bool_rle 载荷，shape 为原掩码形状（serialization 内联超限时走此
+        路径写出，避免二次编码）。
+        """
+        if dtype not in _DTYPE_MAP and dtype != "bool_rle":
+            raise ValueError(
+                f"不支持的 dtype: {dtype}，仅支持 {list(_DTYPE_MAP)} 与 bool_rle"
+            )
         return self._write_raw(bytes(data), dtype, tuple(int(s) for s in shape))
 
     def write_mask_compact(self, masks) -> SharedMemoryHandle:
@@ -217,6 +318,9 @@ class SharedMemoryManager:
         return self._write_raw(payload, "bool_rle", tuple(int(s) for s in arr.shape))
 
     def _write_raw(self, raw: bytes, dtype: str, shape: Tuple[int, ...]) -> SharedMemoryHandle:
+        # W17：先惰性回收超 TTL 区域（腾出登记槽位），再创建新区域
+        self._reap_expired()
+
         name = f"ava_{uuid.uuid4().hex}.bin"
         path = str(self._base_dir / name)
 
@@ -242,14 +346,16 @@ class SharedMemoryManager:
         with self._lock:
             limit_hit = len(self._regions) >= self._max_regions
             if not limit_hit:
-                self._regions[path] = (fd, mm)
+                self._regions[path] = (fd, mm, time.monotonic())
         if limit_hit:
             # 上限命中：回滚刚创建的映射与文件，拒绝分配（不得静默继续泄漏）
             self._discard_mapping(fd, mm, path)
             raise RuntimeError(
                 f"共享内存区域登记已达上限: 当前 {len(self._regions)} 个 / "
-                f"上限 {self._max_regions} 个，请先 release 未使用区域，"
-                f"或调大环境变量 {_MAX_REGIONS_ENV}"
+                f"上限 {self._max_regions} 个。超过 TTL（"
+                f"{_REGION_TTL_ENV}={self._region_ttl_seconds:.0f}s）的区域会在"
+                f"下次写入前自动回收；若客户端持有未消费句柄请尽快读取，或显式"
+                f"调用 ReleaseSharedMemory 回收，或调大环境变量 {_MAX_REGIONS_ENV}"
             )
         logger.debug("共享内存写出: %s (%d bytes, %s, shape=%s)", path, length, dtype, shape)
         return SharedMemoryHandle(
@@ -284,7 +390,7 @@ class SharedMemoryManager:
             entry = self._regions.get(h.file_path)
 
         if entry is not None:
-            _fd, mm = entry
+            _fd, mm, _created = entry
             data = mm[h.offset : h.offset + h.length]
         else:
             data = _read_range_from_file(h.file_path, h.offset, h.length)
@@ -300,9 +406,23 @@ class SharedMemoryManager:
         with self._lock:
             entry = self._regions.get(h.file_path)
         if entry is not None:
-            _fd, mm = entry
+            _fd, mm, _created = entry
             return bytes(mm[h.offset : h.offset + h.length])
         return _read_range_from_file(h.file_path, h.offset, h.length)
+
+    def read_range(self, file_path: str, offset: int, length: int) -> bytes:
+        """按绝对区间读区域字节（W19 v3 第三波 FR-2 方向 B：FetchRegion 分块用）。
+
+        优先复用本进程已映射区域，否则按路径读文件；文件不存在时抛
+        FileNotFoundError（调用方据此 abort NOT_FOUND）。与
+        :meth:`read_bytes` 的差别：入参是裸区间而非句柄，便于流式切块。
+        """
+        with self._lock:
+            entry = self._regions.get(file_path)
+        if entry is not None:
+            _fd, mm, _created = entry
+            return bytes(mm[offset : offset + length])
+        return _read_range_from_file(file_path, offset, length)
 
     # ---------- 回收 ----------
 
@@ -330,13 +450,16 @@ class SharedMemoryManager:
         """
         with self._lock:
             entry = self._regions.pop(file_path, None)
+            # W19（v3 第三波 FR-2 方向 A）：区域回收时同步摘除在册租约
+            # （幂等：release_leased 路径已先行删除，此处兜底其余回收路径）。
+            self._leases.pop(file_path, None)
 
         if entry is None:
             # 非本进程创建：仅尝试删除文件（通常不应由本侧负责）
             logger.debug("release 未命中本进程区域: %s", file_path)
             return False
 
-        fd, mm = entry
+        fd, mm, _created = entry
         self._discard_mapping(fd, mm, file_path)
         logger.debug("共享内存已回收: %s", file_path)
         return True
@@ -370,6 +493,25 @@ def _resolve_max_regions(explicit: Optional[int]) -> int:
                 _MAX_REGIONS_ENV, raw, _DEFAULT_MAX_REGIONS,
             )
     return _DEFAULT_MAX_REGIONS
+
+
+def _resolve_region_ttl(explicit: Optional[float]) -> float:
+    """解析区域 TTL 秒（W17）：构造参数 > AVA_SHM_REGION_TTL_SECONDS > 默认 300。
+
+    <= 0 表示关闭惰性回收（合法档位，非错误）。
+    """
+    if explicit is not None:
+        return float(explicit)
+    raw = os.environ.get(_REGION_TTL_ENV)
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            logger.warning(
+                "环境变量 %s=%r 不是数值，回退默认值 %.1f 秒",
+                _REGION_TTL_ENV, raw, _DEFAULT_REGION_TTL_SECONDS,
+            )
+    return _DEFAULT_REGION_TTL_SECONDS
 
 
 def _np_dtype_name(np_dtype) -> str:

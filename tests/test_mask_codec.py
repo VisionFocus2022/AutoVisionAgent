@@ -133,15 +133,21 @@ def _pseg_result():
 
 @pytest.mark.unit
 def test_serialization_default_compact(shm, monkeypatch):
-    """W7：默认走压缩（.NET 已支持 bool_rle 解码）。"""
+    """W7：默认走压缩（.NET 已支持 bool_rle 解码）；W17：小掩码内联进 proto。"""
     monkeypatch.delenv("AVA_SHM_MASK_RLE", raising=False)
     result = _pseg_result()
     proto = detection_result_to_proto(result, shm)
 
+    # 稀疏小掩码（RLE 后 << 64KiB）→ 内联通道；dtype/shape 挂句柄元数据
     assert proto.masks_shm.dtype == "bool_rle"
-    assert proto.masks_shm.length < result.masks.nbytes
+    assert proto.masks_inline != b""
+    assert proto.masks_shm.length == 0
+    assert not proto.masks_shm.file_path
+    from serving.mask_codec import decode_mask_rle
+
     np.testing.assert_array_equal(
-        shm.read_array(proto.masks_shm), result.masks
+        decode_mask_rle(bytes(proto.masks_inline), proto.masks_shm.shape),
+        result.masks,
     )
 
 

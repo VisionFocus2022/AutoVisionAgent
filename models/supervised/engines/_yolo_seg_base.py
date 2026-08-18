@@ -13,6 +13,7 @@ from typing import Any, Optional
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
 from models.supervised import AbstractTaskEngine
+from models.supervised.device import resolve_device
 
 
 class _YoloSegBase(AbstractTaskEngine):
@@ -26,6 +27,8 @@ class _YoloSegBase(AbstractTaskEngine):
 
     def load(self, weights_path: str, device: str = "cuda") -> None:
         """加载 YOLOv8-Seg 权重。"""
+        # W19（v3 第三波 FR-3.1）：cuda 不可用时诚实回退 cpu（lite 派生场景）
+        device = resolve_device(device)
         if not os.path.exists(weights_path):
             raise SupervisedEngineError(
                 f"权重文件不存在: {weights_path}", task=self.task.value

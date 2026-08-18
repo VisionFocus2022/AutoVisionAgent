@@ -15,6 +15,10 @@ from core.interfaces_supervised import TrainArtifact, TrainConfig
 class TrainWorker(QThread):
     """训练工作线程。
 
+    W18（P3①）：按无 parent 构造（页面持引用自管生命周期），QThread.finished
+    由页面接线"先清引用再 deleteLater"——不要以页面作 parent（窗口析构链会
+    连带销毁仍在运行的 QThread）。
+
     信号：
         progress(float, dict): (epoch_ratio 0~1, metrics_dict) — 实时进度
         finished_sig(TrainArtifact): 训练完成，携带产物

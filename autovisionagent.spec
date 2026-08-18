@@ -90,7 +90,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon="assets/AutoVisionAgent.ico" if Path("assets/AutoVisionAgent.ico").exists() else None,
+    icon=None,  # 将来补图标：放置 assets/AutoVisionAgent.ico 后改回 icon="assets/AutoVisionAgent.ico"
 )
 
 coll = COLLECT(

@@ -134,8 +134,8 @@ def test_deploy_export_dispatched_via_run_job(qapp, monkeypatch, tmp_path):
         def __init__(self):
             pass
 
-        def export_onnx(self, engine, path, precision=None):
-            exporter_calls.append(("onnx", engine.task.value, path, precision))
+        def export_onnx(self, model, task_value, path, precision=None):
+            exporter_calls.append(("onnx", task_value, path, precision))
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
                 f.write(b"onnx")
@@ -296,7 +296,7 @@ def deploy_page_fakes(qapp, monkeypatch, tmp_path):
         def __init__(self):
             pass
 
-        def export_onnx(self, engine, path, precision=None):
+        def export_onnx(self, model, task_value, path, precision=None):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as f:
                 f.write(b"onnx")
@@ -406,15 +406,20 @@ def test_batch_results_original_intact_when_replace_fails(
 
     monkeypatch.setattr(os, "replace", boom_replace)
 
-    with caplog.at_level(logging.ERROR, logger="gui.core.jobs"):
-        page._batch_infer()  # 不得抛：run_job 路由异常落日志
+    with caplog.at_level(logging.ERROR, logger="gui.pages.predict.page"):
+        page._batch_infer()  # 不得抛：W17 起异常经 on_error 路由到 _batch_failed
         qapp.processEvents()
 
     assert out_file.read_text(encoding="utf-8") == sentinel, (
         "os.replace 失败时既有 batch_results.json 必须完好（"
         "直写会先截断旧文件——P2-2 数据损坏路径）"
     )
-    # run_job 兜底路由：worker 异常不得静默
-    assert any("后台任务" in r.getMessage() for r in caplog.records), (
-        "replace 失败的 worker 异常应经 run_job 落 ERROR 日志"
+    # W17（v3 P2-1）：异常必达 UI——批量按钮恢复 + .tmp 残留被清理
+    assert page.btn_batch.isEnabled(), "replace 失败后批量按钮必须经 on_error 恢复"
+    assert not (results_dir / "batch_results.json.tmp").exists(), (
+        "写盘失败必须清理 .tmp 残留（W17）"
+    )
+    # 页级 ERROR 留痕（取代 W15 的 run_job 兜底日志断言——异常现路由到 UI）
+    assert any("批量推理异常终止" in r.getMessage() for r in caplog.records), (
+        "replace 失败的 worker 异常应经 _batch_failed 落页级 ERROR 日志"
     )

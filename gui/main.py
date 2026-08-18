@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import re
 import sys
 import tempfile
 
@@ -69,6 +70,29 @@ def acquire_single_instance_lock(lock_path: str | None = None) -> bool:
     return False
 
 
+# W19（v3 第三波 FR-5.4）：敏感信息兜底过滤——"初始密码: XXX"字样在
+# handler 输出前的最后防线（正常路径 FR-5.1 已不落明文，此为防回归兜底）
+_SENSITIVE_REDACT_PATTERN = re.compile(r"初始密码[:：]\s*\S+")
+
+
+class SensitiveRedactFilter(logging.Filter):
+    """把 record.msg 中"初始密码: XXX"字样掩码为"初始密码: [REDACTED]"。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _SENSITIVE_REDACT_PATTERN.sub(
+                "初始密码: [REDACTED]", record.msg
+            )
+        return True
+
+
+def _install_sensitive_redact_filter(target: logging.Logger) -> None:
+    """把 SensitiveRedactFilter 装到目标 logger 的全部 handler（幂等）。"""
+    for handler in target.handlers:
+        if not any(isinstance(f, SensitiveRedactFilter) for f in handler.filters):
+            handler.addFilter(SensitiveRedactFilter())
+
+
 def setup_logging() -> None:
     """初始化日志系统：控制台 + RotatingFileHandler。
 
@@ -111,6 +135,9 @@ def setup_logging() -> None:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(formatter)
     root.addHandler(console_handler)
+
+    # W19（v3 第三波 FR-5.4）：root 全部 handler 装敏感兜底过滤
+    _install_sensitive_redact_filter(root)
 
     logging.getLogger(__name__).info("日志系统已初始化")
 

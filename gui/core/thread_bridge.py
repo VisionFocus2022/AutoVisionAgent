@@ -24,7 +24,7 @@ W14-C2 修复（架构审查 P2-16）：
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from PySide6.QtCore import QMetaObject, Qt as _Qt, Q_ARG, QObject
 
@@ -107,4 +107,29 @@ def invoke_main(widget: QObject, slot_name: str, *args: Any) -> None:
         )
 
 
-__all__ = ["invoke_main"]
+def ui_on_error(
+    widget: QObject, slot_name: str, *prefix_args: Any
+) -> Callable[[Exception], None]:
+    """构造 run_job 的 on_error 回调：worker 异常经 invoke_main 转发到页面失败槽。
+
+    W17（v3 P2-1）：worker 抛出页面 except 元组外的异常类型（AppError 家族/
+    IndexError/KeyError 等）时，run_job 仅落日志、恢复槽永不执行 → 按钮永久
+    禁用。页面把本回调传给 ``run_job(..., on_error=...)`` 即获得"任何异常必达
+    UI"的兜底（页面既有 except 元组保留优先，负责针对性文案）。
+
+    Args:
+        widget: 目标 QObject（通常是页面实例）。
+        slot_name: 失败槽方法名（需 @Slot 装饰；末参数收 str(exc)）。
+        *prefix_args: 槽的前缀参数——供需要操作上下文的失败槽，如
+            ``ui_on_error(self, "_op_failed", op)`` → ``_op_failed(op, err)``。
+
+    Returns:
+        run_job 的 on_error 回调（在工作线程执行，经 invoke_main 跳主线程）。
+    """
+    def _handle(exc: Exception) -> None:
+        invoke_main(widget, slot_name, *prefix_args, str(exc))
+
+    return _handle
+
+
+__all__ = ["invoke_main", "ui_on_error"]

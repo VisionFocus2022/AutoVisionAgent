@@ -8,6 +8,8 @@ serving ListTasks 原样向 gRPC/C# 客户端广告不可用能力。
 1. list_all_tasks 不再广告 zero_shot（预留注入点，未注入即不可用）；
 2. label 页零样本回退失败必须以 WARNING 级日志留下真实原因（原先仅
    exception 级堆栈，且消息不含根因），便于 UI 日志排查。
+   （W18 / v3 P2-7 演进：零样本回退桥已整体删除——本条改为锚定
+   "无 DET 引擎 → WARNING 携带'零样本未实装'诚实原因"，见下方用例。）
 """
 from __future__ import annotations
 
@@ -61,9 +63,13 @@ def test_list_all_tasks_zero_shot_entry_absent_even_with_empty_registry(monkeypa
 
 
 # ------------------------------- P2-8 label 页回退留痕 ------------------------------- #
+# W18（v3 P2-7）演进：零样本 dispatcher 回退桥已删，本用例从"回退失败留痕"
+# 改锚"引擎不可用留痕"——WARNING 必须携带"零样本未实装"诚实原因。
 @pytest.mark.unit
-def test_run_ai_prelabel_zero_shot_fallback_failure_warns(tmp_path, monkeypatch, caplog):
-    """零样本回退失败：必须有一条 WARNING 级日志携带真实原因。"""
+def test_run_ai_prelabel_no_det_engine_warns_zero_shot_not_impl(
+    tmp_path, monkeypatch, caplog
+):
+    """无 DET 引擎：必须有一条 WARNING 携带"零样本未实装"诚实原因。"""
     import cv2
 
     ok, buf = cv2.imencode(".png", np.zeros((16, 16, 3), np.uint8))
@@ -79,12 +85,11 @@ def test_run_ai_prelabel_zero_shot_fallback_failure_warns(tmp_path, monkeypatch,
 
     monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _NoReg())
 
-    # 真实单例 dispatcher：无引擎加载 + 零样本检测器恒 None → infer("abdet") 必 raise
+    # 零样本桥已删（W18）：dispatcher 若被触碰即证明回退复活
     import industrial_vision_platform.vision_dispatcher as disp_mod
 
-    monkeypatch.setattr(
-        disp_mod, "get_dispatcher", lambda: disp_mod.VisionModelDispatcher()
-    )
+    disp_calls = []
+    monkeypatch.setattr(disp_mod, "get_dispatcher", lambda: disp_calls.append(1))
 
     from gui.pages.label.page import run_ai_prelabel
 
@@ -92,13 +97,13 @@ def test_run_ai_prelabel_zero_shot_fallback_failure_warns(tmp_path, monkeypatch,
         shapes = run_ai_prelabel(str(img))
 
     assert shapes == []
+    assert disp_calls == [], "W18 后 run_ai_prelabel 不得再走 dispatcher"
     warns = [
         r for r in caplog.records
         if r.levelno == logging.WARNING
-        and "零样本" in r.getMessage()
-        and "abdet" in r.getMessage()  # 真实原因可见
+        and "零样本未实装" in r.getMessage()  # 诚实原因可见
     ]
     assert warns, (
-        f"未捕获零样本回退失败的 WARNING 记录: "
+        f"未捕获引擎不可用的 WARNING 记录: "
         f"{[(r.levelname, r.getMessage()) for r in caplog.records]}"
     )

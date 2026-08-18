@@ -1,0 +1,297 @@
+{
+  "schema_version": 1,
+  "change_id": "wave18-v3-wave2",
+  "title": "v3 第二波可测化解耦：退出链/dispatcher 收敛/角色枚举/serving 告警/巨石治理/P3 清扫/CI 就绪",
+  "created_at": "2026-08-17T14:53:50.721552+00:00",
+  "mode": "default",
+  "tier": "L2",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "module",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change needs explicit requirements and execution evidence."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": true,
+      "approved": true,
+      "evidence": "2026-08-17 用户指令'继续实施第二波候选内容' + AskUserQuestion 四项拍板：dispatcher='承认 registry 直连(推荐)' / 角色='枚举化+诚实文档(推荐)' / CI='ci.yml 升级(推荐, 首跑属用户侧)' / 范围='主体+P3 全做(推荐)'；PRD（docs/prd-wave18-v3-wave2.md，FR-001~007/AC-001~012）按该拍板编制"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": true,
+      "approved": true,
+      "evidence": "2026-08-17 AskUserQuestion：'G3 执行批准：按八任务六簇实施第二波？' → 用户选择'批准，开始执行（推荐）'"
+    }
+  },
+  "documents": {
+    "change_card": "",
+    "prd": "docs/prd-wave18-v3-wave2.md",
+    "design": "",
+    "tasks": "docs/tasks-wave18-v3-wave2.md"
+  },
+  "traceability": {
+    "requirements": [
+      "FR-001",
+      "FR-002",
+      "FR-003",
+      "FR-004",
+      "FR-005",
+      "FR-006",
+      "FR-007"
+    ],
+    "acceptance": [
+      {
+        "id": "AC-001",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-002",
+        "requirements": [
+          "FR-001"
+        ]
+      },
+      {
+        "id": "AC-003",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-004",
+        "requirements": [
+          "FR-002"
+        ]
+      },
+      {
+        "id": "AC-005",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-006",
+        "requirements": [
+          "FR-003"
+        ]
+      },
+      {
+        "id": "AC-007",
+        "requirements": [
+          "FR-004"
+        ]
+      },
+      {
+        "id": "AC-008",
+        "requirements": [
+          "FR-005"
+        ]
+      },
+      {
+        "id": "AC-009",
+        "requirements": [
+          "FR-006"
+        ]
+      },
+      {
+        "id": "AC-010",
+        "requirements": [
+          "FR-006"
+        ]
+      },
+      {
+        "id": "AC-011",
+        "requirements": [
+          "FR-007"
+        ]
+      },
+      {
+        "id": "AC-012",
+        "requirements": []
+      }
+    ],
+    "tasks": [
+      {
+        "id": "TASK-001",
+        "requirements": [
+          "FR-001"
+        ],
+        "acceptance": [
+          "AC-001",
+          "AC-002"
+        ]
+      },
+      {
+        "id": "TASK-002",
+        "requirements": [
+          "FR-002"
+        ],
+        "acceptance": [
+          "AC-003",
+          "AC-004"
+        ]
+      },
+      {
+        "id": "TASK-003",
+        "requirements": [
+          "FR-003"
+        ],
+        "acceptance": [
+          "AC-005",
+          "AC-006"
+        ]
+      },
+      {
+        "id": "TASK-004",
+        "requirements": [
+          "FR-004",
+          "FR-006"
+        ],
+        "acceptance": [
+          "AC-007",
+          "AC-009"
+        ]
+      },
+      {
+        "id": "TASK-005",
+        "requirements": [
+          "FR-005"
+        ],
+        "acceptance": [
+          "AC-008"
+        ]
+      },
+      {
+        "id": "TASK-006",
+        "requirements": [
+          "FR-006"
+        ],
+        "acceptance": [
+          "AC-010"
+        ]
+      },
+      {
+        "id": "TASK-007",
+        "requirements": [
+          "FR-007"
+        ],
+        "acceptance": [
+          "AC-011"
+        ]
+      },
+      {
+        "id": "TASK-008",
+        "requirements": [
+          "FR-001",
+          "FR-002",
+          "FR-003",
+          "FR-004",
+          "FR-005",
+          "FR-006",
+          "FR-007"
+        ],
+        "acceptance": [
+          "AC-012"
+        ]
+      }
+    ]
+  },
+  "verification": [
+    {
+      "name": "TASK-001 退出链补完+train INFO（簇A1，RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w18_batch_cancel.py tests/test_gui_predict_tail.py tests/test_gui_train_page.py tests/test_gui_shell_exit_guard.py tests/test_jobs.py tests/test_gui_jobs_migration.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "131 passed（含 5 新用例先红后绿：批量协作取消 request_stop_all 下 ≤1 批停止/TrainWorker 无 parent+finished 清引用+deleteLater/closeEvent 超时强制终止告警/train 开始完成 INFO 留痕）；实际入口名 _start_training（偏差已记）"
+    },
+    {
+      "name": "TASK-002 registry 直连正式化（簇A2，RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w18_gui_registry_direct.py tests/test_gui_label_page.py tests/test_exporter_deep.py tests/test_exporter_simplify_fp16.py tests/test_gui_deploy_page.py tests/test_gui_on_error.py tests/test_gui_jobs_migration.py tests/test_w14_zero_shot_honesty.py tests/test_serving_server.py tests/test_dispatcher_threading.py tests/test_m2_e2e.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "160+82 passed 2 skipped：gui 包 dispatcher 三关键词+_EngineStub 零命中（4 关键词参数化守卫常驻）；label 零样本桥删除改 det_engine_available 预检诚实提示；export_onnx 显式参数 (model, task_value, output_path, input_shape=None, precision) 消灭引擎桩；vision_dispatcher docstring 正式架构声明；8 处调用点含 W14 旧契约测试同步适配（偏差已记）"
+    },
+    {
+      "name": "TASK-003 角色枚举化+诚实文档（簇B，RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w18_role_enum.py tests/test_gui_login_page.py tests/test_gui_pages_more.py tests/test_gui_misc_pages.py tests/test_m2_e2e.py tests/test_gui.py tests/test_audit_and_history.py tests/test_gui_shell_audit_flush.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "95 passed：中文旧值迁移/枚举直通回退/combo userData 显示解耦/新注册落 admin/login_success+offline 传枚举共 8 新用例；license 与 chmod 诚实表述入 docstring/checklist；QTimer 死导入删"
+    },
+    {
+      "name": "TASK-004 serving 告警+serialization 回滚（簇C，RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_serving_server.py tests/test_serving_serialization.py tests/test_shm_lifecycle.py tests/test_serving_shm.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "67 passed：非回环 host WARNING（含 ADR-0001 引用，回环不告警）两例 + keypoints 触发上限时 masks 已建区域释放故障注入（区域清零文件删除）先红后绿"
+    },
+    {
+      "name": "TASK-005 det_map 拆分（簇D，纯重构）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w18_metrics_ast.py tests/test_metrics_supervised.py tests/test_eval_flow.py tests/test_m2_matrix.py tests/test_interfaces_safe_extract.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "67 passed：det_map 120→43 行（拆出 _match_class_detections 67/_interpolated_ap 24），数值锚（0.5455/1.0000）期望零改动通过；AST 守卫常驻；_extract_state_dict_safe 豁免声明入 docstring"
+    },
+    {
+      "name": "TASK-006 spec 图标+FID 样本帽（簇E，RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_eval_flow.py tests/test_dynamic_import_guard.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "26 passed：max_images 参数化 3 新用例（=3 两侧≤3/默认 20 帽/run_eval_task 透传）；spec icon 死条件删除+恢复注释"
+    },
+    {
+      "name": "TASK-007 ci.yml 就绪（簇F，RED→GREEN）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_ci_workflow_file.py tests/test_ci_workflow_wave18.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "8 passed（W15 旧守卫 4 条全绿零漂移 + 新 4 条）：pip cache（+cache-dependency-path 锁定 lock 为缓存键）、dotnet-test job（windows-latest 无 setup-dotnet）、cu121/cpu 权衡与首跑前置注释；YAML safe_load rc=0"
+    },
+    {
+      "name": "TASK-008A 全量门禁（含主审 closeEvent 补拆后复跑）",
+      "command": ".venv/Scripts/python.exe -m pytest -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "894 passed / 3 skipped / 覆盖率 93.01%（fail-under=92 达标）/ 50.2s。W17 基线 862/92.88% → +32 测试 +0.13pp"
+    },
+    {
+      "name": "TASK-008B C# 全量",
+      "command": "cd serving/dotnet_client && dotnet test",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "54 passed / 0 failed（本波未触 C#，复验保持）"
+    },
+    {
+      "name": "TASK-008C AST 巨石复测（AC-012）",
+      "command": "python AST 扫描生产包（排除 tests/产物目录）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "全仓 >100 行函数 = 仅 _extract_state_dict_safe 201 行（声明式豁免，D 簇豁免注释+6 行）；closeEvent 曾被本波新增行推至 103 → 主审即时抽 _collect_active_busy 辅助方法复测 ≤100（gui 包 >100 行函数=0）；det_map 已拆（簇D）"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    {
+      "note": "簇代理偏差合并留痕（详见各 verification evidence 与工作流运行记录 wf_cff16cdc-6e8）：A1 训练入口实际名 _start_training；A2 发现第 8 个 export_onnx 调用方（tests/test_w14_zero_shot_honesty.py 锚定旧零样本回退契约，随删桥改写为诚实路径断言）、export_onnx 保留 input_shape 可选参、label 新增 det_engine_available 主线程预检缝、eval_ 页无 registry 直连处故未加注释；B 既有 P2-23 用例更名为枚举稳定断言、offline 审计 role 同步枚举；E 加第三例透传用例；F 补 cache-dependency-path（松散 requirements.txt 会劫持默认缓存键）。",
+      "resolved": true
+    },
+    {
+      "note": "主审终审时发现 closeEvent 被本波新增告警行推至 103 行（AC-012 违例：>100 行函数清单不得含本波新增）——即时抽出 _collect_active_busy 三路检测辅助方法复测达标（33 相关用例全绿），全量门禁复跑 894 passed。",
+      "resolved": true
+    },
+    {
+      "note": "簇C 报告 test_region_ttl_frees_cap_slots 在六簇并行负载下出现一次时序性失败（TTL=0.05s 实时窗口），隔离与全量复跑均绿、与本波改动无因果路径——记录为已知负载敏感用例，后续如复发可放宽该用例 TTL 窗口。",
+      "resolved": true
+    }
+  ],
+  "request_evidence": "用户指令(2026-08-17): 继续实施第二波候选内容；AskUserQuestion 四项拍板: dispatcher='承认 registry 直连(推荐)' / 角色='枚举化+诚实文档(推荐)' / CI='ci.yml 升级(推荐, 首跑属用户侧)' / 范围='主体+P3 全做(推荐)'",
+  "final_summary": "v3 第二波可测化解耦全部落地（FR-001~007 / AC-001~012 全过，六簇并行 TDD+主审终审）：①退出链（P2-3）：predict 批量接注册表协作取消（request_stop_all 下 ≤1 批停止）、TrainWorker 去 parent+finished 清引用 deleteLater（析构崩溃窗口消除）、closeEvent 超时强制终止告警、train 页 INFO 留痕；②registry 直连正式化（P2-7，用户拍板）：label 零样本桥删除改诚实预检、export_onnx 显式参数消灭 _EngineStub、gui 包 dispatcher 引用清零（守卫常驻）、正式架构声明入 vision_dispatcher；③角色枚举化（P2-8）：users.json 稳定枚举+中文旧值迁移、显示/持久解耦、license/chmod 诚实文档；④serving 非回环 WARNING（P2-9）+serialization 部分失败区域回滚（P3⑤）；⑤det_map 120→43 行拆分+_extract_state_dict_safe 豁免声明（P2-10）；⑥P3 清扫：QTimer 死导入/spec 死图标条件/torch.load 层次注释/FID max_images 参数化；⑦ci.yml 就绪：pip cache+dotnet job+权衡注释（真实首跑待用户提供 git remote）。终态：Python 门禁 894 passed/3 skipped/93.01%（W17 后 862/92.88%）、C# 54 passed、AST >100 行函数仅剩声明豁免 1 处、状态验证器 rc=0。改动未提交。",
+  "status": "complete"
+}

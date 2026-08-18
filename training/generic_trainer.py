@@ -344,6 +344,9 @@ class GenericTrainer:
         if not meta:
             try:
                 import torch
+                # P3④：直调 torch.load(weights_only=True) 而不走 _safe_torch_load
+                # ——此处需要完整 ckpt 对象读取元数据字典（非 state_dict 装载）；
+                # weights_only=True 已阻断任意代码执行，安全等价。
                 ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
                 if isinstance(ckpt, dict) and "epoch" in ckpt:
                     meta = ckpt

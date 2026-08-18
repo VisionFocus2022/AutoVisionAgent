@@ -7,6 +7,9 @@ EngineTrainStrategy 全路径、TrainWorker 直调 run（真实 Qt 信号）。
 """
 from __future__ import annotations
 
+import logging
+import time
+
 import pytest
 
 pytest.importorskip("PySide6")
@@ -45,15 +48,22 @@ class _Artifact:
 
 
 class FakeWorker:
-    """TrainWorker 替身：start() 同步发进度+完成（或按 script 发失败）。"""
+    """TrainWorker 替身：start() 同步发进度+完成（或按 script 发失败）。
+
+    W18（P3①）：补 QThread.finished 语义（真实 QThread 无论成败都发）与
+    deleteLater 记录，供生命周期断言。
+    """
 
     mode = "finish"
+    on_delete_later = None  # deleteLater 时刻回调（顺序断言用）
 
     def __init__(self, trainer, cfg, parent=None):
         self.trainer, self.cfg = trainer, cfg
         self.progress, self.finished_sig, self.failed = _Sig(), _Sig(), _Sig()
+        self.finished = _Sig()
         self.stopped = False
         self._running = False
+        self.deleteLater_calls: list[bool] = []
 
     def start(self):
         if FakeWorker.mode == "finish":
@@ -61,6 +71,7 @@ class FakeWorker:
             self.finished_sig.emit(_Artifact())
         else:
             self.failed.emit("boom")
+        self.finished.emit()  # 真实 QThread 在 run() 结束后必发 finished
 
     def isRunning(self):
         return self._running
@@ -70,6 +81,12 @@ class FakeWorker:
 
     def wait(self, ms=None):
         return True
+
+    def deleteLater(self):
+        self.deleteLater_calls.append(True)
+        hook = FakeWorker.on_delete_later
+        if hook is not None:
+            hook()
 
 
 @pytest.fixture
@@ -378,3 +395,71 @@ def test_train_finished_writes_train_complete_audit(train_page, monkeypatch):
     finally:
         reset_current_user()
         audit._buffer.clear()
+
+
+# ================ W18（TASK-001 / P3①）：TrainWorker 生命周期 + INFO 留痕 ================ #
+
+
+@pytest.mark.unit
+def test_start_training_releases_worker_on_thread_finished(
+        train_page, monkeypatch):
+    """W18（RED）：QThread.finished → 先清页面引用 self._worker=None、
+    再 worker.deleteLater()——顺序关键：closeEvent 的
+    getattr(self, "_worker").isRunning() 若拿到已析构的 C++ 包装，
+    PySide6 会抛 RuntimeError（对已删除对象调 isRunning）。"""
+    order: list = []
+
+    def _hook():
+        order.append(("deleteLater", train_page._worker is None))
+
+    FakeWorker.on_delete_later = _hook
+    try:
+        monkeypatch.setattr(train_page, "_make_trainer", lambda cfg: object())
+        train_page._start_training()
+    finally:
+        FakeWorker.on_delete_later = None
+
+    assert train_page._worker is None, "线程 finished 后页面引用必须清空"
+    assert order == [("deleteLater", True)], "清引用必须先于 deleteLater"
+
+
+@pytest.mark.unit
+def test_real_train_worker_parentless_and_reference_cleared(qapp, monkeypatch):
+    """W18（RED）真链路（真 TrainPage + 真 TrainWorker 线程）：
+    ① 构造不得再以页面作 parent（parent=None 自管生命周期）；
+    ② 线程 finished 后页面引用被清（deleteLater 排队销毁）。"""
+    from gui.pages.train.page import TrainPage
+
+    page = TrainPage()
+
+    class _SlowTrainer:
+        def fit(self, cfg, progress, should_stop):
+            time.sleep(0.2)  # 给主线程留捕获 worker 引用的窗口
+            return _Artifact()
+
+    monkeypatch.setattr(page, "_make_trainer", lambda cfg: _SlowTrainer())
+    page._start_training()
+
+    worker = page._worker
+    assert worker is not None
+    assert worker.parent() is None, "TrainWorker 不得再以页面作 parent"
+    assert worker.wait(5000) is True  # 线程收尾（finished 已直连派发）
+
+    deadline = time.time() + 5.0
+    while page._worker is not None and time.time() < deadline:
+        qapp.processEvents()
+        time.sleep(0.01)
+    assert page._worker is None, "线程 finished 后页面引用必须已清"
+
+
+@pytest.mark.unit
+def test_train_start_and_finish_leave_info_logs(
+        train_page, monkeypatch, caplog):
+    """W18（P3① 留痕）：训练开始与完成各落一条 logger.info（操作 + 关键
+    参数），使 gui.pages.train.page 在日志中可见（此前该 logger 全程静默）。"""
+    monkeypatch.setattr(train_page, "_make_trainer", lambda cfg: object())
+    with caplog.at_level(logging.INFO, logger="gui.pages.train.page"):
+        train_page._start_training()
+    msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    assert any("训练开始" in m for m in msgs), "训练开始须留 INFO 痕"
+    assert any("训练完成" in m for m in msgs), "训练完成须留 INFO 痕"

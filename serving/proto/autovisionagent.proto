@@ -21,6 +21,20 @@ message SharedMemoryHandle {
   string dtype = 4;
   // 形状（行优先，例如 [N, H, W, 3]）。
   repeated int32 shape = 5;
+  // ---- W19（v3 第三波 FR-2 方向 A）：租约字段（PoC，生产路径未启用）----
+  // 客户端对结果区域显式持有租约：服务端在租约未到期期间不回收该区域
+  // （TTL reaper 豁免），ReleaseSharedMemory 携带 lease_id 校验归属。
+  // serialization 默认路径不填（0）——默认行为不变（ADR-0002）。
+  uint64 lease_id = 6;
+  // 租约时长（毫秒）；与区域 TTL 是两个独立时钟，取长者保护区域。
+  int64 lease_ttl_ms = 7;
+}
+
+// W19（v3 第三波 FR-2 方向 B）：大区域流式拉取分块（PoC，生产路径未启用）。
+message ArrayChunk {
+  bytes data = 1;    // 载荷块（服务端按 1 MiB 切块）
+  int64 offset = 2;  // 相对句柄 offset 的字节位移（首块为 0）
+  bool last = 3;     // 尾块标记（收齐判定）
 }
 
 // ============================== 健康 & 元数据 ============================== #
@@ -95,6 +109,15 @@ message DetectionResultProto {
   SharedMemoryHandle masks_shm = 7;     // (N,H,W) bool
   SharedMemoryHandle keypoints_shm = 8; // (N,K,2|3) float
   map<string, string> extra = 9;
+
+  // ---- W17（v3 P1-1）：小数组内联通道 ----
+  // 序列化后 < 64 KiB 的 masks/keypoints 直接内联进 proto，不再创建共享内存
+  // 区域（结果区域由客户端在 RPC 返回后即读；小载荷内联可省一次文件创建，
+  // 且随附客户端无需回收）。消费端规则：inline 字段非空 → 以同名 shm 句柄
+  // 字段携带的 dtype/shape 为元数据解码内联字节（句柄 file_path 为空、
+  // length 为 0）；否则若句柄 length > 0 → 按句柄走共享内存读取。
+  bytes masks_inline = 10;      // bool_rle（默认）或 raw bool 字节
+  bytes keypoints_inline = 11;  // raw float32 小端字节
 }
 
 message DetectResponse {
@@ -106,6 +129,10 @@ message DetectResponse {
 // ============================ 共享内存区域回收 ============================== #
 message ReleaseSharedMemoryRequest {
   string file_path = 1;
+  // W19（v3 第三波 FR-2 方向 A，PoC）：可选租约 ID；非 0 时服务端校验
+  // 归属（lease_id 与该区域的在册租约一致才允许释放），不匹配则
+  // success=False。默认路径（0，无租约）行为与 W17 完全一致。
+  uint64 lease_id = 2;
 }
 
 message ReleaseSharedMemoryResponse {
@@ -133,4 +160,8 @@ service AutoVisionAgentService {
   rpc Detect(DetectRequest) returns (DetectResponse);
   // 回收由本服务创建的共享内存文件。
   rpc ReleaseSharedMemory(ReleaseSharedMemoryRequest) returns (ReleaseSharedMemoryResponse);
+  // W19（v3 第三波 FR-2 方向 B，PoC）：按句柄流式拉取共享内存区域
+  // （1 MiB ArrayChunk 流；区域不存在/已被回收 → NOT_FOUND abort）。
+  // 供无法做同机文件映射的消费端取回大数组；生产路径未启用。
+  rpc FetchRegion(SharedMemoryHandle) returns (stream ArrayChunk);
 }
