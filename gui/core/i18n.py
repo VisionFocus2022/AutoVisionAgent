@@ -35,6 +35,7 @@ _EN_US: Dict[str, str] = {
     "快捷键": "Shortcuts",
     "张": "imgs",
     "张更多": "more images",
+    "已隐藏子目录图像": "subdirectory images hidden",
     "无数据": "No data",
     "未选择": "Not selected",
     "未加载": "Not loaded",

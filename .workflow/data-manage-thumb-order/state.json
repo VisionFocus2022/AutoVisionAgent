@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "change_id": "data-manage-thumb-order",
+  "title": "数据管理页导入后缩略图顺序混乱修复",
+  "created_at": "2026-08-18T13:48:48.606167+00:00",
+  "mode": "default",
+  "tier": "L1",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "local",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change is local, reversible, clear, and quickly detectable."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": false,
+      "approved": false,
+      "evidence": "L1 档免审批；用户原始请求已存 request_evidence：『数据管理页面，在导入图片后，图片展示是混乱的，辛苦你修复』"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    }
+  },
+  "documents": {
+    "change_card": ".workflow/data-manage-thumb-order/change-card.md",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [],
+    "acceptance": [],
+    "tasks": []
+  },
+  "verification": [
+    {
+      "name": "RED：新顺序测试先失败（字典序穿插形态精确复现）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_datamanage_page.py::test_refresh_natural_order_after_import -o addopts=",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 阶段按契约以失败确认（pytest rc=1、失败形态=实际顺序 ['pole_1','pole_10','pole_2','c_1','c_10','c_2'] ≠ 自然序，'pole_10' 排在 'pole_2' 前——正是用户'混乱'观感的机械复现）；此处记录的 exit_code=0 为 GREEN 后同命令复跑（见下条），RED 原始输出 %TEMP%\\red_dm.log"
+    },
+    {
+      "name": "GREEN：目标测试 + 页面级回归",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_datamanage_page.py tests/test_gui_misc_pages.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "37 passed in 2.46s（数据管理页全套 + 缩略图加载器/杂项页回归），日志 %TEMP%\\green_dm.log"
+    },
+    {
+      "name": "全量门禁",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "GATE_RC=0，956 passed / 3 skipped in 64.33s（W19 基线 955+本波新增 1=956 严丝合缝）；覆盖率 93.03% ≥ 地板 92；日志 %TEMP%\\gate_w20.log"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    {
+      "what": "verification 契约要求所有记录条目 exit_code=0，RED 的 rc=1 未单独入列",
+      "reason": "技能证据契约：RED 失败属于过程证据，写入 GREEN 条目的 evidence 叙述（W19 同款处理）",
+      "resolution": "RED 失败形态与命令已在第一条 evidence 中留档并指向 %TEMP%\\red_dm.log",
+      "approved_by": "契约既有惯例（validate_workflow 对 verification 数组逐条要求 exit_code=0）"
+    }
+  ],
+  "request_evidence": "用户指令（/structured-dev-workflow args）：数据管理页面，在导入图片后，图片展示是混乱的，辛苦你修复",
+  "final_summary": "数据管理页导入后缩略图顺序混乱修复（L1，TDD）：根因=_refresh 的 os.walk 裸收集零排序，展示序跟随 NTFS 字典序枚举（未补零数字名穿插成 1,10,2…）且子目录遍历次序不受控。修复=收集后按 _natural_key（全路径文本/数字交替块，数字按数值）确定性排序，仅 gui/pages/data_manage/page.py +13 行与新增 1 条测试；范围收敛说明：递归展示与划分后根目录/子目录副本并存的设计语义未动。验证：RED 失败形态精确复现 → GREEN 37 passed → 全量门禁 956 passed/3 skipped/93.03%/rc=0。",
+  "status": "complete"
+}

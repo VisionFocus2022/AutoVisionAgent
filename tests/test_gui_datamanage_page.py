@@ -152,6 +152,99 @@ def test_refresh_over_200_caps_thumbnails(qapp, tmp_path):
 
 
 @pytest.mark.unit
+def test_refresh_natural_order_after_import(qapp, tmp_path):
+    """导入后缩略图顺序：数字名未补零时不得按字典序穿插（W20 修复）。
+
+    回归背景：_refresh 曾用 os.walk 裸收集（零排序），展示序=NTFS 枚举序
+    （字典序，"pole_2/pole_10" 显示成 1,10,2… 式穿插）——用户观感即
+    "导入后图片展示混乱"。修复后按全路径自然排序（数字块按数值比较）。
+    W20-2：顶层有图时子目录图像不进列表（划分副本不与根目录同屏重复），
+    以提示行告知隐藏数。
+    """
+    from gui.pages.data_manage.page import DataManagePage
+
+    d = tmp_path / "imported"
+    d.mkdir()
+    for name in ("pole_10.png", "pole_2.png", "pole_1.png"):
+        (d / name).write_bytes(b"")
+    train = d / "train"
+    train.mkdir()
+    for name in ("c_10.png", "c_2.png", "c_1.png"):
+        (train / name).write_bytes(b"")
+    page = DataManagePage()
+    page._image_dir = str(d)
+    page._refresh()
+    order = [page.thumb_list.item(i).text()
+             for i in range(page.thumb_list.count())]
+    assert order[:3] == ["pole_1.png", "pole_2.png", "pole_10.png"], (
+        f"顶层缩略图应按自然序展示（数字按数值），实际: {order}"
+    )
+    assert len(order) == 4 and "3" in order[3] and "隐藏" in order[3], (
+        f"train/ 下 3 张副本应折叠为一条隐藏提示行，实际: {order}"
+    )
+
+
+@pytest.mark.unit
+def test_refresh_copy_split_no_duplicate_display(qapp, tmp_path):
+    """W20-2：复制模式划分后根目录与 train/val/test 副本不得同屏重复。
+
+    场景：根 a.png/b.png + train/a.png + val/b.png（copy 划分产物）。
+    期望：只展示顶层活动集 2 张 + 1 条隐藏提示（含计数 2），图像总数
+    统计也按 2 计（旧行为翻倍为 4）。
+    """
+    from gui.pages.data_manage.page import DataManagePage
+
+    d = tmp_path / "splitcopy"
+    d.mkdir()
+    for name in ("a.png", "b.png"):
+        (d / name).write_bytes(b"")
+    for sub, name in (("train", "a.png"), ("val", "b.png")):
+        s = d / sub
+        s.mkdir()
+        (s / name).write_bytes(b"")
+    page = DataManagePage()
+    page._image_dir = str(d)
+    page._refresh()
+    texts = [page.thumb_list.item(i).text()
+             for i in range(page.thumb_list.count())]
+    assert texts[:2] == ["a.png", "b.png"], f"顶层活动集应原样展示，实际: {texts}"
+    assert len(texts) == 3 and "2" in texts[2] and "隐藏" in texts[2], (
+        f"子目录 2 张副本应折叠为一条隐藏提示，实际: {texts}"
+    )
+    assert "4" not in page.lbl_total.text(), (
+        f"图像总数不得把划分副本计入（应 2），实际: {page.lbl_total.text()}"
+    )
+
+
+@pytest.mark.unit
+def test_refresh_move_split_shows_grouped_subdirs(qapp, tmp_path):
+    """W20-2：顶层无图而子目录有图（move 划分后/预划分数据集）→ 分组展示。
+
+    期望：按"子目录/文件名"相对路径展示（同名文件可区分），自然排序。
+    """
+    from gui.pages.data_manage.page import DataManagePage
+
+    d = tmp_path / "splitmove"
+    d.mkdir()
+    for sub, names in (
+        ("train", ("c_10.png", "c_2.png")),
+        ("val", ("v_1.png",)),
+    ):
+        s = d / sub
+        s.mkdir()
+        for n in names:
+            (s / n).write_bytes(b"")
+    page = DataManagePage()
+    page._image_dir = str(d)
+    page._refresh()
+    texts = [page.thumb_list.item(i).text()
+             for i in range(page.thumb_list.count())]
+    assert texts == ["train/c_2.png", "train/c_10.png", "val/v_1.png"], (
+        f"空顶层应按相对路径分组展示子目录图像（自然序），实际: {texts}"
+    )
+
+
+@pytest.mark.unit
 def test_select_dir_detects_sibling_annotations(dm_page, monkeypatch, tmp_path,
                                                  proj):
     from gui.pages.data_manage import page as dm_mod

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, Slot
@@ -52,6 +53,17 @@ _OP_TITLES = {
 
 # W19 FR-4.2：版本对比对话框每类示例上限（长清单只列前 20 条，计数仍全量）
 _MAX_DIFF_EXAMPLES = 20
+
+# W20：自然排序——把路径切成 文本/数字 交替块，数字块按数值比较。
+# 背景：os.walk 枚举序=文件系统字典序（NTFS），未补零数字名会穿插成
+# 1,10,2…，子目录遍历次序也不受控，导入后缩略图展示"混乱"。
+_NATURAL_CHUNK_RE = re.compile(r"(\d+)")
+
+
+def _natural_key(path: str) -> tuple:
+    """全路径自然排序键：数字块 int、文本块小写 str，块位奇偶一致可比较。"""
+    chunks = _NATURAL_CHUNK_RE.split(path.replace("\\", "/").lower())
+    return tuple(int(c) if c.isdigit() else c for c in chunks)
 
 
 class DataManagePage(QWidget):
@@ -446,23 +458,36 @@ class DataManagePage(QWidget):
             return
 
         self.lbl_dir.setText(self._image_dir)
-        images: List[str] = []
-        for root, _dirs, files in os.walk(self._image_dir):
-            for f in files:
-                if f.lower().endswith(_IMG_EXTS):
-                    images.append(os.path.join(root, f))
+        # W20-2：顶层=活动数据集；划分副本不与根目录同屏重复（语义见
+        # workers.collect_display_images）
+        from gui.pages.data_manage import workers as _dm_workers
+
+        images, display_names, hidden = _dm_workers.collect_display_images(
+            self._image_dir
+        )
+        # W20：确定性自然排序（否则展示序跟随文件系统枚举序，见 _natural_key 注释）
+        images.sort(key=_natural_key)
         self._images = images
 
         # R5-5: 异步加载缩略图（限制前 200 张避免卡顿）
         self._thumb_items.clear()
         self._thumb_pool.clear()  # 取消上一批未完成的任务
         for img_path in images[:200]:
-            item = QListWidgetItem(os.path.basename(img_path))
+            item = QListWidgetItem(
+                display_names.get(img_path, os.path.basename(img_path))
+            )
             self.thumb_list.addItem(item)
             self._thumb_items[img_path] = item
             task = ThumbnailTask(img_path, size=120)
             task.signals.loaded.connect(self._on_thumbnail_loaded)
             self._thumb_pool.start(task)
+
+        if hidden:
+            note = QListWidgetItem(
+                f"{tr('已隐藏子目录图像')} {hidden} {tr('张')}"
+            )
+            note.setFlags(Qt.NoItemFlags)
+            self.thumb_list.addItem(note)
 
         if len(images) > 200:
             more = QListWidgetItem(f"... {len(images) - 200} {tr('张更多')}")

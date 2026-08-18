@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "change_id": "uia-env-clean-rerun",
+  "title": "环境清理与UIA真窗复跑（W19 exe）",
+  "created_at": "2026-08-18T13:20:52.523327+00:00",
+  "mode": "default",
+  "tier": "L1",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "local",
+    "detectability": "immediate",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change is local, reversible, clear, and quickly detectable."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": false,
+      "approved": false,
+      "evidence": "L1 档免审批（用户原始请求已存 request_evidence：『环境恶劣进行清理，然后再执行 UIA 真窗复跑（新 exe）』，即需求证据）"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    }
+  },
+  "documents": {
+    "change_card": ".workflow/uia-env-clean-rerun/change-card.md",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [],
+    "acceptance": [],
+    "tasks": []
+  },
+  "verification": [
+    {
+      "name": "环境清理：残留进程/单实例锁/陈旧 shm/资源摸底",
+      "command": "tasklist | grep -iE autovision/python; ls %TEMP%/autovisionagent-single-instance.lock; ls %TEMP%/autovisionagent_shm/ava_*.bin; rm 锁文件",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "①无残留 AutoVisionAgent.exe/pytest 进程（仅用户自有 http.server python.exe PID 3648，未动）；②%TEMP%\\autovisionagent-single-instance.lock 存在（08-18 14:03，上午失败 run 硬杀残留）已移除；③%TEMP%\\autovisionagent_shm 陈旧 ava_*.bin = 0 个；④磁盘 C:51G/E:97.7G 空闲，RAM 26.1G/47.7G 空闲，CPU 背景 46%（ToDesk/Docker/Everything 等用户常驻应用，不属可清理范围）；⑤机器 08-12 22:35 至今未重启——按 W16 先例（08-17 20:47 未重启即恢复 6/6 绿）执行清理后复跑；⑥dist/AutoVisionAgent/AutoVisionAgent.exe 在位（08-18 07:10，W19 构建），极柱数据集 1288 张 bmp 在位"
+    },
+    {
+      "name": "UIA 真窗复跑（W19 exe）：全套 6 用例全绿",
+      "command": ".venv/Scripts/python.exe -m pytest tests/uia -o addopts= -v",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "PYTEST_RC=0，6 passed in 195.76s（0:03:15，与 08-17 健康基线 3:59 同量级）。六用例含上午连挂的 test_pole_label_polygon_and_rectangle（多边形右键提交+矩形+切图+双 LabelMe JSON 铁证）全部通过；断言零修改。过程留痕：清理后第一轮 5 passed/1 failed（2:46，失败点=标注页'打开文件夹'按钮 find-timeout 20s，与上午三轮失败位置又不同=漂移签名；真实 pytest rc=1 被管道 tail 掩盖已核实，未记绿）→ 按变更卡不达标分支（flaky 路由允许复跑≤2 次，W16 先例）清扫残留锁后第二轮全绿。日志：%TEMP%\\uia_run2.log；绿后残留清扫：无 AutoVisionAgent 进程、陈旧锁移除、ava_*.bin=0"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    {
+      "what": "未先写 RED 失败测试",
+      "reason": "纯环境清理+既有测试套件执行任务，无行为变化或缺陷修复，无新断言可先行（L1 豁免：纯文案/运维类）",
+      "resolution": "验证以既有 tests/uia 6 用例原样执行为门禁，断言零修改",
+      "approved_by": "L1 档免审批（技能规则：纯文案/纯注释/明确豁免在偏差留痕即可）"
+    },
+    {
+      "what": "复跑一次（第一轮 5P/1F 后执行第二轮）",
+      "reason": "失败为 find-timeout 且失败点相对上午三轮继续漂移（标注页'打开文件夹'按钮），符合变更卡预设的 flaky 路由分支；应用侧上午已证完成而驱动层看不见（W16 COM 劣化签名）",
+      "resolution": "清扫残留单实例锁后整套复跑，6/6 全绿 rc=0（第二轮即收敛，未用满 2 次上限）",
+      "approved_by": "变更卡 Verify 不达标分支预先声明（用户指令内含复跑授权：W16 先例第三轮全绿）"
+    }
+  ],
+  "request_evidence": "用户指令（/structured-dev-workflow args）：环境恶劣进行清理，然后再执行 UIA 真窗复跑（新 exe）",
+  "final_summary": "环境清理+UIA 真窗复跑闭环（L1，零代码改动）：①清理——无残留被测进程（用户自有 http.server 未动），移除 %TEMP% 陈旧单实例锁两枚（上午失败 run 与复跑一 teardown 的 taskkill 残留），陈旧 ava_*.bin=0，磁盘/内存充足，CPU 背景 46% 为用户常驻应用（ToDesk/Docker/Everything 等）不可清；机器 08-12 至今未重启。②复跑——第一轮 5P/1F（漂移签名），第二轮 6/6 全绿 rc=0（3:15）。结论：W19 exe（08-18 07:10）UIA 验证完成，再次坐实上午失败为机器级 COM 劣化环境归因（未重启即随急性负载消退恢复，与 W16 先例一致）；tests/uia 断言与生产代码零修改。",
+  "status": "complete"
+}

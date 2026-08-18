@@ -79,6 +79,49 @@ def split_dataset(
     return (n_train, n_val, len(splits["test"]))
 
 
+def collect_display_images(
+    image_dir: str,
+) -> Tuple[List[str], Dict[str, str], int]:
+    """收集数据管理页展示用图像（W20-2：顶层=活动数据集语义）。
+
+    返回 ``(paths, display_names, hidden_count)``：
+
+    - 顶层有图：活动集 = 顶层图像；直接子目录（如划分出的 train/val/test
+      副本）不进列表、只汇总 hidden_count——修复复制模式划分后根目录与
+      子目录副本同屏重复（统计也随之翻倍）的"混乱"观感；
+    - 顶层无图而直接子目录有图（移动模式划分后/外部预划分数据集）：
+      按相对路径 ``子目录/文件名`` 分组展示，避免空屏且同名可区分。
+    """
+    top: List[str] = [
+        os.path.join(image_dir, f)
+        for f in os.listdir(image_dir)
+        if f.lower().endswith(IMG_EXTS)
+    ]
+    if top:
+        hidden = 0
+        for sub in os.listdir(image_dir):
+            sub_path = os.path.join(image_dir, sub)
+            if os.path.isdir(sub_path):
+                hidden += sum(
+                    1
+                    for f in os.listdir(sub_path)
+                    if f.lower().endswith(IMG_EXTS)
+                )
+        return top, {p: os.path.basename(p) for p in top}, hidden
+    grouped: List[str] = []
+    names: Dict[str, str] = {}
+    for sub in sorted(os.listdir(image_dir)):
+        sub_path = os.path.join(image_dir, sub)
+        if not os.path.isdir(sub_path):
+            continue
+        for f in os.listdir(sub_path):
+            if f.lower().endswith(IMG_EXTS):
+                p = os.path.join(sub_path, f)
+                grouped.append(p)
+                names[p] = f"{sub}/{f}"
+    return grouped, names, 0
+
+
 def replace_labels(ann_dir: str, old: str, new: str) -> int:
     """批量替换标签名，返回修改文件数。"""
     from labeling.batch_tools import batch_replace_label
