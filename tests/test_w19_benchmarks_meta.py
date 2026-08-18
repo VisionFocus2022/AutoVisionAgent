@@ -13,11 +13,14 @@ from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# 基准运行口径与 tests/uia 同法（pytest.ini 注释）：项目 venv 解释器 + 清空 addopts
-_PY = REPO_ROOT / ".venv" / "Scripts" / "python.exe"
+# CI 可移植口径（GitHub Actions 首跑实证）：用当前解释器（本地 = 项目 venv
+# python，CI = setup-python 装 lock 后的解释器），不硬编码 .venv 路径——
+# CI 检出目录无 .venv 会 FileNotFoundError（WinError 2）
+_PY = Path(sys.executable)
 
 
 def test_benchmarks_collect_at_least_6_cases():

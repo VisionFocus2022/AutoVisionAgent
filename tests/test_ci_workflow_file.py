@@ -48,7 +48,8 @@ def test_runs_on_windows_latest(ci_doc):
 
 def test_checkout_and_python_setup(ci_doc):
     steps = _steps(ci_doc["jobs"]["test"])
-    _find_step(steps, uses="actions/checkout@v4")
+    # v5/v6（2026-08-18 CI 首跑后升级，消 Node20 弃用警告）
+    _find_step(steps, uses="actions/checkout@v5")
     setup = _find_step(steps, uses="actions/setup-python")
     assert str(setup["with"]["python-version"]) == "3.12"
 

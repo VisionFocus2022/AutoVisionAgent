@@ -709,7 +709,13 @@ class TestPsegYoloFake:
 
         assert _FakeYoloCtor.last_instance.weights_path == str(w)
         assert eng._model is _FakeYoloCtor.last_instance
-        assert eng._device == "cuda"
+        # W19 device 护栏后 _device 走 resolve_device 契约：cuda 可用透传、
+        # 不可用回退 cpu（显式双态断言——CI 无 GPU = cpu，本地 RTX 3060 = cuda，
+        # 两侧都非恒真：引擎若回退verbatim透传，无 GPU 环境立即红）
+        import torch
+
+        expected = "cuda" if torch.cuda.is_available() else "cpu"
+        assert eng._device == expected
 
     @pytest.mark.unit
     def test_infer_full_parse_with_masks_and_mapped_labels(self):

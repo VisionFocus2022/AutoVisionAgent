@@ -26,10 +26,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 安装 Python 3.12（与本地 .venv 同小版本线，实测 3.12.9）
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: 'pip'
@@ -49,7 +49,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: 检出代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: C# 测试（等效本地 cd serving/dotnet_client 后 dotnet test）
         run: dotnet test serving/dotnet_client
