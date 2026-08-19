@@ -185,6 +185,66 @@ def test_refresh_natural_order_after_import(qapp, tmp_path):
 
 
 @pytest.mark.unit
+def test_refresh_same_index_timestamp_order(qapp, tmp_path):
+    """同序号多张：组内按时间戳序（W22；极柱真实命名形态）。
+
+    回归背景：缺陷图命名 ``序号_时间戳+序列``，同序号多张且时间戳数字串
+    长短不一（17/18/20 位，尾部序列号数字并入同一段）。全数值比较下
+    20 位的 20240611…（≈2e19）大于所有 17 位的 20240613…（≈2e16），
+    组内排出 0612,0613,0611 式日期倒跳——W20 修复后"导入后顺序混乱"
+    复发的根因。期望语义（用户拍板）：首个数字段（序号）按数值，其后
+    数字段（时间戳）按文本=按时间先后。
+    """
+    from gui.pages.data_manage.page import DataManagePage
+
+    d = tmp_path / "ts"
+    d.mkdir()
+    for name in (
+        "73_20240613152714285GT0M6.bmp",   # 06-13，17 位
+        "73_20240612162733115R0I65.bmp",   # 06-12，17 位
+        "73_20240611190124144332J4.bmp",   # 06-11，20 位（数值最大→旧序垫底）
+        "1_20240611184000400ZK3U7.bmp",
+        "10_20240611184001721DINFZ.bmp",
+        "2_20240611184000951JGDRJ.bmp",
+    ):
+        (d / name).write_bytes(b"")
+    page = DataManagePage()
+    page._image_dir = str(d)
+    page._refresh()
+    order = [page.thumb_list.item(i).text()
+             for i in range(page.thumb_list.count())]
+    assert order[:3] == [
+        "1_20240611184000400ZK3U7.bmp",
+        "2_20240611184000951JGDRJ.bmp",
+        "10_20240611184001721DINFZ.bmp",
+    ], f"序号仍须按数值序（1<2<10），实际: {order}"
+    assert order[3:] == [
+        "73_20240611190124144332J4.bmp",
+        "73_20240612162733115R0I65.bmp",
+        "73_20240613152714285GT0M6.bmp",
+    ], f"同序号组内应按时间戳序（06-11→06-12→06-13），实际: {order[3:]}"
+
+
+@pytest.mark.unit
+def test_natural_key_first_numeric_rest_text():
+    """_natural_key 排序键契约：目录数值序 + 文件名首段数值其后文本（W22）。"""
+    from gui.pages.data_manage.page import _natural_key
+
+    # 其后数字段按文本：20 位 06-11 < 17 位 06-13（时间戳恢复时间序）
+    assert _natural_key("E:/d/73_20240611190124144332J4.bmp") < _natural_key(
+        "E:/d/73_20240613152714285GT0M6.bmp"
+    )
+    # 主序号按数值
+    assert _natural_key("E:/d/2_20240611184000400A.bmp") < _natural_key(
+        "E:/d/10_20240611184001721B.bmp"
+    )
+    # W20 基线语义不回退：pole_N 数值序
+    assert _natural_key("E:/d/pole_2.png") < _natural_key("E:/d/pole_10.png")
+    # 目录含数字：目录段仍按数值（批2 < 批10）
+    assert _natural_key("E:/批2/a.png") < _natural_key("E:/批10/a.png")
+
+
+@pytest.mark.unit
 def test_refresh_copy_split_no_duplicate_display(qapp, tmp_path):
     """W20-2：复制模式划分后根目录与 train/val/test 副本不得同屏重复。
 

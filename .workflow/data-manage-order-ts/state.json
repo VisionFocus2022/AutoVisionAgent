@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "change_id": "data-manage-order-ts",
+  "title": "数据管理页同序号时间戳乱序修复（自然排序 v2）",
+  "created_at": "2026-08-19T01:34:49.055025+00:00",
+  "mode": "default",
+  "tier": "L1",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "local",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change is local, reversible, clear, and quickly detectable."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": false,
+      "approved": true,
+      "evidence": "L1 请求证据即满足；另有用户 AskUserQuestion 明确拍板『序号内按时间戳序（推荐）』（2026-08-19，见 request_evidence）"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    }
+  },
+  "documents": {
+    "change_card": ".workflow/data-manage-order-ts/change-card.md",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [],
+    "acceptance": [],
+    "tasks": []
+  },
+  "verification": [
+    {
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_datamanage_page.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "24 passed（22 基线 + 2 新增）in 0.90s。RED 先行记录：实现前同文件 -k 'timestamp_order or first_numeric_rest or natural_order_after_import' 为 2 failed, 1 passed——两新测试精确失败于组内日期倒跳（实际组内[0]='73_20240612162733115R0I65' 期望 06-11；纯函数断言错误信息原样暴露根因：键中 20240611190124144332 被 int 化，20 位>17 位 06-13），W20 守卫 natural_order_after_import 全程绿"
+    },
+    {
+      "command": ".venv/Scripts/python.exe -X utf8 -c \"from gui.pages.data_manage.page import _natural_key; …（E:/学习项目/极柱外观检标注图 全 1288 bmp 生产键排序）\"",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "真实数据集实证：同序号组 281 个、组内时间戳非单调组数 0；组 73 由 0612,0613,0613,0611,0612 → 0611,0612,0612,0613,0613；整库序=缺陷图序号 1,2,3… 数值序 + 组内时间序 + (N)Num 块殿后"
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m pytest > /tmp/w22_gate.log 2>&1; echo RC=$?",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "全量门禁 966 passed / 4 skipped / 覆盖 93.05%（地板 92）/ 53.74s / RC=0（964 基线+2 严丝合缝；产物 /tmp/w22_gate.log）"
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m PyInstaller autovisionagent.spec --noconfirm（后台 BUILD_RC=0）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "full exe 重打包 08-19 09:55（88,412,195B）；PYZ 守卫 labeling=28（基线）/data_manage=6/predict|sam_adapter=48 全过"
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m pytest tests/uia -o addopts=（三轮：全量→2 失败复跑→pole 单跑）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "新 exe UIA：R1 4P/2F→R2 full_workflow 转绿→R3 pole 转绿（71.4s）＝6/6 各轮全取得通过；失败点测试内漂移（登录确认→对话框载入状态→通过），应用侧 autovision.log AUDIT login/导入完成/train_complete 在案、全窗零 ERROR，16 个用户活跃进程在场——冷知识⑦输入争抢环境归因，断言零修改"
+    },
+    {
+      "command": ".venv/Scripts/python.exe scripts/make_lite_dist.py --offline（rm 旧 lite 后；LITE_RC=0）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "lite 离线重派生 rc=0；守卫 tests/test_w19_lite_dist.py 14 passed（1.28s）。首跑教训：脚本在 scripts/ 下，根目录路径会 Errno 2"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    {
+      "note": "W20 测试 test_refresh_natural_order_after_import 的 docstring 中『按全路径自然排序（数字块按数值比较）』随 W22 语义细化为不完全准确的历史描述，未改动该 docstring（测试断言与行为均仍正确，属历史背景陈述）"
+    }
+  ],
+  "request_evidence": "用户 2026-08-19 AskUserQuestion 拍板『序号内按时间戳序（推荐）』：首个数字段按数值、其后数字段按文本比较；根因实证=极柱缺陷图 73_20240611(20位数字串) 数值大于 17 位 06-13 串致组内日期倒跳",
+  "final_summary": "W22：数据管理页『导入后顺序混乱』复发根因=W20 全数值自然排序对极柱真实命名（序号_时间戳+序列，时间戳数字串 17/18/20 位混长）跨长度错排，20 位 06-11 串数值大于所有 17 位 06-13 串，同序号组内日期倒跳（用户拍板修复语义：首数字段数值+其后文本）。修法=_natural_key 两级键（目录全数值自然序保持 + 文件名首数字块数值、其后文本）。TDD：RED 2 failed 精确复现组内倒跳（错误信息原样暴露 int 化 20 位串）→ GREEN 页面级 24 → 真实数据集全 1288 文件实证 281 个同序号组时间戳非单调=0 → 全量门禁 966 passed/4 skipped/93.05%/rc=0。改动未提交（page.py _natural_key 重写 + 2 新测试 + 本状态目录）。",
+  "status": "complete"
+}

@@ -54,16 +54,28 @@ _OP_TITLES = {
 # W19 FR-4.2：版本对比对话框每类示例上限（长清单只列前 20 条，计数仍全量）
 _MAX_DIFF_EXAMPLES = 20
 
-# W20：自然排序——把路径切成 文本/数字 交替块，数字块按数值比较。
-# 背景：os.walk 枚举序=文件系统字典序（NTFS），未补零数字名会穿插成
-# 1,10,2…，子目录遍历次序也不受控，导入后缩略图展示"混乱"。
+# W20：自然排序——把路径切成 文本/数字 交替块。W22：文件名仅首个数字块按
+# 数值（主序号 1<2<10），其后数字块按文本——位相关字段（时间戳）按文本即
+# 按时间先后；全数值比较在数字块长短不一时跨长度错排（20 位 20240611… >
+# 全部 17 位 20240613…），同序号组内日期倒跳＝"导入后顺序混乱"复发根因。
 _NATURAL_CHUNK_RE = re.compile(r"(\d+)")
 
 
 def _natural_key(path: str) -> tuple:
-    """全路径自然排序键：数字块 int、文本块小写 str，块位奇偶一致可比较。"""
-    chunks = _NATURAL_CHUNK_RE.split(path.replace("\\", "/").lower())
-    return tuple(int(c) if c.isdigit() else c for c in chunks)
+    """两级排序键：目录块全数值自然序 + 文件名首数字块数值、其后文本。
+
+    re.split 恒产出 文本/数字 交替块（数字块固定落奇数位），文件名首数字
+    块即其块元组下标 1——同位类型跨路径一致，元组比较不会 int/str 越型。
+    """
+    dir_part, _, name = path.replace("\\", "/").lower().rpartition("/")
+    dir_key = tuple(
+        int(c) if c.isdigit() else c for c in _NATURAL_CHUNK_RE.split(dir_part)
+    )
+    name_key = tuple(
+        int(c) if i == 1 else c
+        for i, c in enumerate(_NATURAL_CHUNK_RE.split(name))
+    )
+    return (dir_key, name_key)
 
 
 class DataManagePage(QWidget):
