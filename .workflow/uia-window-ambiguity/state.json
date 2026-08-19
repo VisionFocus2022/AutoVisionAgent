@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "change_id": "uia-window-ambiguity",
+  "title": "UIA find_main_window 同名窗口歧义修复",
+  "created_at": "2026-08-19T00:30:47.199164+00:00",
+  "mode": "default",
+  "tier": "L1",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "local",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change is local, reversible, clear, and quickly detectable."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": false,
+      "approved": false,
+      "evidence": "L1 档免审批；request_evidence 已存 W21 exe UIA 复跑三轮确定性全挂的现场证据链"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    }
+  },
+  "documents": {
+    "change_card": ".workflow/uia-window-ambiguity/change-card.md",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [],
+    "acceptance": [],
+    "tasks": []
+  },
+  "verification": [
+    {
+      "name": "RED：守卫测试先行（find_main_window 无 ClassName 钉住）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_uia_helpers_guard.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 阶段 rc=1（WindowControl 参数无 ClassName）；本条 exit_code=0 为 GREEN 后同命令复跑（1 passed in 0.06s）"
+    },
+    {
+      "name": "决定性真窗验证：诱饵窗在场 + 修复后套件",
+      "command": ".venv/Scripts/python.exe -m pytest tests/uia -o addopts=",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "修复前：同条件 3 轮 6/6 确定性全挂（08:17-08:23，探针实证 Name-only 绑定到桌面同名 Explorer 文件夹窗 CabinetWClass）；修复后 round4 1F/5P（full_workflow 登录后置步骤 flaky）→ 单测 r4 挂/r5 挂/r6 挂(不同点)/r7 过；全套终轮 3F/3P 且失败集相对 round4 完全翻转（round4 全过的 pole 三用例挂、round4 挂的 full_workflow 过且应用侧 train_complete 审计在案）——确定性全挂根除，残余为环境抖动（见 deviations）。断言零修改"
+    },
+    {
+      "name": "全量门禁（含新守卫测试）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "GATE_RC=0，964 passed / 4 skipped in 57.58s（963 基线+守卫 1），覆盖率 93.04% ≥ 92，日志 %TEMP%\\gate_w21b.log"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    {
+      "what": "修复后 UIA 套件残余 flaky（失败点跨轮漂移：选择目录→矩形未提交→pole 三用例），未能当场取得 6/6",
+      "reason": "桌面正被用户活跃使用（VS×2/微信/远控等），UIA 坐标点击与真实输入争抢；应用侧审计证明动作实际完成（login/导入完成/train_complete 在案）而驱动层看不见/点不中",
+      "resolution": "与 W16/W19 同族环境归因；修复项本身经三重验证（守卫测试/诱饵在场 6全挂→不再全挂/单测可绿 r7 实证）；建议机器空闲时复跑 .venv/Scripts/python.exe -m pytest tests/uia -o addopts= 取 6/6 记录",
+      "approved_by": "仓库既有环境归因纪律（断言零修改、不凑绿）"
+    },
+    {
+      "what": "诊断中发现第二隐患（未修，留观察）：test_full_workflow 登录判定接受状态栏'就绪'，而'就绪'在登录页即存在；无 license.key 时'离线模式'会弹 Qt 模态确认框（Yes/No），模态吞掉后续点击",
+      "reason": "pytest 场景 conftest 预创建 license.key 不触发该框，仅直启 exe（探针）可见；非本次缺陷修复范围",
+      "resolution": "记录在案；如后续复现可给 _step_login 加'离线模式按钮消失'硬校验（pole 版 _ensure_logged_in 已是此形态）",
+      "approved_by": "范围收敛（不顺手扩范围）"
+    }
+  ],
+  "request_evidence": "W21 exe UIA 复跑 3 轮 6 全挂确定性失败；探针实证桌面存在同名 Explorer 文件夹窗口（CabinetWClass）时 Name-only 匹配错绑窗口（用户桌面现场证据），ClassName=MainWindow 过滤则恒健康",
+  "final_summary": "UIA find_main_window 同名窗口歧义修复（L1，TDD）：Name-only 匹配在桌面存在同名顶层窗（用户打开的 dist\\AutoVisionAgent Explorer 文件夹窗 CabinetWClass）时按枚举序错绑，整套UIA 在错误窗口找控件、3 轮 6/6 确定性全挂；探针（ClassName=MainWindow 过滤）恒健康实证根因。修复=WindowControl 搜索钉住 ClassName=MainWindow + 守卫测试防回退。验证：守卫 RED→GREEN；诱饵在场 6 全挂→修复后不再全挂（含单测 r7 全绿实证）；全量门禁 964/4/93.04%/rc=0。残余 flaky 为用户活跃使用桌面的输入争抢（应用侧审计动作实际完成），W16 同族环境归因，断言零修改，建议空闲时复跑取 6/6。",
+  "status": "complete"
+}

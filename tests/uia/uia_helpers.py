@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 
 # 主窗口标题（gui/main.py:81 MainWindow("AutoVisionAgent")）
 MAIN_WINDOW_TITLE = "AutoVisionAgent"
+# W21：应用主窗口类名（PySide6 顶层窗口 ClassName=objectName）。
+# 必须与 Name 一起钉住——桌面存在同名顶层窗口（典型：用户打开
+# dist\AutoVisionAgent 的 Explorer 文件夹窗，CabinetWClass）时，
+# Name-only 匹配按 UIA 枚举序错绑到文件夹窗，整套测试在错误窗口里
+# 找控件、确定性全挂（3 轮 6/6 复现 + ClassName 过滤探针恒健康的实证）。
+MAIN_WINDOW_CLASS = "MainWindow"
 
 
 # ================================ 主窗口 ================================ #
@@ -33,7 +39,11 @@ def find_main_window(timeout: float = 30.0) -> ua.WindowControl:
     last_err: Optional[Exception] = None
     while time.time() < deadline:
         try:
-            win = ua.WindowControl(searchDepth=1, Name=MAIN_WINDOW_TITLE)
+            win = ua.WindowControl(
+                searchDepth=1,
+                Name=MAIN_WINDOW_TITLE,
+                ClassName=MAIN_WINDOW_CLASS,
+            )
             if win.Exists(0.5):
                 # W11：SetActive 真前台化（SetFocus 只设键盘焦点不抬 z 序，
                 # 后续坐标点击会落到其他窗口——多实例顺序启动实测坑）
