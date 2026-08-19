@@ -75,6 +75,8 @@ class PredictPage(QWidget):
         self._engine = None  # ISupervisedTaskEngine 实例
         self._results: List[dict] = []  # 批量结果缓存
         self._batch_cancel = False  # 批量推理取消标志
+        # W21：预览原始图（全分辨率）——按预览区自适应缩放，resize 时重适配
+        self._preview_source: Optional[QPixmap] = None
 
         self._build_ui()
         self._wire()
@@ -539,9 +541,7 @@ class PredictPage(QWidget):
                     rgba.tobytes(), w, h, rgba.strides[0], QImage.Format_RGBA8888
                 ).copy()
                 pm = QPixmap.fromImage(qimg)
-                self.preview.setPixmap(
-                    pm.scaledToWidth(400, Qt.SmoothTransformation)
-                )
+                self._set_preview_pixmap(pm)
                 return
             # 图读不出（罕见）：降级走 Qt 原路径
         except ImportError:
@@ -557,9 +557,29 @@ class PredictPage(QWidget):
         if pm.isNull():
             return
         pm = self._draw_legacy(pm, result)
+        self._set_preview_pixmap(pm)
+
+    # ---- W21：预览自适应（竖图不再被固定 scaledToWidth(400) 裁切）---- #
+    def _set_preview_pixmap(self, pm: QPixmap) -> None:
+        """记录原始图并立即按当前预览区缩放展示。"""
+        self._preview_source = pm
+        self._apply_preview_pixmap()
+
+    def _apply_preview_pixmap(self) -> None:
+        """原始图等比缩放至预览区（留 8px 边距），无源图时无操作。"""
+        pm = self._preview_source
+        if pm is None or pm.isNull():
+            return
+        w = max(self.preview.width() - 8, 1)
+        h = max(self.preview.height() - 8, 1)
         self.preview.setPixmap(
-            pm.scaledToWidth(400, Qt.SmoothTransformation)
+            pm.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         )
+
+    def resizeEvent(self, event) -> None:  # noqa: N802（Qt 命名）
+        """窗口尺寸变化 → 预览图重适配（放大不留旧小图、缩小不裁切）。"""
+        super().resizeEvent(event)
+        self._apply_preview_pixmap()
 
     @staticmethod
     def _draw_legacy(pm: QPixmap, result: DetectionResult) -> QPixmap:

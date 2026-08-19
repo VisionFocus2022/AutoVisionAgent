@@ -42,6 +42,9 @@ class SamAdapter:
         self._model_type = model_type
         self._predictor: Any = None
         self._cached_image_hash: Optional[int] = None
+        # W21：缓存命中的图像对象引用——同对象走 is 快路径，省去每次
+        # 点击的整图 tobytes 哈希（1600x1600 图 ~7.7MB/次）
+        self._cached_image_ref: Optional[np.ndarray] = None
 
     def load(self, checkpoint: str, device: str = "cuda") -> None:
         """加载 SAM 权重。"""
@@ -56,14 +59,22 @@ class SamAdapter:
         return self._predictor is not None
 
     def set_image(self, image: np.ndarray) -> None:
-        """设置当前图像（含 embedding 缓存）。"""
+        """设置当前图像（含 embedding 缓存）。
+
+        W21 快路径：同对象（is）直接命中；等值新对象经一次哈希命中后
+        更新引用，后续同对象不再哈希。换图正常重算 embedding。
+        """
         if not self.loaded:
             raise RuntimeError("SAM 未加载权重")
+        if image is self._cached_image_ref:
+            return
         h = hash(image.tobytes())
         if h == self._cached_image_hash:
-            return  # 同图不重复计算
+            self._cached_image_ref = image  # 等值命中：升级为对象快路径
+            return
         self._predictor.set_image(image)
         self._cached_image_hash = h
+        self._cached_image_ref = image
 
     def predict_point(
         self,

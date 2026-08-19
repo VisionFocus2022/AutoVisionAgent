@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "change_id": "predict-single-display",
+  "title": "推理页单张推理结果显示不全修复",
+  "created_at": "2026-08-18T15:03:41.285554+00:00",
+  "mode": "default",
+  "tier": "L1",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "local",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "Change is local, reversible, clear, and quickly detectable."
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": false,
+      "approved": false,
+      "evidence": "L1 档免审批；用户原始请求已存 request_evidence（见 state）"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    }
+  },
+  "documents": {
+    "change_card": ".workflow/predict-single-display/change-card.md",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [],
+    "acceptance": [],
+    "tasks": []
+  },
+  "verification": [
+    {
+      "name": "RED：竖图裁切精确复现",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_predict_flawgen.py::test_single_result_preview_fits_viewport -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 阶段 rc=1、失败形态=竖图高度 900 超出预览区 398（下缘裁切，QMainWindow 固定尺寸容器复现真实约束；首版裸 page.resize 因 QLabel 随 pixmap 撑大失真已重写）；本条 exit_code=0 为 GREEN 后同命令复跑，RED 原始输出 %TEMP%\\red_pred2.log"
+    },
+    {
+      "name": "GREEN：页面级回归",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_gui_predict_flawgen.py -o addopts= -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "15 passed in 2.97s（predict+flaw_gen 全套），日志 %TEMP%\\green_pred.log"
+    },
+    {
+      "name": "全量门禁（与 sam-test-optimize 同树共用）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "GATE_RC=0，963 passed / 4 skipped in 55.60s；覆盖率 93.04% ≥ 地板 92；日志 %TEMP%\\gate_w21.log。本次门禁树同时含并行波次 predict-single-display 与 sam-test-optimize 两波改动（958 基线 + 推理页 1 + SAM 4 = 963，skip+1=SAM 真权重 opt-in 冒烟，数目严丝合缝）"
+    }
+  ],
+  "risks_open": [],
+  "deviations": [
+    {
+      "what": "RED 测试首版用裸 page.resize，offscreen 下 QLabel 随 pixmap 撑大导致裁切断言虚过",
+      "reason": "无固定尺寸父容器时 QLabel sizeHint 含 pixmap，布局反向膨胀",
+      "resolution": "重写为 QMainWindow setFixedSize 容器（真实窗口约束），RED 精确命中 900>398",
+      "approved_by": "测试自我修正（L1，失败形态更真实）"
+    }
+  ],
+  "request_evidence": "用户指令：1推理页面单张推理，推理结果的页面显示不全，需要优化",
+  "final_summary": "推理页单张推理结果显示不全修复（L1，TDD）：根因=裸 QLabel 预览+固定 scaledToWidth(400)，竖图 400x900 超出预览区 398 下缘裁切且 400 定宽浪费可用宽度。修复=_set_preview_pixmap/_apply_preview_pixmap（KeepAspectRatio 自适应+8px 边距）+ resizeEvent 重适配，两条渲染路径（sv/legacy）统一接入。验证：RED 900>398 精确复现→GREEN 15 passed→全量门禁 963/4/93.04%/rc=0。",
+  "status": "complete"
+}

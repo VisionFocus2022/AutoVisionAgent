@@ -199,3 +199,120 @@ class TestSamAdapterLoad:
         assert adapter.loaded is True
         mock_factory.assert_called_once_with(checkpoint="/fake/sam_vit_b.pth")
         mock_predictor_cls.assert_called_once_with(mock_sam_model)
+
+
+# ============================== W21：性能与 device 接线 ============================== #
+class _CountingArray(np.ndarray):
+    """计 tobytes 次数的 ndarray 视图（观测 set_image 的整图哈希开销）。"""
+
+    tobytes_calls = 0
+
+    def tobytes(self, *args, **kwargs):  # type: ignore[override]
+        type(self).tobytes_calls += 1
+        return super().tobytes(*args, **kwargs)
+
+
+class TestSamAdapterSetImagePerf:
+    """W21：set_image 快路径——同对象不重复整图 tobytes 哈希。
+
+    回归背景：旧实现对每次调用都 hash(image.tobytes())，1600x1600 图
+    每次交互 ~7.7MB 拷贝；to_shapes N 点 N 次。同对象 is 快路径 + 等值
+    换对象命中后更新引用，把稳态开销降为指针比较。
+    """
+
+    def _counting(self) -> "_CountingArray":
+        _CountingArray.tobytes_calls = 0
+        return np.zeros((32, 32, 3), dtype=np.uint8).view(_CountingArray)
+
+    def test_same_object_second_call_skips_rehash(self):
+        adapter = SamAdapter()
+        mock_predictor = MagicMock()
+        adapter._predictor = mock_predictor
+        img = self._counting()
+        adapter.set_image(img)
+        first = _CountingArray.tobytes_calls
+        adapter.set_image(img)  # 同对象：不得再触发整图 tobytes
+        assert _CountingArray.tobytes_calls == first, (
+            f"同对象第二次 set_image 仍整图哈希（{first} → "
+            f"{_CountingArray.tobytes_calls} 次 tobytes）"
+        )
+        assert mock_predictor.set_image.call_count == 1
+
+    def test_equal_new_object_hits_once_then_object_fast_path(self):
+        adapter = SamAdapter()
+        mock_predictor = MagicMock()
+        adapter._predictor = mock_predictor
+        a = self._counting()
+        adapter.set_image(a)
+        b = np.zeros((32, 32, 3), dtype=np.uint8).view(_CountingArray)
+        adapter.set_image(b)  # 等值新对象：哈希一次命中
+        mid = _CountingArray.tobytes_calls
+        adapter.set_image(b)  # 此后同对象：零哈希
+        assert _CountingArray.tobytes_calls == mid
+        assert mock_predictor.set_image.call_count == 1
+
+    def test_to_shapes_n_points_single_embed(self):
+        """同图 N 点批量 → 底层 set_image 恰一次（点击间不重算 embedding）。"""
+        adapter = SamAdapter()
+        mock_predictor = MagicMock()
+        mock_predictor.predict.return_value = (
+            np.array([_SQUARE_MASK]), np.array([0.9]), None,
+        )
+        adapter._predictor = mock_predictor
+        with patch.dict("sys.modules", {"cv2": _make_mock_cv2()}):
+            adapter.to_shapes(_DUMMY_IMG, [((30, 30), 1)] * 4)
+        assert mock_predictor.set_image.call_count == 1
+
+
+class TestSamDeviceWiring:
+    """W21：label 页 SAM 加载 device 走 resolve_device 契约（源码守卫）。
+
+    回归背景：_ensure_sam 曾硬编码 device="cpu"（有 GPU 的机器白费）；
+    W19 已为 7 个 torch 引擎接入 resolve_device（cuda 可用透传/回退 cpu，
+    lite exe 的 CPU torch 自动回退），本守卫防回退到硬编码。
+    """
+
+    def test_label_page_load_uses_resolve_device(self):
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1]
+               / "gui" / "pages" / "label" / "page.py").read_text(encoding="utf-8")
+        load_lines = [ln for ln in src.splitlines() if "adapter.load(" in ln]
+        assert load_lines, "label 页应有 adapter.load( 调用"
+        assert any("resolve_device" in ln for ln in load_lines), (
+            f"SAM 加载须走 resolve_device 契约，实际: {load_lines}"
+        )
+
+
+class TestSamRealCheckpointSmoke:
+    """opt-in 真权重冒烟：设置 AVA_SAM_CKPT 指向 sam_vit_{b,l,h}.pth 才跑。
+
+    默认 skip（无权重不伪造；CI 不依赖外部大文件）。权重就位后本用例
+    提供真实加载+点击→多边形 的端到端验证。
+    """
+
+    def test_real_checkpoint_point_predict(self):
+        import os
+
+        ckpt = os.environ.get("AVA_SAM_CKPT")
+        if not ckpt or not os.path.exists(ckpt):
+            pytest.skip("未设置 AVA_SAM_CKPT（opt-in 真权重冒烟）")
+
+        from models.supervised.device import resolve_device
+
+        model_type = next(
+            (t for t in ("vit_b", "vit_l", "vit_h")
+             if t in os.path.basename(ckpt)),
+            "vit_b",
+        )
+        adapter = SamAdapter(model_type=model_type)
+        adapter.load(ckpt, device=resolve_device("cuda"))
+
+        img = np.zeros((256, 256, 3), dtype=np.uint8)
+        img[64:192, 64:192] = 255  # 中央白方块
+        poly = adapter.predict_point(img, (128, 128))
+        assert len(poly) >= 3, "真权重点击预测应产出多边形"
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+        # 轮廓应落在白方块附近（界内 + 容差）
+        assert 32 <= min(xs) and max(xs) <= 224
+        assert 32 <= min(ys) and max(ys) <= 224

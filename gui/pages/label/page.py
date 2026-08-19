@@ -639,9 +639,12 @@ class LabelPage(QWidget):
         self._sam_busy = True
 
         def _work():
+            # W21：device 走 resolve_device 契约（W19 已接 7 个 torch 引擎，
+            # 本处补齐）——cuda 可用透传、不可用回退 cpu（lite exe 安全）
+            from models.supervised.device import resolve_device
             err = ""
             try:
-                adapter.load(ckpt, device="cpu")
+                adapter.load(ckpt, device=resolve_device("cuda"))
             except (ImportError, RuntimeError, OSError, ValueError) as exc:
                 err = str(exc)
             self._sam_adapter = adapter

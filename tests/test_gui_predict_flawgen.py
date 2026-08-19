@@ -494,3 +494,51 @@ def test_flaw_engine_error_is_honest(flaw_page, fake_threads, tmp_path,
     assert any(t == "生成失败" and "缺陷库为空" in a
                for t, a in flaw_page._msgs)
     assert not (tmp_path / "out" / "synthetic_0000.png").exists()
+
+
+# ============================== W21：单张推理预览自适应 ============================== #
+@pytest.mark.unit
+def test_single_result_preview_fits_viewport(qapp, tmp_path):
+    """W21：单张推理预览自适应——竖图不得被固定 scaledToWidth(400) 裁切。
+
+    回归背景：preview 为裸 QLabel（无滚动区），_show_result 曾固定
+    scaledToWidth(400)：竖图（800x1800 → 400x900）超出预览区可视高度直接
+    裁切（用户观感"结果显示不全"），且 400 定宽浪费可用宽度。期望：按
+    当前预览区等比缩放（KeepAspectRatio），页面 resize 后重适配。
+    """
+    import cv2
+
+    from gui.pages.predict.page import PredictPage
+
+    ok, buf = cv2.imencode(".png", np.zeros((1800, 800, 3), np.uint8))
+    assert ok
+    img = tmp_path / "tall.png"
+    img.write_bytes(buf.tobytes())
+
+    # 真实约束复现：固定尺寸窗口容器（裸 page.resize 会随 pixmap 撑大失真）
+    from PySide6.QtWidgets import QMainWindow
+
+    from gui.pages.predict.page import PredictPage
+
+    page = PredictPage()
+    win = QMainWindow()
+    win.setCentralWidget(page)
+    win.setFixedSize(1000, 480)
+    win.show()
+    qapp.processEvents()
+    page._show_result(str(img), DetectionResult(task=TaskType.DET))
+    qapp.processEvents()
+
+    pm = page.preview.pixmap()
+    assert pm is not None and not pm.isNull(), "预览未设置 pixmap"
+    assert pm.height() <= page.preview.height() + 2, (
+        f"竖图高度 {pm.height()} 超出预览区 {page.preview.height()}（下缘裁切）"
+    )
+    assert pm.width() <= page.preview.width() + 2
+
+    # resize 放大预览区后重适配（不留旧小图）
+    win.setFixedSize(1200, 700)
+    qapp.processEvents()
+    pm2 = page.preview.pixmap()
+    assert pm2.height() <= page.preview.height() + 2
+    assert pm2.height() > pm.height(), "放大窗口后预览图应随之重适配放大"
