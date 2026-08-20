@@ -69,3 +69,11 @@ serving/dotnet_client/obj/
 serving/dotnet_client/bin/
 serving/dotnet_client/Tests/obj/
 serving/dotnet_client/Tests/bin/
+
+# W23（v4 P2-1）：瞬态工具产物与敏感边界收口
+# .workflow/ 为 structured-dev-workflow 有意审计轨迹（阻止无证据完成）——保持跟踪，不忽略
+.autofix-loop/
+_i18n_report.txt
+_missing_keys.txt
+.benchmarks/
+configs/initial_credentials.txt

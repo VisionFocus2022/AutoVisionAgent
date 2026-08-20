@@ -114,6 +114,12 @@ def setup_logging() -> None:
         max_bytes = 10 * 1024 * 1024
         backup = 5
 
+    # W23（v4 P2-1c）：测试态/生产态日志隔离——AVA_LOG_DIR 显式指定时优先于
+    # config 的 CWD 相对 ./logs（测试进程经根 conftest setdefault 指向会话
+    # 临时目录；生产/打包 exe 不设 env，行为不变）。
+    env_log_dir = os.environ.get("AVA_LOG_DIR")
+    if env_log_dir:
+        log_dir = env_log_dir
     os.makedirs(log_dir, exist_ok=True)
     formatter = logging.Formatter(fmt)
 

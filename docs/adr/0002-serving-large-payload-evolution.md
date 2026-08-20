@@ -1,6 +1,10 @@
 # ADR-0002：serving 大载荷协议演进（租约 / 流式拉取）双方向 PoC
 
-- **状态**：已接受（2026-08-18，W19 v3 第三波 FR-2）
+- **状态**：已接受（2026-08-18，W19 v3 第三波 FR-2）；**冻结**（2026-08-21，
+  W24/v4 P3-2 复核）——双方向维持 PoC/协议能力形态不接线（W24 取证：
+  C# 客户端零 lease/FetchRegion 调用，消费形态为内联+MMF 直读双路径、
+  Release 不带 lease_id），生产默认路径零改动维持；**跨机场景再启**
+  （重开条件见 §决策 4）
 - **关联**：v2 架构审查 P1-1（共享内存生命周期）；W17 TTL/inline（PRD
   wave17 FR-004~005）；ADR-0001（回环拓扑）；PRD wave19 FR-2
 - **范围**：`serving/proto`、`serving/shared_memory.py`、`serving/server.py`

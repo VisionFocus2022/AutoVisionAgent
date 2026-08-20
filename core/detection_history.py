@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from collections import deque
 from dataclasses import asdict, dataclass, field
@@ -33,7 +34,15 @@ from core.constants import CONFIG_DIR
 _logger = logging.getLogger(__name__)
 
 # 默认历史记录存储目录
-_DEFAULT_HISTORY_DIR = CONFIG_DIR.parent / "logs" / "history"
+def _resolve_history_dir() -> Path:
+    """W23（v4 P2-1c）：默认历史目录——AVA_LOG_DIR 指定时取其下 history/，
+    否则仓库 logs/history（测试态隔离约定，与 gui/main.setup_logging 一致）。"""
+    env_dir = os.environ.get("AVA_LOG_DIR")
+    if env_dir:
+        return Path(env_dir) / "history"
+    return CONFIG_DIR.parent / "logs" / "history"
+
+
 _DEFAULT_MAX_RECORDS = 10000  # 内存中最多保留的记录数
 
 
@@ -78,7 +87,7 @@ class DetectionHistory:
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
-        self._history_dir = Path(history_dir) if history_dir else _DEFAULT_HISTORY_DIR
+        self._history_dir = Path(history_dir) if history_dir else _resolve_history_dir()
         self._max_records = max_records
         self._lock = threading.Lock()
         self._records: Deque[DetectionRecord] = deque(maxlen=max_records)

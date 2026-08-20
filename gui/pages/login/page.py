@@ -86,6 +86,55 @@ def _migrate_role(value: object) -> str:
     return _LEGACY_ROLE_MAP.get(value, ROLE_OPERATOR)
 
 
+def sweep_residual_initial_credentials(config_dir: Optional[str] = None) -> str:
+    """W24（v4 P3-7）：启动时补删残留首启凭据文件。
+
+    缺口：改密成功即删 initial_credentials.txt
+    （_remove_initial_credentials），但 os.remove 失败（Windows 文件
+    占用）仅记日志、无重试路径 → 明文文件可长存。登录页构造时补扫：
+
+    - 文件不存在 → "absent"（含 exists→remove 间被外部删除的竞态）；
+    - admin 已改密（users.json must_change=False；记录缺失/非字典亦然
+      ——无待改标志即无挂起改密）→ 补删，成功 "deleted"；
+    - os.remove 失败（占用）→ 告警保留 "remove_failed"（下次启动再试）；
+    - 尚未改密（must_change=True）、users.json 不可读**或非字典形态**
+      （合法 JSON 的 list/str/int——W24 对抗验证员 MEDIUM：形状损坏曾
+      以 AttributeError 逃出致启动崩溃）→ "kept_pending_change"
+      （登录流程仍强制改密并删除，文件内容自附删除提示）。
+    """
+    cfg = config_dir if config_dir is not None else str(_CONFIG_DIR)
+    cred_path = os.path.join(cfg, _INITIAL_CREDENTIALS_FILENAME)
+    if not os.path.exists(cred_path):
+        return "absent"
+    try:
+        with open(os.path.join(cfg, "users.json"), "r", encoding="utf-8") as f:
+            db = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        logger.exception("补扫初始凭据：users.json 不可读，保守保留 %s", cred_path)
+        return "kept_pending_change"
+    if not isinstance(db, dict):
+        logger.warning(
+            "补扫初始凭据：users.json 非字典形态（%s），保守保留 %s",
+            type(db).__name__, cred_path,
+        )
+        return "kept_pending_change"
+    record = db.get("admin")
+    if not isinstance(record, dict):
+        record = {}
+    if record.get("must_change", False):
+        logger.info("补扫初始凭据：admin 尚未改密，保留 %s", cred_path)
+        return "kept_pending_change"
+    try:
+        os.remove(cred_path)
+        logger.warning("补扫初始凭据：admin 已改密，补删残留文件 %s", cred_path)
+        return "deleted"
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        logger.exception("补扫初始凭据：补删失败（可能被占用），下次启动再试: %s", cred_path)
+        return "remove_failed"
+
+
 class _ChangePasswordDialog(QDialog):
     """首登强制改密对话框（W19/FR-5.3）。
 
@@ -162,6 +211,10 @@ class LoginPage(QWidget):
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._ensure_default_admin()
+        # W24（v4 P3-7）：补扫残留首启凭据（此前删除失败的场景），
+        # 首启场景 _ensure_default_admin 刚建文件时 must_change=True
+        # 会保守保留——见 sweep_residual_initial_credentials 文档。
+        sweep_residual_initial_credentials()
         self._build_ui()
         self._wire()
 

@@ -176,7 +176,11 @@ def _launch_app(source: str) -> subprocess.Popen:
             f"或设置 AVA_UIA_SOURCE=python 用源码运行。"
         )
     logger.info("启动（exe）: %s", exe)
-    return subprocess.Popen([exe], cwd=os.path.dirname(exe))
+    # W23（v4 P2-1c）：exe 模式剥掉 AVA_LOG_DIR——保持 exe 日志/审计落
+    # dist\AutoVisionAgent\logs（cwd 相对）供 UIA 失败排查，不被 pytest
+    # 会话临时目录劫走（python 源码分支继承 env 正是隔离所需，不动）。
+    exe_env = {k: v for k, v in os.environ.items() if k != "AVA_LOG_DIR"}
+    return subprocess.Popen([exe], cwd=os.path.dirname(exe), env=exe_env)
 
 
 def _dump_process(proc: subprocess.Popen) -> None:
@@ -316,4 +320,87 @@ def pole_subset_dir(tmp_path_factory) -> Path:
     for src in picked:
         shutil.copy2(src, d / src.name)
     logger.info("极柱子集: %s（%d 张）", d, len(picked))
+    return d
+
+
+# ================================ W25 扩面 fixtures ================================ #
+
+@pytest.fixture(scope="session")
+def tiny_det_model_path(tmp_path_factory) -> Path:
+    """W25（FR-002/003）：离线构造的可加载 det 权重。
+
+    T2a 调查实证：full_workflow 训练步为 _SimStrategy 模拟训练、零 .pt
+    落盘——复用链上产物不可行；本 fixture 用 ultralytics YAML 构造
+    yolov8n + torch.save 标准 ckpt 字典（约 12.8MB / 0.1s，零网络），
+    exe 内 ultralytics 8.4.81 与 .venv 同版，跨环境反序列化已实测通过
+    （DetYoloEngine.load→infer→run_eval_task 全链路绿）。AVA_UIA_MODEL
+    指向真权重时优先复用（与 fake_model_path 同约定）。
+    """
+    real = os.environ.get("AVA_UIA_MODEL")
+    if real and os.path.exists(real):
+        return Path(real)
+    try:
+        import time as _time
+
+        import torch
+        from ultralytics import YOLO
+    except ImportError as e:
+        pytest.skip(f"ultralytics/torch 不可用，无法构造测试权重: {e}")
+
+    d = tmp_path_factory.mktemp("tiny_model")
+    pt = d / "ava_tiny_det.pt"
+    m = YOLO("yolov8n.yaml")
+    torch.save(
+        {
+            "model": m.model,
+            "train_args": {},
+            "train_metrics": {},
+            "epoch": -1,
+            "date": _time.time(),
+            "version": "8.4.81",
+        },
+        pt,
+    )
+    logger.info("构造测试权重: %s (%d B)", pt, pt.stat().st_size)
+    return pt
+
+
+@pytest.fixture()
+def eval_gt_dir(tmp_path) -> Path:
+    """W25（FR-003）：LabelMe 真值目录（1 图 + 1 JSON，单矩形 shape）。"""
+    import json
+
+    from PIL import Image, ImageDraw
+
+    d = tmp_path / "eval_gt"
+    d.mkdir()
+    im = Image.new("RGB", (640, 480), (80, 120, 200))
+    ImageDraw.Draw(im).rectangle(
+        [160, 120, 480, 360], outline=(220, 60, 60), width=4
+    )
+    im.save(d / "gt_probe.png")
+    (d / "gt_probe.json").write_text(
+        json.dumps(
+            {
+                "version": "5.2.1",
+                "flags": {},
+                "shapes": [
+                    {
+                        "label": "defect",
+                        "points": [[160.0, 120.0], [480.0, 360.0]],
+                        "group_id": None,
+                        "shape_type": "rectangle",
+                        "flags": {},
+                    }
+                ],
+                "imagePath": "gt_probe.png",
+                "imageData": None,
+                "imageHeight": 480,
+                "imageWidth": 640,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return d

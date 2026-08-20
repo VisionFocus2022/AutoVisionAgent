@@ -535,6 +535,9 @@ def test_import_serving_server_adds_no_root_handler():
 def test_resolve_log_dir_reads_config_with_gui_fallback(monkeypatch, tmp_path):
     """RED（P2-20）：log_dir 解析与 GUI（gui/main.setup_logging）同源——
     core.config LoggingConfig.log_dir，配置不可用回退 ./logs。"""
+    # W23（v4 P2-1c）：显式测生产行为——剥掉根 conftest 设置的会话级
+    # AVA_LOG_DIR（env 优先于 config，不剥则两断言必红）。
+    monkeypatch.delenv("AVA_LOG_DIR", raising=False)
     from types import SimpleNamespace
 
     import core.config as cfg_mod

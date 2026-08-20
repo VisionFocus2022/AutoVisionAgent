@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "change_id": "v4-wave1-hygiene",
+  "title": "v4 第一波三动作：仓库卫生收口+测试态日志隔离(AVA_LOG_DIR)+eval score/boxes 防御",
+  "created_at": "2026-08-19T13:05:00.000000+08:00",
+  "mode": "default",
+  "tier": "L1",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "local",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "v4 审查第一波三动作；实施前三调查员并行取证；三段 TDD RED 先行；生产零行为变化（env 不设时逐字节一致有回归锚）。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": false,
+      "approved": false,
+      "evidence": "L1 档免审批；用户指令『根据建议实施下一步』（v4 §9 第一波）"
+    },
+    "G2_decision": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    },
+    "G3_execution": {
+      "required": false,
+      "approved": false,
+      "evidence": ""
+    }
+  },
+  "documents": {
+    "change_card": ".workflow/v4-wave1-hygiene/change-card.md",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [
+      "v4 P2-1a/b 仓库卫生与敏感边界",
+      "v4 P2-1c 测试态/生产态日志隔离",
+      "v4 P3-3 eval_flow score 裸取防御（附带统一 boxes）"
+    ],
+    "acceptance": [
+      "AC1: .gitignore 5 条目在位且 9 瞬态文件出库（git check-ignore 全 rc=0 + ls-files 空）",
+      "AC2: 全量门禁前后 logs/ 四文件 mtime/字节/行数逐字节一致 + %TEMP% 会话副本正向实证",
+      "AC3: 契约违反引擎（缺 score/score=None/缺 boxes）不再炸整场评估，三数组定长回退"
+    ],
+    "tasks": []
+  },
+  "verification": [
+    {
+      "name": "RED 动作3：eval score/boxes 裸取",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_eval_flow.py -o addopts= --no-cov -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 阶段 3 failed（AttributeError '_DuckEngine' object has no attribute 'score'/'boxes' + TypeError float(None)）+19 passed；exit_code=0 为 GREEN 后复跑 22 passed"
+    },
+    {
+      "name": "RED 动作2：AVA_LOG_DIR 四写入方",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w23_log_isolation.py -o addopts= --no-cov -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 阶段 4 failed（setup_logging 落 CWD 相对 ./logs / _resolve_log_dir 返回 ./logs / audit-history 指仓库绝对路径 / conftest 无接线）；GREEN 后 5 passed（含生产默认回归锚）"
+    },
+    {
+      "name": "GREEN 动作2 五文件联动（含原污染源 tests/test_gui.py）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w23_log_isolation.py tests/test_gui_misc_pages.py tests/test_serving_server.py tests/test_audit_and_history.py tests/test_gui.py -o addopts= --no-cov -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "82 passed in 10.38s；同场日志冻结实测：autovision.log mtime 1787109247/6,049,793B/51,666 行跑前后逐字节一致"
+    },
+    {
+      "name": "RED→GREEN 动作1：卫生元守卫",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w23_repo_hygiene_meta.py -o addopts= --no-cov -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 2 failed（.gitignore 缺 5 条目 / ls-files 列 9 文件）→ 出库后 2 passed；机械三证：check-ignore 5 目标全 rc=0、status 恰 10 staged D + .gitignore M、9 文件留盘"
+    },
+    {
+      "name": "全量门禁（终版）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "976 passed / 4 skipped / 覆盖 93.06% ≥ 地板 92 / 57.94s / RC=0；日志 .workflow/arch-review-v4/w23-gate-final.log；966 基线+10 用例严丝合缝"
+    },
+    {
+      "name": "日志冻结验收（动作 2 专属 AC）",
+      "command": "stat/wc 前后对照（嵌于全量门禁）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "门禁前后四文件完全一致：autovision.log 1787109247/6,049,793B/51,666 行；serving.log 1787107470/6,972B/63 行；audit_20260819.jsonl 1787108891/135B/1 行；history_20260819.jsonl 1787107431/5,200B/28 行；正向：%TEMP%\\ava-test-logs-*\\autovision.log 会话副本在场"
+    },
+    {
+      "name": "对抗验证（4 验证员并行，wf_0300be52）",
+      "command": "只读取证 + 定向复跑（验证员独立重放 61 测试）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "卫生/隔离/防御/完整性四员全部『存活』：porcelain 零意外条目、无第五日志写入方（rg --no-ignore 全扫实证四接入点=全集）、冻结值独立复验一致（含验证员自跑 61 测试后不变）、生产行为逐字节等价复核、防御属性族 13 形态探针零逃逸、档案优于 L1 样板。带回 MEDIUM×1（元守卫 pathspec 漏 configs/initial_credentials.txt——已修：pathspec 补第五项）+ low×1（%TEMP% 会话目录泄漏——已修：sessionfinish 先 close 指向会话目录的 root FileHandler 再 rmtree，实证本会话目录成功删除）；其余 low/观察留 risks_open"
+    },
+    {
+      "name": "封版全量门禁（含对抗验证带回的两修复）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "976 passed / 4 skipped / 覆盖 93.06% ≥ 地板 92 / 59.77s / RC=0；日志 .workflow/arch-review-v4/w23-gate-sealed.log；logs/ 冻结保持（autovision.log 1787109247 不变）；%TEMP% 残留 4 不增（本会话目录被 sessionfinish 清理实证）"
+    }
+  ],
+  "risks_open": [
+    "exe 未重打包（08-19 09:55 版不含 W23 生产码）：eval 防御对合规引擎零行为变化、日志隔离为测试态、卫生为仓库态——重打包可延后到下一波合并做；重打包后 UIA 复跑需机器空闲（W16/21/22 环境归因惯例）",
+    "git 历史仍含出库文件 blob（无凭据类内容，v4 P2 定级已排除 history rewrite；如需彻底清除须 filter-repo 单独立项并接受 sha 改写）",
+    "logs/ 存量污染（1,990 行 pytest-of 等）未清档——纯本地文件不入库，是否删除由用户拍板",
+    "eval 值族畸形（score='abc'/boxes 无 len/scores=ndarray）仍致整场优雅中断（页面元组+run_job 双网收口，按钮复位无卡死）——先在面非 W23 范围，防御验证员措辞校准留档；scores 若未来改返 ndarray 会复现 :130 or 真值歧义（INFO 级）",
+    "UIA python 模式失败取证提示语指向 logs/autovision.log，但该模式日志已被重定向至 %TEMP% 会话目录（exe 主模式不受影响）——提示语按模式分支留下一波",
+    "v4 §10.3 建议（PRD 模板加『新增落盘文件→忽略策略』栏）未排程——元守卫部分代偿，下波补模板栏",
+    "_extract_state_dict_safe 实测 202 行 vs v4 记 201（微漂移，强化第二波豁免上限项必要性）"
+  ],
+  "deviations": [
+    {
+      "what": "动作 3 附带统一 boxes 裸取（v4 立案仅 score）",
+      "reason": "同函数同族同逃逸路径（NoBoxes AttributeError 活复现在案），与既有 getattr(result,'scores',None) 习语一致，1 行成本",
+      "resolution": "W23 注释与本文档『附带统一』声明追溯",
+      "approved_by": "波次负责人（ultracode 调查员建议 B 方案，主线采纳）"
+    },
+    {
+      "what": "AVA_LOG_DIR 覆盖 audit/history 两写入方（v4 立案字面为 autovision.log 污染）",
+      "reason": "调查员实证 history_20260819.jsonl 含 '/test.jpg' 28 行——同病四通道，窄修留三漏洞",
+      "resolution": "生产默认路径有专门回归锚（test_audit_and_history_default_dirs_without_env）",
+      "approved_by": "同上"
+    }
+  ],
+  "request_evidence": "用户指令：根据建议实施下一步（上下文=刚交付 v4 架构审查报告，建议下一步=§9 第一波三动作）",
+  "final_summary": "W23（v4 第一波，L1×3，TDD 三段）：①仓库卫生收口（.gitignore 5 条+9 瞬态文件出库+extract_digest 删除+.workflow 决策注释）；②测试态日志隔离（AVA_LOG_DIR env 约定四写入方接线+根 conftest 会话重定向+UIA exe env 剥离——全量门禁前后 logs/ 四文件逐字节冻结，51,666 行不再增长）；③eval build_prediction score/boxes 裸取 getattr 防御（契约违反引擎回退 0.0/GT 不炸整场）。门禁 966→976 passed/4 skipped/93.06%/rc=0。",
+  "status": "complete"
+}

@@ -11,7 +11,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 import uiautomation as ua
@@ -26,6 +28,31 @@ MAIN_WINDOW_TITLE = "AutoVisionAgent"
 # Name-only 匹配按 UIA 枚举序错绑到文件夹窗，整套测试在错误窗口里
 # 找控件、确定性全挂（3 轮 6/6 复现 + ClassName 过滤探针恒健康的实证）。
 MAIN_WINDOW_CLASS = "MainWindow"
+
+# 仓库根（W24：app_log_path 兜底分支锚定用——与 conftest.DEFAULT_EXE 的
+# REPO_ROOT 同源，避免从子目录跑 pytest 时 CWD 相对路径指错位置）
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def app_log_path() -> str:
+    """UIA 失败取证提示用的应用日志路径（W24：按 AVA_UIA_SOURCE 分支）。
+
+    - exe（默认）：exe 所在目录\\logs\\autovision.log——_launch_app 以
+      exe 目录为 cwd 启动且剥离 AVA_LOG_DIR，应用日志走 cwd 相对 ./logs；
+    - python：AVA_LOG_DIR 会话目录\\autovision.log——根 conftest 已把
+      测试态日志重定向到会话临时目录（会话结束才清理；失败发生在
+      会话中，路径存活）；env 缺席时兜底锚定仓库根的 logs/。
+    """
+    source = os.environ.get("AVA_UIA_SOURCE", "exe").lower()
+    if source == "python":
+        env_dir = os.environ.get("AVA_LOG_DIR")
+        if env_dir:
+            return str(Path(env_dir) / "autovision.log")
+        return str(_REPO_ROOT / "logs" / "autovision.log")
+    exe = os.environ.get("AVA_UIA_EXE")
+    if exe:
+        return str(Path(exe).parent / "logs" / "autovision.log")
+    return str(_REPO_ROOT / "dist" / "AutoVisionAgent" / "logs" / "autovision.log")
 
 
 # ================================ 主窗口 ================================ #
@@ -777,6 +804,7 @@ def find_combo_controls(root, timeout: float = 5.0) -> list:
 
 __all__ = [
     "MAIN_WINDOW_TITLE",
+    "app_log_path",
     "find_main_window",
     "find_control_by_name",
     "click_button",

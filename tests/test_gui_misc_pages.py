@@ -274,6 +274,9 @@ def test_setup_logging_writes_file_and_cleans_up(tmp_path, monkeypatch):
 
     log_dir = tmp_path / "logs"
     monkeypatch.chdir(tmp_path)  # 默认 log_dir=./logs → 落在 tmp
+    # W23（v4 P2-1c）：显式测生产行为——根 conftest 已把 AVA_LOG_DIR 指向
+    # 会话临时目录，此处剥掉以验证 config 默认路径解析。
+    monkeypatch.delenv("AVA_LOG_DIR", raising=False)
     before = list(logging.getLogger().handlers)
     main_mod.setup_logging()
     assert (log_dir / "autovision.log").exists()

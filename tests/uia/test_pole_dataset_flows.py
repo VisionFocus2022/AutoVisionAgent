@@ -30,6 +30,7 @@ import pytest
 
 try:
     from tests.uia.uia_helpers import (
+        app_log_path,
         click_button,
         click_nav,
         confirm_dialog_if_present,
@@ -48,6 +49,7 @@ try:
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (  # type: ignore[no-def]
+        app_log_path,
         click_button,
         click_nav,
         confirm_dialog_if_present,
@@ -276,7 +278,7 @@ def test_pole_label_polygon_and_rectangle(ava_app, pole_subset_dir: Path, worksp
         logger.info("矩形尝试 %d 未提交，状态: '%s'", attempt + 1, _last_status(win))
     assert rect_committed, (
         f"矩形未提交：拖拽后标注数未增加（base={base}，最后='{_last_status(win)}'，"
-        f"查 logs/autovision.log 是否缺 labeling.modes 模块）"
+        f"查 {app_log_path()} 是否缺 labeling.modes 模块）"
     )
 
     assert click_button(win, "添加标签", T_NAV), "未找到'添加标签'按钮（find timeout）"

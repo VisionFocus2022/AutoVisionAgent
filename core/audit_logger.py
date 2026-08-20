@@ -21,7 +21,13 @@ from core.constants import CONFIG_DIR
 _logger = logging.getLogger(__name__)
 
 # 默认审计日志目录
-_DEFAULT_AUDIT_DIR = CONFIG_DIR.parent / "logs" / "audit"
+def _resolve_audit_dir() -> Path:
+    """W23（v4 P2-1c）：默认审计目录——AVA_LOG_DIR 指定时取其下 audit/，
+    否则仓库 logs/audit（测试态隔离约定，与 gui/main.setup_logging 一致）。"""
+    env_dir = os.environ.get("AVA_LOG_DIR")
+    if env_dir:
+        return Path(env_dir) / "audit"
+    return CONFIG_DIR.parent / "logs" / "audit"
 
 
 class AuditLogger:
@@ -52,7 +58,7 @@ class AuditLogger:
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
-        self._log_dir = Path(log_dir) if log_dir else _DEFAULT_AUDIT_DIR
+        self._log_dir = Path(log_dir) if log_dir else _resolve_audit_dir()
         self._lock = threading.Lock()
         self._buffer: List[Dict[str, Any]] = []
         self._buffer_max = 100  # 缓冲区满后刷盘

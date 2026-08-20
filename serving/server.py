@@ -294,7 +294,14 @@ def setup_file_logging(
 
 def _resolve_log_dir() -> str:
     """日志目录解析：与 GUI（gui/main.setup_logging）同源——core.config
-    LoggingConfig.log_dir，配置不可用则回退 ./logs（GUI 同款兜底）。"""
+    LoggingConfig.log_dir，配置不可用则回退 ./logs（GUI 同款兜底）。
+
+    W23（v4 P2-1c）：AVA_LOG_DIR 显式指定时优先（测试态隔离约定，与
+    gui/main.setup_logging 一致；生产不设 env 行为不变）。
+    """
+    env_dir = os.environ.get("AVA_LOG_DIR")
+    if env_dir:
+        return env_dir
     try:
         from core.config import get_config
 

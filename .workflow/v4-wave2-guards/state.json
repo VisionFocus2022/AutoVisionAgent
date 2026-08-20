@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "change_id": "v4-wave2-guards",
+  "title": "v4 第二波四项（规模守卫/豁免上限/ADR冻结/凭据补删）+ logs清档 + UIA提示语 + PRD模板栏 + exe重打包",
+  "created_at": "2026-08-21T04:10:00.000000+08:00",
+  "mode": "default",
+  "tier": "L1",
+  "classification": {
+    "reversibility": "reversible",
+    "blast_radius": "local",
+    "detectability": "test_visible",
+    "uncertainty": "low",
+    "hard_triggers": [],
+    "rationale": "v4 §9 第二波 #4-#7 + W23 留下一波项；实施前 3+1 调查员并行取证（adr-credentials 员 429 阵亡改主线内联补齐）；TDD RED 11 先行；logs 清档与重打包均为用户明示拍板。"
+  },
+  "approvals": {
+    "G1_requirements": {
+      "required": false,
+      "approved": false,
+      "evidence": "L1 档免审批；用户指令『重新打包合并下一波，logs存量1990行污染，可直接删除，继续』"
+    },
+    "G2_decision": { "required": false, "approved": false, "evidence": "" },
+    "G3_execution": { "required": false, "approved": false, "evidence": "" }
+  },
+  "documents": {
+    "change_card": ".workflow/v4-wave2-guards/change-card.md",
+    "prd": "",
+    "design": "",
+    "tasks": ""
+  },
+  "traceability": {
+    "requirements": [
+      "v4 §9 #4（P3-1）文件级规模守卫：全生产包 ≤800 棘轮 + >100 行函数全包守卫",
+      "v4 §9 #5（P3-6）豁免上限声明：_extract_state_dict_safe 上限 220",
+      "v4 §9 #6（P3-2）协议演进决策：ADR-0002 冻结 PoC（跨机场景再启）",
+      "v4 §9 #7（P3-7）凭据删除补删：下次启动扫残留",
+      "W23 risks_open：UIA python 模式提示语分支；v4 §10.3 PRD 模板忽略策略栏",
+      "用户拍板：logs 存量污染直接删除；exe 重打包并入本波"
+    ],
+    "acceptance": [
+      "AC1: 封版门禁 990 passed/4 skipped/93%/rc=0（976 基线+14 新用例）",
+      "AC2: logs/ 清档后零测试签名（守卫 GREEN）+ 门禁前后新基线逐字节冻结 + 合法行零误删（备份比对）",
+      "AC3: 规模守卫RED实证咬合（函数守卫无豁免时擒获 201 行违例）且棘轮/豁免失效断言在位",
+      "AC4: sweep 四态语义（含 users.json 不可读保守保留与 os.remove 失败告警保留）6 用例锁",
+      "AC5: ADR-0002 冻结状态行 + 守卫；exe 88,414,000B@08-21 03:56 + PYZ 28/6/48 + lite 重派生 14 passed"
+    ],
+    "tasks": []
+  },
+  "verification": [
+    {
+      "name": "RED 全段：三测试文件 11 failed",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w24_scale_guards.py tests/test_w24_credentials_sweep.py tests/test_w24_wave2_meta.py -o addopts= --no-cov -q",
+      "exit_code": 1,
+      "status": "passed",
+      "evidence": "11 failed/2 passed：函数守卫擒获 AbstractTaskEngine._extract_state_dict_safe 201>100（调查员口径『唯一违例』独立复核成立——限定名键修正前守卫红，正是守卫咬合实证）；豁免声明缺『上限 220』；sweep 六用例 ImportError/断言红；ADR 缺冻结行；UIA 提示语守卫红（无 app_log_path/写死路径在场）"
+    },
+    {
+      "name": "GREEN 全段 + W18 守卫无回归",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w24_scale_guards.py tests/test_w24_credentials_sweep.py tests/test_w24_wave2_meta.py tests/test_w18_metrics_ast.py -o addopts= --no-cov -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "15 passed（13 新 + W18 既有 2，豁免声明标记『形态豁免声明』保留故 W18 锚不破）"
+    },
+    {
+      "name": "logs 清档（用户批准）+ 污染守卫 RED→GREEN",
+      "command": "grep -v 过滤 + rm（备份 %TEMP%\\w24-logs-backup-20260821）→ pytest test_production_logs_free_of_test_pollution",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 精确命中 6 文件（autovision.log pytest-of + audit0817/18 + history0816/17/18 fake.png）；清档后 6 passed。删除量逐文件吻合预测：autovision.log 51666→49676（-1990）、audit_20260630 整删 7 行、audit_0817 128→103（-25）、audit_0818 74→52（-22）、history 0630/0816/0817/0818/0819 = 44→31/144→100/386→250/92→50/28→20（-13/-44/-136/-42/-8）；残余签名全 0；audit_20260819（真实离线登录）与 history 空路径行（无铁证签名）保守保留"
+    },
+    {
+      "name": "中场全量门禁（lite 漂移擒获）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 1,
+      "status": "passed",
+      "evidence": "989 passed+1 failed：test_real_lite_dist_guard 差值 2435≠2029——根因非 W24：dist/AutoVisionAgent-lite/logs/autovision.log 3832B@08-19 16:42（用户在 W23 封版后运行 lite exe 追加 406B=3832-3426，与 marker 差值精确吻合）；logs 冻结 FROZEN-OK 同时成立"
+    },
+    {
+      "name": "exe 重打包 + PYZ 守卫",
+      "command": ".venv/Scripts/python.exe -m PyInstaller autovisionagent.spec --noconfirm（.workflow/arch-review-v4/w24-pyinstaller.log）→ grep -c 三计数",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "BUILD_RC=0；新 exe 88,414,000B@2026-08-21 03:56（旧 88,412,195，+1,805B=W23 日志隔离+eval 防御+W24 凭据补扫生产码）；TOC 2026-08-21 03:56:35 新鲜；labeling=28/data_manage=6/predict|sam_adapter=48 全过（依赖零变动持平）；PyInstaller --noconfirm 清掉 full dist 运行期 logs（干净树）"
+    },
+    {
+      "name": "lite 重派生 + 守卫复位",
+      "command": "rm -r dist/AutoVisionAgent-lite && .venv/Scripts/python.exe scripts/make_lite_dist.py --offline（.workflow/arch-review-v4/w24-lite-derive.log）→ pytest tests/test_w19_lite_dist.py",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "LITE_RC=0；14 passed（含 test_real_lite_dist_guard 差值一致性复位）；406B 漂移随重派生消失"
+    },
+    {
+      "name": "封版全量门禁",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "990 passed/4 skipped/93%（8552 语句/592 缺）≥地板 92/66.33s/RC=0（.workflow/arch-review-v4/w24-gate-sealed.log）；976 基线+14 新用例严丝合缝；清档后新基线冻结：门禁前后四文件 mtime/字节 diff 为空（FROZEN-OK）"
+    },
+    {
+      "name": "对抗验证（4 验证员并行，wf_fe098bf1，334.6k tokens）",
+      "command": "只读取证 + 定向复跑 + 变异探针（creds 员自建 %TEMP% 探针实跑生产函数；pkg 员从 exe 内嵌 PYZ 提取 marshal 码逐模块核验）",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "裁定：规模守卫员=存活（AST 独立复算 105 文件/>800 恰 1/>100 恰 1 与豁免表精确闭合；改名逃逸双向 fail-closed 实测）；打包员=存活（exe 内嵌 PYZ=build PYZ sha256 一致；W23/W24 码在场逐常量核验；lite 独立字节对账 2,115,177,716B<2GiB、marker 差值 8,748B=marker+1 残留 pyc 精确对账；full/lite exe sha256 相同；logs 残留=0）；凭据员=部分成立（MEDIUM：users.json 合法 JSON 非字典形态 sweep 抛未捕获 AttributeError→启动崩溃，探针 X1-X4 实证）；清档员=部分成立（HIGH：首轮清档漏第四铁证签名 tests\\test_ traceback 帧——autovision.log 仍残留 641 条测试异常记录 6,329+2 行；MEDIUM：ADR 冻结行『仅内联路径』措辞与 ADR 决策 1 自身矛盾——实为内联+MMF 直读双路径）"
+    },
+    {
+      "name": "对抗带回修复（HIGH+MEDIUM×2+low×3，全 TDD RED 先行）",
+      "command": ".venv/Scripts/python.exe -m pytest tests/test_w23_log_isolation.py tests/test_w24_credentials_sweep.py -o addopts= --no-cov -q",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "RED 7 failed（守卫补第四签名擒获 839 帧+2 alice/bob 在场；sweep 形态崩溃×4+admin 非字典崩溃+TOCTOU 误标）→ 修复：①sweep isinstance 收口（非字典形态→保守保留；admin 记录非字典→视为无挂起改密补删；FileNotFoundError→absent）+接线守卫升级 AST 定位 __init__ 体内调用点；②autovision.log 字节级记录删除（备份 .r2-pre）——按记录头分段删含 tests\\test_/tests/test_/user=alice/user=bob 签名的整记录：恰 641 记录/6,332 行（与验证员 diff 备份独立计数 639+2 精确吻合），49,676→43,344 行，四签名复检全 0；③ADR/change-card/守卫 docstring『仅内联路径』→『内联+MMF 直读双路径，Release 不带 lease_id』；④cov 正则加固（等号+空格形态、解析数==出现次数断言防定义域静默漂移）；⑤app_log_path 入 __all__+兜底分支锚定 _REPO_ROOT。GREEN 25 passed"
+    },
+    {
+      "name": "终版封版门禁（含对抗带回修复）",
+      "command": ".venv/Scripts/python.exe -m pytest",
+      "exit_code": 0,
+      "status": "passed",
+      "evidence": "996 passed/4 skipped/93.08%（8559 语句/592 缺）≥地板 92/61.84s/RC=0（.workflow/arch-review-v4/w24-gate-final2.log）；990+6 修复验证用例严丝合缝；r2 清档基线（autovision.log 43,344 行）门禁前后冻结 FROZEN-OK"
+    }
+  ],
+  "risks_open": [
+    "重打包后 UIA 未复跑：打包时机器不空闲（微信 7 进程+ToDesk 远控在场+CPU 86%，W16/21/22 环境归因签名）——按惯例机器空闲时复跑 tests/uia 可取 6/6（.venv/Scripts/python.exe -m pytest tests/uia -o addopts=）",
+    "PYZ 28/6/48 是对 build TOC 的手工 grep 行数绊线（唯一模块名实数 16/3/24，含第三方巧合命中与名+路径双计）而非 pytest 守卫——依赖集/模块名变动会漂移，重定基流程=对上一个已知好构建的新鲜 TOC 重跑三计数（对抗验证员 low 留档；未来可自动化为 exe 内嵌 PYZ 唯一名计数守卫）",
+    "lite 距 2GiB 上限余量仅约 30.8MiB（独立复算 2,115,177,716B）——一次 torch/transformers 小版本升级可能击穿，有 test_real_lite_dist_guard 锁口，关注余量趋势",
+    "生产 exe PYZ 内打包完整 pytest 运行时（79 模块，经 pydub 依赖链静态分析误拉，生产码零 import pytest）——历史存量体积/攻击面议题，后续波次可在 spec excludes 增 pytest/_pytest",
+    "make_lite_dist 进度输出走 stderr：本轮 w24-lite-derive.log 0 字节（stdout 重定向所致），证据链由验证员独立字节对账补强——未来打包日志重定向须 2>&1",
+    "规模守卫棘轮 850 vs 实测 828 有 22 行余量（v4 §9 明文『先设 850 再收敛』）——label/page.py 降至 800 后棘轮失效断言会强制删条目；单步式：中途降到 810 仍可回长 40 行（验证员 observation，可改自更新棘轮）",
+    "守卫函数度量不计装饰器行（Py3.8+ lineno=def 行，全仓最大缺口 2 行）——与 W18 守卫同口径留档",
+    "history_20260819 保留 20 行 image_path 空的记录（疑似门禁期测试写入但无铁证签名）+autovision.log 仍存无签名的测试期 INFO 噪音行（W23 隔离后冻结不再增长）——有界存量，下次有证据可手工清",
+    "PRD 模板改动在用户级技能仓（自带 .git 未提交，旧积压多无法用 git 归属 W24 增量——mtime 08-21 03:50 佐证仅两模板被改）；模板引用『v4 §10.3』为项目私有编号对通用模板略耦合",
+    "邻接既有问题（验证员 observation，非本波引入）：W19 首启 users.json 写盘成功但 initial_credentials 写失败→初始密码永失（应写未写侧）；test_m2_e2e 裸构造 LoginPage 触达真 configs/（W23 日志隔离同主题暴露面）"
+  ],
+  "deviations": [
+    {
+      "what": "豁免键用限定名 AbstractTaskEngine._extract_state_dict_safe（v4 文本只写函数名）",
+      "reason": "守卫限定名口径下模块级名不命中；RED 期擒获键失配正是守卫咬合实证",
+      "resolution": "本卡声明追溯",
+      "approved_by": "波次负责人"
+    },
+    {
+      "what": "logs 清档保留 history 空路径行与 audit_20260819 真实登录行（用户批准的字面为 1990 行污染）",
+      "reason": "删除只取铁证签名（pytest-of/fake.png//test 前缀）；无签名行保守保留避免误删真实记录",
+      "resolution": "守卫同口径只锁铁证签名，/test*.jpg 不入守卫（真实用户文件名可能撞名）",
+      "approved_by": "用户拍板『可直接删除』+ 波次负责人取窄解释"
+    }
+  ],
+  "request_evidence": "用户指令：重新打包合并下一波，logs存量1990行污染，可直接删除，继续（上下文=W23 收口汇报的留待后续三项）",
+  "final_summary": "W24（v4 第二波+用户拍板三项）：①规模守卫全 cov 包（文件 ≤800 棘轮 label/page.py=850/函数 ≤100 豁免上限 220，棘轮+豁免失效断言防棘轮变永久豁免）；②豁免 docstring 数值化；③ADR-0002 冻结声明（跨机再启）；④凭据残留启动补扫 sweep 四态（对抗带回：非字典形态 isinstance 收口+TOCTOU absent+AST 接线守卫）；⑤logs 清档两轮（铁证签名行级+记录级：-1,990 pytest-of/-47 fake.png/-243 /test*+jsonl 整档/641 记录 6,334 行 tests-frame+alice-bob，守卫四签名锁定）；⑥UIA 提示语按模式分支（app_log_path 锚 REPO_ROOT）；⑦PRD 模板落盘忽略策略栏；⑧exe 重打包 88,414,000B@08-21 03:56（W23+W24 生产码入场，验证员从内嵌 PYZ 逐常量核验）+lite 重派生（406B 用户运行漂移复位）。门禁 976→996 passed/4 skipped/93.08%/rc=0；对抗验证 2 存活 2 部分成立，带回 HIGH×1+MEDIUM×2+low×3 全修后复门禁绿。UIA 复跑留机器空闲时（环境归因惯例）。",
+  "status": "complete"
+}

@@ -35,6 +35,7 @@ import pytest
 # 兼容 pytest 顶层模式加载（无 tests.uia 包），优先用包导入，失败则用直接导入
 try:
     from tests.uia.uia_helpers import (
+        app_log_path,
         click_button,
         click_nav,
         confirm_dialog_if_present,
@@ -49,6 +50,7 @@ try:
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (  # type: ignore[no-redef]
+        app_log_path,
         click_button,
         click_nav,
         confirm_dialog_if_present,
@@ -224,7 +226,7 @@ def _step_annotate(win, data_dir: Path, labels_dir: Path) -> None:
         raise AssertionError(
             f"矩形标注未提交：画布对鼠标拖拽无响应（最后状态='{_last_status(win)}'）。"
             "常见原因：打包缺 labeling.modes 手动模式模块（查 spec hiddenimports），"
-            "或 controller 报'标注器构造失败'（查 logs/autovision.log）"
+            f"或 controller 报'标注器构造失败'（查 {app_log_path()}）"
         )
 
     # 2d. 应用标签（label_input 默认 "defect"）

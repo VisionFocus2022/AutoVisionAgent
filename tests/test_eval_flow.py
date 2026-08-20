@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from evaluation.eval_flow import (
+    build_prediction,
     extract_gt,
     run_eval_task,
     run_generative_eval,
@@ -425,3 +426,73 @@ def test_run_eval_task_dispatch_generative_vs_supervised(tmp_path, monkeypatch):
     # fid：生成式分支（无真实图 → 空行，不触引擎）
     rows = run_eval_task("m.pt", str(gt), "fid")
     assert rows == []
+
+
+# ====== W23（v4 P3-3）：score/boxes 裸取防御（契约违反引擎不炸整场） ======
+_MISSING = object()  # 哨兵：区分「未设属性」与「值=None」
+
+
+class _DuckEngine:
+    """契约违反替身：infer 返回自定义形态结果（缺 score / score=None / 缺 boxes）。
+
+    真实引擎恒返回 DetectionResult（全字段带默认值）；本类模拟鸭子型/契约
+    违反引擎——v4 对抗工程师实证 :119 result.boxes 与 :131 float(result.score)
+    两处裸取的 AttributeError/TypeError 均逃出 except 元组击穿逐图回退韧性。
+    """
+
+    def __init__(self, boxes=_MISSING, score=_MISSING):
+        if boxes is not _MISSING:
+            self.boxes = np.array(boxes)
+        if score is not _MISSING:
+            self.score = score
+
+    def infer(self, img_path):
+        return self
+
+
+@pytest.mark.unit
+def test_build_prediction_engine_without_score_attr_fills_zero(tmp_path):
+    """无 .score 属性（且无逐框 scores）：W23 前 AttributeError 逃出 except
+    元组炸整场评估；修后 scores 回退 [0.0]*n_pred、三数组长度对齐不抛。"""
+    _png_stub(tmp_path / "a.png")
+    engine = _DuckEngine(boxes=[[4.0, 4.0, 20.0, 16.0], [40.0, 40.0, 60.0, 56.0]])
+
+    pred = build_prediction(
+        engine, {"imagePath": "a.png"}, str(tmp_path),
+        [[4.0, 4.0, 20.0, 16.0]], [0],
+    )
+
+    assert pred["scores"] == [0.0, 0.0]
+    assert pred["labels"] == [0, 0]
+    assert len(pred["boxes"]) == 2
+
+
+@pytest.mark.unit
+def test_build_prediction_engine_score_none_fills_zero(tmp_path):
+    """score=None：W23 前 float(None) TypeError 同族逃逸；修后回退 0.0。"""
+    _png_stub(tmp_path / "a.png")
+    engine = _DuckEngine(boxes=[[4.0, 4.0, 20.0, 16.0]], score=None)
+
+    pred = build_prediction(
+        engine, {"imagePath": "a.png"}, str(tmp_path),
+        [[4.0, 4.0, 20.0, 16.0]], [0],
+    )
+
+    assert pred["scores"] == [0.0]
+
+
+@pytest.mark.unit
+def test_build_prediction_engine_without_boxes_attr_falls_back_gt(tmp_path):
+    """无 .boxes 属性（W23 顺手统一）：与 boxes=None 同路——GT 框当预测 +
+    引擎全局 score 均匀填充（非 _fallback_pred 的 0.5），不抛 AttributeError。"""
+    _png_stub(tmp_path / "a.png")
+    engine = _DuckEngine(score=0.9)  # 不设 boxes
+
+    pred = build_prediction(
+        engine, {"imagePath": "a.png"}, str(tmp_path),
+        [[4.0, 4.0, 20.0, 16.0]], [0],
+    )
+
+    assert pred["boxes"] == [[4.0, 4.0, 20.0, 16.0]]  # GT 回退
+    assert pred["scores"] == [0.9]                    # 全局 score 填充
+    assert pred["labels"] == [0]

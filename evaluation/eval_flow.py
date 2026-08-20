@@ -115,8 +115,11 @@ def build_prediction(
     if img_path and os.path.exists(img_path):
         try:
             result = engine.infer(img_path)
-            # 真引擎 boxes 为 numpy 数组——不得做真值判断（歧义异常）
-            p_boxes = result.boxes if result.boxes is not None else boxes
+            # 真引擎 boxes 为 numpy 数组——不得做真值判断（歧义异常）；
+            # W23（v4 P3-3）：boxes 同 score 一并 getattr 防御——缺属性的鸭子
+            # 引擎与 boxes=None 走同一 GT 回退，不再 AttributeError 逃出元组。
+            r_boxes = getattr(result, "boxes", None)
+            p_boxes = r_boxes if r_boxes is not None else boxes
             n_pred = len(p_boxes) if p_boxes is not None else 0
             # W17（v3 P1-2）：三数组长度恒等于预测框数 N——旧 labels[:n_pred]
             # 截断在 M≠N 时产生长度失配，det_map 布尔掩码错配抛 IndexError
@@ -128,7 +131,10 @@ def build_prediction(
             if len(per_scores) >= n_pred:
                 out_scores = [float(s) for s in per_scores[:n_pred]]
             else:
-                out_scores = [float(result.score)] * n_pred
+                # W23（v4 P3-3）：score 裸取防御——缺 .score（AttributeError）与
+                # score=None（float(None) TypeError）均逃出 except 元组炸整场评估；
+                # 回退 0.0：score=0/数值标量语义不变，None/缺属性按零置信度填充。
+                out_scores = [float(getattr(result, "score", None) or 0.0)] * n_pred
             return {
                 "boxes": p_boxes,
                 "scores": out_scores,
