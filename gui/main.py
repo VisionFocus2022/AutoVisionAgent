@@ -38,6 +38,11 @@ from gui.pages import (
 
 SINGLE_INSTANCE_LOCK_FILENAME = "autovisionagent-single-instance.lock"
 
+# W26：打包态 matplotlib 后端确定性——tkinter 已被 spec 排除，Agg 依赖
+# ImportError 回退而非契约；在任何引擎（ultralytics 链）加载前显式钉死，
+# 防 matplotlib 升级改变回退行为。引擎加载全部惰性晚于此行。
+os.environ.setdefault("MPLBACKEND", "Agg")
+
 # 进程生命周期内持有 QLockFile 引用，防止对象被回收导致锁提前释放
 _SINGLE_INSTANCE_LOCK: QLockFile | None = None
 

@@ -4,13 +4,11 @@
 DetYoloEngine.load→infer→eval 全链实测通过）；断言锚全部取自
 gui/pages/predict/page.py 源码文案（状态栏/表行/预览占位）。
 
-已知生产缺陷（W25 首跑擒获，单独立卡修复）：exe 打包排除 matplotlib
-（autovisionagent.spec excludes）但 ultralytics 导入链硬依赖
-（ultralytics/models/yolo/semantic/train.py:8 import matplotlib.pyplot）→ 打包态引擎
-加载必败且 ModuleNotFoundError 逃出页面 except 元组、状态无变化；
-.venv 有 matplotlib 故单测层不可见。主链用例 strict xfail 锁定——
-修复重打包后将以 XPASS 报出、提醒去标记。负向探针部分不依赖引擎
-加载，独立成可绿用例保住可达覆盖。
+历史生产缺陷（W25 首跑擒获，W26 已修复）：exe 打包排除 matplotlib
+但 ultralytics 导入链硬依赖（ultralytics/models/yolo/semantic/train.py:8
+import matplotlib.pyplot）→ 打包态引擎加载必败。W26 修复：spec
+excludes 去 matplotlib + PYZ 清场（pytest/pydub/web 栈）重打包，
+本用例随之去 strict-xfail 转正。
 """
 from __future__ import annotations
 
@@ -47,14 +45,6 @@ T_NAV = 20
 T_LOAD = 60    # 首次加载 exe 内冷 import ultralytics 实测 ~5-15s，宽余量
 T_INFER = 60
 
-_EXE_MATPLOTLIB_DEFECT = (
-    "exe 打包排除 matplotlib 但 ultralytics 导入链硬依赖——打包态引擎"
-    "加载必败（ModuleNotFoundError 逃出页面 except 元组、状态无变化）。"
-    "W25 predict UIA 首跑擒获（应用日志 traceback 实证）；修复须 spec"
-    " excludes 去 matplotlib 并重打包（注意 lite 距 2GiB 仅余 30.8MiB）。"
-    "单独立卡处置，修好后 strict xfail 以 XPASS 报出去标记。"
-)
-
 
 @pytest.mark.usefixtures("ava_app")
 def test_predict_requires_model_first(ava_app):
@@ -69,11 +59,11 @@ def test_predict_requires_model_first(ava_app):
 
 
 @pytest.mark.usefixtures("ava_app")
-@pytest.mark.xfail(reason=_EXE_MATPLOTLIB_DEFECT, strict=True)
 def test_predict_single_image(ava_app, sample_images_dir, tiny_det_model_path):
     """单张推理全链：加载模型→选图推理→分数渲染→结果行→预览更新。
 
-    xfail 见模块 docstring（exe 缺 matplotlib 生产缺陷，单独立卡）。
+    历史：W25 因 exe 缺 matplotlib 生产缺陷以 strict xfail 锁定，
+    W26 重打包修复后转正（见模块 docstring）。
     """
     win = ava_app
     _ensure_logged_in(win)

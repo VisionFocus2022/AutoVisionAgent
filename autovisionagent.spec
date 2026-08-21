@@ -60,11 +60,39 @@ a = Analysis(
     runtime_hooks=[],
     excludes=[
         # 排除不必要的模块减小体积
-        "matplotlib",
+        # W26: matplotlib 恢复打包——ultralytics 导入链硬依赖
+        # （ultralytics/models/yolo/semantic/train.py:8 顶层 import
+        # matplotlib.pyplot），W19 排除致打包态 predict 引擎加载必败
+        # （W25 UIA 真窗擒获；.venv 有 matplotlib 掩盖单测层）。
+        # 体积：W26 终版重打包后 lite 实测 1.983GiB（余量 17.5MiB，
+        # LITE_MARKER.json total_bytes 2,129,083,893）。此余量为
+        # W27+ 体积增量波次的硬上限——下一个加体积的波次须先启用
+        # Agg 回退杠杆（仅保 matplotlib Agg 后端，ultralytics 只用
+        # savefig 级能力）再重打包。PYZ 清场回收量已并入本注释口径。
+        # 守卫见 tests/test_w26_spec_packaging.py
         "notebook",
         "IPython",
         "jupyter",
         "tkinter",
+        # W26: PYZ 静态误拉的 venv-only 运行时（W24 审计 79 个 pytest
+        # 模块 + pydub 链；W26 PYZ 实证扩面 gradio169/fastapi39/flask23/
+        # uvicorn40 模块——毒化测试证明九引擎注册链与 ultralytics/
+        # anomalib 加载链零依赖，产品代码零引用，守卫强制安检）
+        # 红线：严禁排除 unittest——torch 2.5+ 运行时依赖 unittest.mock
+        # 红线：pydantic/huggingface_hub 为 anomalib 正当引用，禁排
+        "pytest",
+        "_pytest",
+        "pydub",
+        "gradio",
+        "fastapi",
+        "flask",
+        "uvicorn",
+        # W26 守卫扩面擒获的存量隐患（W19 同型）：transformers/utils/
+        # notebook.py:20 无守卫模块级 import IPython.display 且该文件
+        # 在 PYZ——exe 内触达即炸。引用方仅此模块（trainer.py 的引用
+        # 在 is_in_notebook() 条件内恒 False；integration_utils 为函数
+        # 体惰性）→ 外科排除该模块本体，IPython 保持排除不增体积
+        "transformers.utils.notebook",
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
