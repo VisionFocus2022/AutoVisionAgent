@@ -5,8 +5,8 @@ DetYoloEngine.load→infer→eval 全链实测通过）；断言锚全部取自
 gui/pages/predict/page.py 源码文案（状态栏/表行/预览占位）。
 
 已知生产缺陷（W25 首跑擒获，单独立卡修复）：exe 打包排除 matplotlib
-（autovisionagent.spec excludes，W19 为瘦身）但 ultralytics 导入链硬依赖
-（models/yolo/semantic/train.py import matplotlib.pyplot）→ 打包态引擎
+（autovisionagent.spec excludes）但 ultralytics 导入链硬依赖
+（ultralytics/models/yolo/semantic/train.py:8 import matplotlib.pyplot）→ 打包态引擎
 加载必败且 ModuleNotFoundError 逃出页面 except 元组、状态无变化；
 .venv 有 matplotlib 故单测层不可见。主链用例 strict xfail 锁定——
 修复重打包后将以 XPASS 报出、提醒去标记。负向探针部分不依赖引擎
