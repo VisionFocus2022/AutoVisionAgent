@@ -26,6 +26,9 @@ _PAGES = [
     ("predict", "gui.pages.predict.page"),
     ("eval_", "gui.pages.eval_.page"),
     ("label", "gui.pages.label.page"),
+    # W27：SAM 会话两处 run_job（label_sam_load/label_sam_warm）随
+    # SamSessionMixin 迁出——清单跟随，否则 W17 on_error 收口失守
+    ("label_sam", "gui.pages.label.sam_session"),
     ("data_manage", "gui.pages.data_manage.page"),
     ("deploy", "gui.pages.deploy.page"),
     ("flaw_gen", "gui.pages.flaw_gen.page"),

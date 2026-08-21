@@ -8,7 +8,6 @@ import csv
 import json
 import logging
 import os
-import time
 from typing import Any, List, Optional
 
 from PySide6.QtCore import Qt, Signal, Slot
@@ -32,33 +31,16 @@ from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
-
-from core.constants import IMG_EXTS as _IMG_EXTS
+from gui.pages.predict.workers import (
+    atomic_write_json,
+    batch_save_dir,
+    collect_images,
+    result_to_record,
+    row_display_fields,
+    sanitize_csv_cell,
+)
 
 logger = logging.getLogger(__name__)
-
-# R5-2: CSV/Excel 公式注入防护（CWE-1236）
-_CSV_INJECTION_CHARS = frozenset("=+-\t\r@")
-
-
-def _sanitize_csv_cell(value: object) -> object:
-    """对以危险字符开头的字符串加单引号前缀，防止公式注入。"""
-    if isinstance(value, str) and value and value[0] in _CSV_INJECTION_CHARS:
-        return "'" + value
-    return value
-
-
-def _boxes_to_jsonable(boxes) -> Optional[list]:
-    """numpy (N,4) 框数组 → 纯 Python 嵌套 list（JSON 可序列化）。
-
-    真引擎 boxes 是 ndarray：不得做真值判断（歧义异常），且 list(ndarray)
-    仍是 ndarray 行数组、json.dump 必炸——统一经 tolist 转纯 list。
-    """
-    if boxes is None:
-        return None
-    if hasattr(boxes, "tolist"):
-        return boxes.tolist()
-    return [list(b) for b in boxes]
 
 
 class PredictPage(QWidget):
@@ -375,11 +357,7 @@ class PredictPage(QWidget):
         if not d:
             return
 
-        images: List[str] = []
-        for root, _dirs, files in os.walk(d):
-            for f in files:
-                if f.lower().endswith(_IMG_EXTS):
-                    images.append(os.path.join(root, f))
+        images = collect_images(d)
         if not images:
             self.status_changed.emit(tr("目录无图像"), "!")
             return
@@ -395,10 +373,7 @@ class PredictPage(QWidget):
         if hasattr(self, "_progress"):
             self._progress.setVisible(True)
 
-        ts = int(time.time())
-        save_dir = os.path.join(
-            self._project_dir or d, "results", f"batchPredict_{ts}"
-        )
+        save_dir = batch_save_dir(self._project_dir, d)
         os.makedirs(save_dir, exist_ok=True)
 
         engine = self._engine
@@ -436,23 +411,10 @@ class PredictPage(QWidget):
                 done = min(i + _BATCH_SIZE, total)
                 invoke_main(self, "_batch_set_progress", done, total)
 
-            # 保存批量结果（P2-2：temp+os.replace 原子落盘——直写会在写入
-            # 中途截断既有文件，退出杀线程时旧结果即损坏）。
-            # W17（v3 P2-1 附带）：写盘段纳入异常路由——失败清理 .tmp 残留后
-            # 上抛，由 run_job 的 on_error 兜底回 UI（此前游离在路由外：
-            # json.dump TypeError / os.replace PermissionError → 按钮永久禁用）
+            # 保存批量结果：原子落盘细节（temp+replace/tmp 清理）见
+            # workers.atomic_write_json（P2-2/W17 异常路由语义原样迁出）
             out_path = os.path.join(save_dir, "batch_results.json")
-            tmp_path = out_path + ".tmp"
-            try:
-                with open(tmp_path, "w", encoding="utf-8") as f:
-                    json.dump(self._results, f, ensure_ascii=False, indent=2)
-                os.replace(tmp_path, out_path)
-            except BaseException:
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-                raise
+            atomic_write_json(out_path, self._results)
 
             invoke_main(self, "_batch_done", len(self._results), total)
 
@@ -460,19 +422,9 @@ class PredictPage(QWidget):
 
     def _batch_add_row(self, img_path: str, result: DetectionResult) -> None:
         """线程安全地添加结果行（通过 invokeMethod）。"""
-        self._results.append({
-            "file": os.path.basename(img_path),
-            "path": img_path,
-            "task": result.task.value,
-            "score": result.score,
-            "boxes": _boxes_to_jsonable(result.boxes),
-            "labels": list(result.labels) if result.labels else None,
-        })
+        self._results.append(result_to_record(img_path, result))
         # 延迟到主线程添加表格行（传完整数据避免列错位）
-        labels = ", ".join(result.labels) if result.labels else ""
-        score = float(result.score or 0.0)
-        n = len(result.boxes) if result.boxes is not None else 0
-        info = f"{n} {tr('框')}" if n else ""
+        labels, score, info = row_display_fields(result)
         invoke_main(self, "_batch_add_row_main", img_path, labels, score, info)
 
     # ---- Qt slot 桥接（主线程执行）----
@@ -640,10 +592,10 @@ class PredictPage(QWidget):
             writer.writerow(["file", "task", "score", "labels"])
             for r in self._results:
                 writer.writerow([
-                    _sanitize_csv_cell(r["file"]),
-                    _sanitize_csv_cell(r["task"]),
+                    sanitize_csv_cell(r["file"]),
+                    sanitize_csv_cell(r["task"]),
                     r.get("score", ""),
-                    _sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
+                    sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
                 ])
         logger.info("导出CSV: %s", path)
         self.status_changed.emit(tr("已导出"), os.path.basename(path))
@@ -715,10 +667,10 @@ class PredictPage(QWidget):
                 writer.writerow(["file", "task", "score", "labels"])
                 for r in self._results:
                     writer.writerow([
-                        _sanitize_csv_cell(r["file"]),
-                        _sanitize_csv_cell(r["task"]),
+                        sanitize_csv_cell(r["file"]),
+                        sanitize_csv_cell(r["task"]),
                         r.get("score", ""),
-                        _sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
+                        sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
                     ])
             self.status_changed.emit(tr("已导出CSV"), os.path.basename(csv_path))
             logger.info("导出Excel回退CSV: %s", csv_path)
@@ -733,10 +685,10 @@ class PredictPage(QWidget):
         # 数据行
         for r in self._results:
             ws.append([
-                _sanitize_csv_cell(r["file"]),
-                _sanitize_csv_cell(r.get("task", "")),
+                sanitize_csv_cell(r["file"]),
+                sanitize_csv_cell(r.get("task", "")),
                 round(r.get("score", 0) or 0, 4),
-                _sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
+                sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
                 len(r.get("boxes") or []),
             ])
 

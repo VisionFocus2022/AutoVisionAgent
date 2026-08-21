@@ -93,7 +93,7 @@ def test_run_ai_prelabel_no_det_engine_warns_zero_shot_not_impl(
 
     from gui.pages.label.page import run_ai_prelabel
 
-    with caplog.at_level(logging.WARNING, logger="gui.pages.label.page"):
+    with caplog.at_level(logging.WARNING):  # W27：记录自 workers 模块传播，勿钉 logger 名
         shapes = run_ai_prelabel(str(img))
 
     assert shapes == []

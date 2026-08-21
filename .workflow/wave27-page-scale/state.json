@@ -1,0 +1,34 @@
+{
+  "wave": "W27",
+  "title": "页面规模收敛——label 828→695 / predict 784→736（W26 计划 P1）",
+  "date": "2026-08-21",
+  "plan": ".claude/plan/skolpha-benchmark-optimization.md",
+  "commits": ["(待审计后提交)"],
+  "changes": {
+    "label": {
+      "new": ["gui/pages/label/workers.py（det_engine_available+run_ai_prelabel 原样迁出，Qt-free；W28 预标注诚实化修复落点）", "gui/pages/label/sam_session.py（SamSessionMixin：SAM 会话五方法原名混入，invoke_main 槽名派发经 MRO 不变）"],
+      "page": "828→695 行；保留 workers 函数的模块级 from-import 绑定（既有 monkeypatch 缝兼容）"
+    },
+    "predict": {
+      "new": ["gui/pages/predict/workers.py（sanitize_csv_cell/boxes_to_jsonable/collect_images/batch_save_dir/result_to_record/row_display_fields/atomic_write_json 原样语义迁出；W28 阈值与 W33 批量产物扩展落点）"],
+      "page": "784→736 行（64 行余量恢复）"
+    },
+    "guards": {
+      "new": ["tests/test_w27_label_extract.py（6 项：Qt-free AST/模块绑定兼容红线/槽名在场/MRO 混入/resolve_device 迁移守卫）", "tests/test_w27_predict_extract.py（7 项：Qt-free/纯函数单测/原子写 tmp 清理/页面引用 workers 防内联回退）"],
+      "ratchet": "test_w24_scale_guards 的 label=850 棘轮条目按失效断言删除（695<800，设计内 RED→GREEN）——FILE_RATCHET 归空"
+    },
+    "seam_migrations": [
+      "test_sam_adapter.py 源码守卫改读 sam_session.py（断言本体不变）",
+      "test_gui_label_page.py SAM 对话框 patch 改指 gui.pages.label.sam_session.pick_open_file（抽取后 patch 页模块名不再拦截 Mixin 内解析——offscreen 原生对话框阻塞曾致门禁挂起 12min，pytest-timeout 120s 擒获后定位）",
+      "test_gui_predict_tail.py boxes_to_jsonable 改自 workers import（别名保形）"
+    ]
+  },
+  "verification": {
+    "gate": "1018 passed / 4 skipped / cov 93%（8592 语句/592 缺）/ rc=0（1011 基线+7 严丝合缝）",
+    "packaging": "--clean 重打包 rc=0；PYZ 含全部 5 个新旧模块；lite 重派生 1.983GiB/余量 17.5MiB；lite+规模+新旧守卫 32/32 绿",
+    "uia": "全量 9/12→3 失败复跑 3/3 绿（62.8s）+ 应用侧 autovision.log 0 ERROR + 跨轮失败点漂移（上轮 full_workflow/pole_label，本轮 datamanage×2/eval——集合不交）= 输入争抢环境归因（W16/21/22 同族，断言零修改）",
+    "lesson": "行为保持抽取的测试缝三型：模块级函数绑定（page 保留 from-import 即兼容）/ 源码守卫（改读新文件）/ 模块内闭包解析名（patch 目标须随代码迁移——漏迁即 offscreen 对话框挂起，pytest-timeout 是护栏）"
+  },
+  "residual": ["全量 UIA 12/12 空闲机取证仍待", "门禁建议常驻 --timeout=120（本次挂起教训；pytest-timeout 已在 lock）"],
+  "next": "W28 UX 诚实化（预标注预检修复落 label/workers.py、阈值控件接 predict、设置三死键、flaw_gen 三修、批量落盘卫生、About 文案、主页 recent 接线）"
+}

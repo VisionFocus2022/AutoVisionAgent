@@ -33,6 +33,8 @@ from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
+from gui.pages.label.sam_session import SamSessionMixin
+from gui.pages.label.workers import det_engine_available, run_ai_prelabel
 
 from core.constants import IMG_EXTS as _IMG_EXTS
 
@@ -46,58 +48,6 @@ _MODES = [
     (AnnotationMode.KEYPOINT, "关键点", "K"),
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
 ]
-
-
-def det_engine_available() -> bool:
-    """检查已注册的 DET 引擎是否可用（registry 直连为 GUI 正式形态，v3 P2-7）。"""
-    try:
-        from models.supervised.registry import get_default_registry
-        from core.interfaces_supervised import TaskType
-        return bool(get_default_registry().has(TaskType.DET))
-    except (ImportError, RuntimeError, OSError, ValueError):
-        return False
-
-
-def run_ai_prelabel(image_path: str) -> List:
-    """AI 预标注纯工作函数（W3-T3 自 _ai_prelabel 抽出，无 Qt 依赖）。
-
-    registry 直连为 GUI 正式形态（v3 P2-7）：仅用已注册的 DET 引擎推理。
-    W18 诚实化：零样本 dispatcher 回退桥已删（零样本未实装，回退必失败）；
-    引擎不可用由页面 det_engine_available 预检在状态栏明示，此处仅兜底
-    返回空列表并记 WARNING，不留静默路径。
-    返回 Shape 列表（可能为空）。
-    """
-    try:
-        # registry 直连为 GUI 正式形态（v3 P2-7）
-        from models.supervised.registry import get_default_registry
-        from core.interfaces_supervised import TaskType
-        reg = get_default_registry()
-        if not reg.has(TaskType.DET):
-            logger.warning("AI 预标注跳过：无已注册 DET 引擎（零样本未实装）")
-            return []
-        engine = reg.get(TaskType.DET)
-        from core.image_io import imread_unicode
-        img = imread_unicode(image_path)
-        if img is None:
-            logger.warning("AI 预标注跳过：图像读取失败 %s", image_path)
-            return []
-        result = engine.infer(img)
-        # 真引擎 boxes 是 numpy 数组——不得做真值判断（歧义异常，W9 修复）
-        if result.boxes is None or len(result.boxes) == 0:
-            return []
-        label = result.labels[0] if result.labels else "defect"
-        return [
-            Shape(
-                AnnotationMode.RECTANGLE,
-                ((float(box[0]), float(box[1])),
-                 (float(box[2]), float(box[3]))),
-                label=label,
-            )
-            for box in result.boxes
-        ]
-    except (ImportError, RuntimeError, OSError, ValueError):
-        logger.exception("AI 预标注失败")
-        return []
 
 
 class _ZoomableView(QGraphicsView):
@@ -158,8 +108,12 @@ class _ZoomableView(QGraphicsView):
             super().mouseReleaseEvent(event)
 
 
-class LabelPage(QWidget):
-    """标注画布页（实装页）— 支持文件夹批量加载。"""
+class LabelPage(SamSessionMixin, QWidget):
+    """标注画布页（实装页）— 支持文件夹批量加载。
+
+    SAM 交互式会话（加载/预热/注入）混入自 SamSessionMixin（W27 抽取，
+    槽名与行为不变）；AI 预标注工作函数在 gui/pages/label/workers.py。
+    """
 
     status_changed = Signal(str, str)  # (text, accent) -> 主壳状态栏
 
@@ -615,97 +569,10 @@ class LabelPage(QWidget):
         # 切模式后刷新可用性
         self._on_undo_redo_changed(self.canvas.can_undo(), self.canvas.can_redo())
 
-    # ------------------------------ SAM 接线（W4-T3 / P2-6） ------------------------------ #
-    def _ensure_sam(self) -> None:
-        """进入交互式模式：依赖检测 + 权重选择/加载 + 注入（状态栏全程明示）。"""
-        if getattr(self._sam_adapter, "loaded", False):
-            self._warm_sam()
-            return
-
-        try:
-            import segment_anything  # noqa: F401  仅探测可选依赖
-        except ImportError:
-            self.status_changed.emit(tr("SAM 未安装"), tr("交互式标注不可用"))
-            return
-
-        ckpt = pick_open_file(self, tr("选择 SAM 权重"), "SAM Checkpoint (*.pth)")
-        if not ckpt:
-            self.status_changed.emit(tr("SAM 未加载权重"), tr("交互式标注不可用"))
-            return
-
-        from labeling.sam_adapter import SamAdapter
-
-        adapter = SamAdapter()
-        self._sam_busy = True
-
-        def _work():
-            # W21：device 走 resolve_device 契约（W19 已接 7 个 torch 引擎，
-            # 本处补齐）——cuda 可用透传、不可用回退 cpu（lite exe 安全）
-            from models.supervised.device import resolve_device
-            err = ""
-            try:
-                adapter.load(ckpt, device=resolve_device("cuda"))
-            except (ImportError, RuntimeError, OSError, ValueError) as exc:
-                err = str(exc)
-            self._sam_adapter = adapter
-            self._sam_busy = False
-            if err:
-                invoke_main(self, "_sam_failed", err)
-                return
-            invoke_main(self, "_sam_warmed")
-
-        # W17（v3 P2-1）：on_error 兜底（意外异常时 _sam_busy 复位见 _sam_failed）
-        run_job(_work, name="label_sam_load", on_error=ui_on_error(self, "_sam_failed"))
-
-    @Slot()
-    def _sam_warmed(self) -> None:
-        """槽：权重加载完成（主线程）——继续预热当前帧。"""
-        self._warm_sam()
-
-    def _warm_sam(self) -> None:
-        """worker 预计算当前帧 embedding（点击时命中缓存，UI 不冻结）。"""
-        if not self._image_path or self._sam_busy:
-            return
-        adapter = self._sam_adapter
-        image_path = self._image_path
-        self._sam_busy = True
-
-        def _work():
-            from core.image_io import imread_unicode
-
-            err = ""
-            img = imread_unicode(image_path)
-            if img is not None:
-                try:
-                    adapter.set_image(img)
-                except (RuntimeError, OSError, ValueError) as exc:
-                    err = str(exc)
-            self._sam_busy = False
-            if img is None or err:
-                invoke_main(self, "_sam_failed", err or tr("图像读取失败"))
-                return
-            self._pending_sam_image = img
-            invoke_main(self, "_sam_attach")
-
-        run_job(_work, name="label_sam_warm", on_error=ui_on_error(self, "_sam_failed"))
-
-    @Slot()
-    def _sam_attach(self) -> None:
-        """槽：预热完成（主线程）——注入 InteractiveLabeler。"""
-        if self.controller.attach_interactive(
-            self._sam_adapter, self._pending_sam_image
-        ):
-            self.status_changed.emit(tr("SAM 已加载"), tr("交互式标注就绪"))
-
-    @Slot(str)
-    def _sam_failed(self, err: str) -> None:
-        """槽：SAM 加载/预热失败（主线程）——诚实报错。
-
-        W17：顺带复位 _sam_busy——意外异常路径（on_error 兜底）下 worker
-        来不及清标志，不复位会永久阻塞后续预热。
-        """
-        self._sam_busy = False
-        self.status_changed.emit(tr("SAM 加载失败"), err[:60])
+    # ------------------------------ SAM 接线（W27 抽出至 SamSessionMixin） ------------------------------ #
+    # _ensure_sam/_sam_warmed/_warm_sam/_sam_attach/_sam_failed 见
+    # gui/pages/label/sam_session.py（行为保持抽取，invoke_main 槽名
+    # 派发经 MRO 命中 Mixin 方法）
 
     def _apply_label(self) -> None:
         text = self.label_input.text().strip() or "defect"

@@ -193,7 +193,10 @@ def test_apply_mode_buttons_dragmode_and_sam_warning(label_page, monkeypatch):
     assert label_page.view.dragMode() == QGraphicsView.ScrollHandDrag  # 保留平移
 
     # INTERACTIVE 且未选权重：诚实警告（必须屏蔽原生对话框，offscreen 会阻塞）
-    monkeypatch.setattr(label_mod, "pick_open_file", lambda *a, **k: "")
+    # W27：_ensure_sam 自 page.py 抽出至 sam_session.py——对话框 monkeypatch
+    # 缝随代码迁移（patch 页模块名不再拦截 Mixin 内解析），断言不变
+    from gui.pages.label import sam_session as sam_mod
+    monkeypatch.setattr(sam_mod, "pick_open_file", lambda *a, **k: "")
     label_page._msgs.clear()
     label_page._apply_mode(AnnotationMode.INTERACTIVE)
     assert any("SAM" in t for t, _ in label_page._msgs)

@@ -272,10 +272,12 @@ class TestSamDeviceWiring:
     lite exe 的 CPU torch 自动回退），本守卫防回退到硬编码。
     """
 
-    def test_label_page_load_uses_resolve_device(self):
+    def test_sam_session_load_uses_resolve_device(self):
         from pathlib import Path
+        # W27：SAM 会话五方法自 page.py 抽出至 sam_session.py——守卫
+        # 目标随代码迁移（断言本体不变）
         src = (Path(__file__).resolve().parents[1]
-               / "gui" / "pages" / "label" / "page.py").read_text(encoding="utf-8")
+               / "gui" / "pages" / "label" / "sam_session.py").read_text(encoding="utf-8")
         load_lines = [ln for ln in src.splitlines() if "adapter.load(" in ln]
         assert load_lines, "label 页应有 adapter.load( 调用"
         assert any("resolve_device" in ln for ln in load_lines), (

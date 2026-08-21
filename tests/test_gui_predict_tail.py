@@ -138,10 +138,10 @@ def _install_registry(monkeypatch, engine_factory, has=True):
     return cleared
 
 
-# ============================== _boxes_to_jsonable ============================== #
+# ============================== boxes_to_jsonable（W27 迁 workers，别名保形） ============================== #
 @pytest.mark.unit
 def test_boxes_to_jsonable_none_and_plain_list_fallback():
-    from gui.pages.predict.page import _boxes_to_jsonable
+    from gui.pages.predict.workers import boxes_to_jsonable as _boxes_to_jsonable
 
     assert _boxes_to_jsonable(None) is None
     # 纯 list/tuple 输入：无 tolist 属性 → 逐行 list() 兜底
