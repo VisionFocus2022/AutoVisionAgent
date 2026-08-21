@@ -1,0 +1,29 @@
+{
+  "wave": "W26",
+  "title": "exe 打包修复 + PYZ 清场 + W19 教训守卫机械化（P0）",
+  "date": "2026-08-21",
+  "plan": ".claude/plan/skolpha-benchmark-optimization.md",
+  "commits": ["2aecc0a (W25 尾巴)", "78fd566 (W26 主体)"],
+  "defect": "spec excludes 排除 matplotlib 但 ultralytics/models/yolo/semantic/train.py:8 顶层 import matplotlib.pyplot → 打包态 predict 引擎加载必败（W25 UIA 擒获，strict xfail 留档；.venv 有 matplotlib 掩盖单测层）",
+  "changes": {
+    "spec": "excludes 去 matplotlib；新增 pytest/_pytest/pydub（W24 审计 79 模块）+ gradio/fastapi/flask/uvicorn（W26 PYZ 实证 169/39/23/40 模块，伴生树自动脱落）+ transformers.utils.notebook（守卫扩面擒获存量隐患：notebook.py:20 无守卫模块级 import IPython.display 且在 PYZ，引用方均为 jupyter 死支）",
+    "guards_new": [
+      "tests/test_w26_spec_packaging.py（7 项：excludes AST 严格解析——全常量断言+恰1处Analysis；matplotlib 不排；pytest族/pydub/web栈必排；unittest 红线；产品源零 import excluded（含惰性导入与 import_module/__import__ 常量调用）；载荷三方包已入PYZ文件模块级导入∩excludes=∅（W19 教训机械化身，PYZ 交叉核对口径））",
+      "tests/test_w26_poison_runtime.py（2 项常驻毒化门禁：sys.modules 钉 None 模拟 exe 缺失，九引擎注册链+anomalib/huggingface_hub/ultralytics 顶层导入全通）"
+    ],
+    "main": "gui/main.py 钉死 MPLBACKEND=Agg（Agg 此前靠 ImportError 回退而非契约）"
+  },
+  "verification": {
+    "gate": "1005 passed / 4 skipped / cov 93%（8560 语句/592 缺）/ rc=0（996 基线+9 严丝合缝，地板 92）",
+    "pyz": "12710→12355 条目；清场家族零残留；matplotlib 97 模块+pyplot 在场；unittest 在位；transformers 2110→2109；产品源树对账全量在场",
+    "lite": "1.983GiB / 余量 17.5MiB / 14 守卫全绿（LITE_MARKER total_bytes 2129083893）；Agg 回退杠杆备而未用，spec 注释注明为 W27+ 体积增量波次前置条件",
+    "uia": "test_predict_single_image 去 strict-xfail 转正；predict 流对终版 exe 2/2（40.8s）；全量套件 10/12，2 失败复跑即绿 + 应用侧 autovision.log 零 ERROR = 输入争抢环境归因（W16/21/22 同族，断言零修改，空闲复跑可取 12/12）",
+    "audit": "Codex(resume 规划会话)+code-reviewer 双审无阻塞缺陷；2 MEDIUM+3 LOW 全部折入"
+  },
+  "residual": [
+    "全量 UIA 12/12 需空闲机器复跑取证",
+    "lite 余量 17.5MiB 为硬上限：任何体积增量波次（W32 OCR 等）先启 Agg 杠杆",
+    "xref 显示 starlette/httpx 经 huggingface_hub 合法保留（27/23 条目），非浪费"
+  ],
+  "next": "W27 页面规模收敛（label 828→≤800 抽 SAM 会话+预标注 worker；predict 784 抽批量 workers；删守卫棘轮）"
+}
