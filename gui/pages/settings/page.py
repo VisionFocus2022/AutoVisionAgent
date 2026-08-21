@@ -44,7 +44,6 @@ class SettingsPage(QWidget):
         _theme_keys = {"night": 0, "daytime": 1, "auto": 2}
         _lang_keys = {"ch_CN": 0, "en_US": 1}
         _device_keys = {"cuda": 0, "cpu": 1}
-        _precision_keys = {"fp32": 0, "fp16": 1, "int8": 2}
 
         try:
             settings = load_user_settings(str(_CONFIG_DIR))
@@ -57,13 +56,8 @@ class SettingsPage(QWidget):
             if "device" in settings:
                 idx = _device_keys.get(settings["device"], 0)
                 self._device_combo.setCurrentIndex(idx)
-            if "precision" in settings:
-                idx = _precision_keys.get(settings["precision"], 0)
-                self._precision_combo.setCurrentIndex(idx)
             if "workspace" in settings:
                 self._workspace_edit.setText(settings["workspace"])
-            if "cache_dir" in settings:
-                self._cache_edit.setText(settings["cache_dir"])
         except (OSError, KeyError, TypeError):
             import logging
             logging.getLogger(__name__).exception("加载用户设置失败")
@@ -103,13 +97,11 @@ class SettingsPage(QWidget):
         self._device_combo.addItems(["CUDA (GPU)", "CPU"])
         compute_form.addRow(tr("推理设备"), self._device_combo)
 
-        self._precision_combo = QComboBox()
-        self._precision_combo.addItems(["FP32", "FP16", "INT8"])
-        compute_form.addRow(tr("推理精度"), self._precision_combo)
-
         root.addWidget(compute_box)
 
         # 路径设置
+        # W28：precision/cache_dir 两死键已删（持久化但零消费——虚假能力比
+        # 缺失更糟；cache_dir 属 defer-with-trigger：离线权重缓存需求触发再建）
         path_box = QFrame()
         path_box.setStyleSheet("QFrame { border: 1px solid #333; border-radius: 8px; padding: 12px; }")
         path_form = QFormLayout(path_box)
@@ -123,14 +115,6 @@ class SettingsPage(QWidget):
         ws_row.addWidget(self._workspace_btn)
         path_form.addRow(tr("工作空间"), ws_row)
 
-        self._cache_edit = QLineEdit()
-        self._cache_edit.setPlaceholderText(tr("缓存目录"))
-        self._cache_btn = QPushButton(tr("浏览..."))
-        cache_row = QHBoxLayout()
-        cache_row.addWidget(self._cache_edit)
-        cache_row.addWidget(self._cache_btn)
-        path_form.addRow(tr("缓存目录"), cache_row)
-
         root.addWidget(path_box)
 
         # 按钮
@@ -143,11 +127,11 @@ class SettingsPage(QWidget):
         btn_row.addStretch()
         root.addLayout(btn_row)
 
-        # 关于
+        # 关于（W28：删除"零样本+有监督双范式"stale 宣称——零样本 W18 起未实装）
         about = QLabel(
             "<b>AutoVisionAgent</b><br>"
             "v2.0.0 (M2)<br>"
-            "零样本 + 有监督双范式工业视觉平台<br>"
+            "有监督工业视觉平台<br>"
             "PySide6 · Python 3.10+"
         )
         about.setStyleSheet("color: #888; padding: 12px;")
@@ -157,7 +141,6 @@ class SettingsPage(QWidget):
 
     def _wire(self) -> None:
         self._workspace_btn.clicked.connect(self._pick_workspace)
-        self._cache_btn.clicked.connect(self._pick_cache)
         self._save_btn.clicked.connect(self._save)
         self._reset_btn.clicked.connect(self._reset)
 
@@ -166,12 +149,6 @@ class SettingsPage(QWidget):
         path = pick_directory(self, "选择工作空间")
         if path:
             self._workspace_edit.setText(path)
-
-    def _pick_cache(self) -> None:
-        from gui.widgets.file_dialog import pick_directory
-        path = pick_directory(self, "选择缓存目录")
-        if path:
-            self._cache_edit.setText(path)
 
     def _save(self) -> None:
         """保存设置到 configs/user_settings.json，并即时应用主题/语言。
@@ -183,20 +160,18 @@ class SettingsPage(QWidget):
         _theme_keys = ["night", "daytime", "auto"]
         _lang_keys = ["ch_CN", "en_US"]
         _device_keys = ["cuda", "cpu"]
-        _precision_keys = ["fp32", "fp16", "int8"]
 
         theme_idx = self._theme_combo.currentIndex()
         lang_idx = self._lang_combo.currentIndex()
         device_idx = self._device_combo.currentIndex()
-        precision_idx = self._precision_combo.currentIndex()
 
+        # W28：只持久化有消费方的键（workspace→resolve_base_root 单源；
+        # precision/cache_dir 死键已删）
         settings = {
             "theme": _theme_keys[theme_idx] if theme_idx < len(_theme_keys) else "night",
             "language": _lang_keys[lang_idx] if lang_idx < len(_lang_keys) else "ch_CN",
             "device": _device_keys[device_idx] if device_idx < len(_device_keys) else "cuda",
-            "precision": _precision_keys[precision_idx] if precision_idx < len(_precision_keys) else "fp32",
             "workspace": self._workspace_edit.text().strip(),
-            "cache_dir": self._cache_edit.text().strip(),
         }
 
         # 即时应用主题（夜/日/自动——auto 随系统配色解析，W4-T4 / P2-9）
@@ -230,9 +205,7 @@ class SettingsPage(QWidget):
         self._theme_combo.setCurrentIndex(0)
         self._lang_combo.setCurrentIndex(0)
         self._device_combo.setCurrentIndex(0)
-        self._precision_combo.setCurrentIndex(0)
         self._workspace_edit.clear()
-        self._cache_edit.clear()
         self.status_changed.emit(tr("已恢复默认设置"), "info")
 
     def retranslate(self) -> None:
@@ -242,7 +215,5 @@ class SettingsPage(QWidget):
         self._theme_combo.setItemText(2, tr("自动"))
         self._workspace_edit.setPlaceholderText(tr("默认工作空间目录"))
         self._workspace_btn.setText(tr("浏览..."))
-        self._cache_edit.setPlaceholderText(tr("缓存目录"))
-        self._cache_btn.setText(tr("浏览..."))
         self._save_btn.setText(tr("保存设置"))
         self._reset_btn.setText(tr("恢复默认"))

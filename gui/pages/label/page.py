@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from labeling import AnnotationMode, Shape, save_labelme
-from core.exceptions import AnnotationIOError
+from core.exceptions import AnnotationIOError, SupervisedEngineError
 from labeling.canvas import AnnotationCanvas
 from labeling.controller import AnnotationController
 from gui.core.i18n import tr
@@ -509,6 +509,11 @@ class LabelPage(SamSessionMixin, QWidget):
             except (ImportError, RuntimeError, OSError, ValueError):
                 logger.exception("AI 预标注失败")
                 shapes = []
+            except SupervisedEngineError as exc:
+                # W28 审计折入：引擎级失败显式走失败槽（恢复按钮+报错），
+                # 不摊平成零检出——「零检出」只留给真实零框结果
+                invoke_main(self, "_prelabel_failed", str(exc)[:60])
+                return
             self._pending_prelabel = shapes
             invoke_main(self, "_prelabel_done", len(shapes))
 
@@ -524,6 +529,11 @@ class LabelPage(SamSessionMixin, QWidget):
         self._pending_prelabel = []
         if count > 0:
             self.status_changed.emit(tr("AI预标注完成"), f"{count} {tr('标注数')}")
+        else:
+            # W28：零检出给显式反馈（按钮恢复≠用户知情——W18 无静默路径）
+            self.status_changed.emit(
+                tr("AI预标注完成"), tr("零检出（未生成标注）")
+            )
 
     @Slot(str)
     def _prelabel_failed(self, err: str) -> None:

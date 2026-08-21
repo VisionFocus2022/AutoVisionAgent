@@ -207,6 +207,9 @@ def test_label_ai_prelabel_logs_start(qapp, fake_threads, monkeypatch, caplog):
 
     page = label_mod.LabelPage()
     page._image_path = "demo.png"
+    # W28：预检语义收紧（注册≠可用，须查已加载权重）——本用例锚定
+    # P2-19 日志而非预检，放行预检（引擎可用性另有专项用例）
+    monkeypatch.setattr(label_mod, "det_engine_available", lambda: True)
     monkeypatch.setattr(label_mod, "run_ai_prelabel", lambda p: [])
 
     with caplog.at_level(logging.INFO, logger="gui.pages.label.page"):
@@ -232,7 +235,8 @@ def test_predict_batch_logs_start_and_done(
     (d / "a.png").write_bytes(PNG_1PX)
 
     class _Engine:
-        def infer_batch(self, paths):
+        # W28：批量路径向引擎传 threshold=（接口契约含该形参）
+        def infer_batch(self, paths, threshold=0.5, labels=None):
             return [_det_result(2)]
 
     page = pred_mod.PredictPage()
@@ -339,7 +343,8 @@ def _batch_page(qapp, tmp_path, monkeypatch):
     (d / "b.png").write_bytes(PNG_1PX)
 
     class _Engine:
-        def infer_batch(self, paths):
+        # W28：批量路径向引擎传 threshold=（接口契约含该形参）
+        def infer_batch(self, paths, threshold=0.5, labels=None):
             return [_det_result(2) for _ in paths]
 
     page = pred_mod.PredictPage()

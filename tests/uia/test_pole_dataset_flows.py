@@ -385,8 +385,9 @@ def test_settings_theme_persist(ava_app):
     time.sleep(0.8)
 
     combos = find_combo_controls(win, timeout=T_NAV)
-    assert len(combos) >= 4, (
-        f"设置页应含 ≥4 个下拉框（主题/语言/设备/精度），实际 {len(combos)}（find timeout）"
+    assert len(combos) >= 3, (
+        f"设置页应含 ≥3 个下拉框（主题/语言/设备），实际 {len(combos)}（find timeout）"
+        "（W28：precision 死键已删，第四个下拉不存在）"
     )
     theme_combo = combos[0]  # 布局顺序：主题在最前（appear_form 第一行）
 

@@ -138,6 +138,9 @@ def test_ai_prelabel_runs_in_worker(qapp, fake_threads, monkeypatch):
         ]
 
     monkeypatch.setattr(label_page_mod, "run_ai_prelabel", _fake_run)
+    # W28：预检语义收紧（注册≠可用，须查已加载权重）——本用例锚定
+    # worker 线程执行，放行预检（引擎可用性另有专项用例）
+    monkeypatch.setattr(label_page_mod, "det_engine_available", lambda: True)
 
     page._ai_prelabel()
 

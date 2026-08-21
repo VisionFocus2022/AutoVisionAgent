@@ -29,11 +29,17 @@ def qapp():
 
 @pytest.fixture
 def home_env(tmp_path, monkeypatch):
-    """把 ~/ 展开重定向到 tmp（ProjectPage 默认根与 recent 落盘都在这）。"""
+    """把 ~/ 展开重定向到 tmp（ProjectPage 默认根与 recent 落盘都在这）。
+
+    W28 审计折入：默认根经 resolve_base_root 读 user_settings.json——
+    必须同时中和真实 configs（否则开发机保存过 workspace 的环境下测试
+    会越界写到真实工作区且断言漂移）。
+    """
     monkeypatch.setattr(
         "os.path.expanduser",
         lambda p: str(tmp_path) if p.startswith("~") else p,
     )
+    monkeypatch.setattr("gui.core.settings_io.CONFIG_DIR", tmp_path)  # 空目录
     return tmp_path
 
 
@@ -208,16 +214,19 @@ def test_settings_load_all_keys(qapp, tmp_path, monkeypatch):
 
     (tmp_path / "user_settings.json").write_text(json.dumps({
         "theme": "auto", "language": "en_US", "device": "cpu",
-        "precision": "fp16", "workspace": "W", "cache_dir": "C",
+        "workspace": "W",
+        # W28：precision/cache_dir 死键已删——旧配置文件里的残留键
+        # 必须被容忍（不得炸、不得复活控件）
+        "precision": "fp16", "cache_dir": "C",
     }), encoding="utf-8")
     monkeypatch.setattr(settings_mod, "_CONFIG_DIR", tmp_path)
     page = settings_mod.SettingsPage()
     assert page._theme_combo.currentIndex() == 2
     assert page._lang_combo.currentIndex() == 1
     assert page._device_combo.currentIndex() == 1
-    assert page._precision_combo.currentIndex() == 1
     assert page._workspace_edit.text() == "W"
-    assert page._cache_edit.text() == "C"
+    assert not hasattr(page, "_precision_combo")  # W28 死键删除
+    assert not hasattr(page, "_cache_edit")
     from gui.core.i18n import set_language
 
     set_language("ch_CN")  # 语言被 en_US 联动改掉，恢复全局默认
@@ -244,16 +253,16 @@ def test_settings_picks_and_save_full_fields(qapp, tmp_path, monkeypatch):
         lambda *a, **k: str(tmp_path / "ws"),
     )
     page._pick_workspace()
-    page._pick_cache()
     assert page._workspace_edit.text().endswith("ws")
 
     page._device_combo.setCurrentIndex(1)
-    page._precision_combo.setCurrentIndex(2)
     page._save()
     saved = json.loads((tmp_path / "user_settings.json").read_text("utf-8"))
     assert saved["device"] == "cpu"
-    assert saved["precision"] == "int8"
     assert saved["workspace"].endswith("ws")
+    # W28：死键删除后保存键不再含 precision/cache_dir
+    assert "precision" not in saved
+    assert "cache_dir" not in saved
     from gui.core.i18n import set_language
 
     set_language("ch_CN")

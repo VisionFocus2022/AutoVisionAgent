@@ -22,7 +22,10 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = _PROJECT_ROOT / "configs"
 
 # 默认项目存储根目录
-DEFAULT_PROJECT_ROOT = os.path.expanduser("~/AutoVisionAgent_Projects")
+# W28：调用期展开形态（~/…）供 project.paths.resolve_base_root 使用——
+# 不得在导入期预展开后消费（os.path.expanduser 的测试接缝须在调用期生效）
+DEFAULT_PROJECT_ROOT_TILDE = "~/AutoVisionAgent_Projects"
+DEFAULT_PROJECT_ROOT = os.path.expanduser(DEFAULT_PROJECT_ROOT_TILDE)
 
 
 __all__ = [
@@ -30,4 +33,5 @@ __all__ = [
     "ANN_EXTS",
     "CONFIG_DIR",
     "DEFAULT_PROJECT_ROOT",
+    "DEFAULT_PROJECT_ROOT_TILDE",
 ]

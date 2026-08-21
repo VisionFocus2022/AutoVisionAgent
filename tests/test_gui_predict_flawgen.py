@@ -165,7 +165,7 @@ def test_single_infer_full_path_audits_multibox(
     _png(img)
 
     class _Engine:
-        def infer(self, im):
+        def infer(self, im, threshold=0.5, labels=None):  # W28：接口契约含 threshold
             return _det_result(n_boxes=2)
 
     pred_page._engine = _Engine()
@@ -204,7 +204,7 @@ def test_single_infer_read_and_engine_failures(
 
     bad = tmp_path / "bad.png"
     bad.write_bytes(b"not-an-image")
-    pred_page._engine = type("E", (), {"infer": lambda self, im: _det_result(1)})()
+    pred_page._engine = type("E", (), {"infer": lambda self, im, threshold=0.5, labels=None: _det_result(1)})()  # W28：接口契约含 threshold
     monkeypatch.setattr(pred_mod, "pick_open_file", lambda *a, **k: str(bad))
     pred_page._single_infer()
     qapp.processEvents()
@@ -215,7 +215,7 @@ def test_single_infer_read_and_engine_failures(
     _png(img)
     monkeypatch.setattr(pred_mod, "pick_open_file", lambda *a, **k: str(img))
 
-    def _boom(self, im):
+    def _boom(self, im, threshold=0.5, labels=None):  # W28：接口契约含 threshold
         raise RuntimeError("engine died")
 
     pred_page._engine = type("E", (), {"infer": _boom})()
@@ -245,7 +245,7 @@ def test_batch_infer_end_to_end(
     _png(batch_dir / "a.png")
     _png(batch_dir / "b.png")
 
-    def _infer_batch(self, paths):
+    def _infer_batch(self, paths, threshold=0.5, labels=None):  # W28：接口契约含 threshold
         return [_det_result(2), _det_result(1)]
 
     pred_page._engine = type("E", (), {"infer_batch": _infer_batch})()
@@ -417,7 +417,7 @@ def test_flaw_generate_success_writes_synthetic(
         def load(self, flaw_database, device="cpu"):
             loads.append(flaw_database)
 
-        def infer(self, p):
+        def infer(self, p, threshold=0.5, labels=None):  # W28：接口契约含 threshold
             infers.append(p)
             return DetectionResult(
                 task=TT.SGAN, score=1.0,
@@ -455,7 +455,7 @@ def test_flaw_empty_ok_dir_fails(flaw_page, fake_threads, tmp_path,
         def load(self, flaw_database, device="cpu"):
             pass
 
-        def infer(self, p):
+        def infer(self, p, threshold=0.5, labels=None):  # W28：接口契约含 threshold
             raise AssertionError("无模板不应调用 infer")
 
     monkeypatch.setattr(reg_mod, "get_engine", lambda t: _Sgan())

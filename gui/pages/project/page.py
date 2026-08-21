@@ -27,6 +27,7 @@ from gui.core.i18n import tr
 from gui.widgets.file_dialog import pick_directory
 from project.counter import TaskCounter
 from project.models import ProjectId, ProjectLayout, parse_project_dirname
+from project.paths import resolve_base_root
 from project.store import FileSystemProjectStore
 
 
@@ -51,7 +52,7 @@ class ProjectPage(QWidget):
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
-        self._base_root: str = os.path.expanduser("~/AutoVisionAgent_Projects")
+        self._base_root: str = resolve_base_root()  # W28：单源（workspace 可配）
         self._counter = TaskCounter()
         self._store: Optional[FileSystemProjectStore] = None
         self._build_ui()

@@ -63,7 +63,7 @@ class _SlowEngine:
         self.calls = 0
         self._lock = threading.Lock()
 
-    def infer(self, img):
+    def infer(self, img, threshold=0.5, labels=None):  # W28：接口契约含 threshold
         time.sleep(self.per_image_s)
         with self._lock:
             self.calls += 1
@@ -131,3 +131,7 @@ def test_batch_infer_stops_on_registry_request_stop_all(
     assert stopped_at - started < full_run_s * 2, (
         "worker 应远在全量耗时内停止"
     )
+    # W28 落盘卫生：注册表停机路径（cancel.is_set()）同样不得落盘——
+    # 旧实现停机后仍写空/截断 batch_results.json
+    leftovers = list((tmp_path / "results").glob("batchPredict_*/batch_results.json"))
+    assert leftovers == [], f"request_stop_all 后不得落盘: {leftovers}"

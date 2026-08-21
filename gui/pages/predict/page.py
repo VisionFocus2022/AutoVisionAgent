@@ -14,6 +14,7 @@ from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
@@ -107,6 +109,17 @@ class PredictPage(QWidget):
         sep1.setFixedWidth(1)
         sep1.setStyleSheet("background-color: #3f4452;")
         h.addWidget(sep1)
+
+        # W28：推理阈值（引擎 infer/infer_batch 已支持，GUI 此前从未传参）
+        self.lbl_threshold = QLabel(tr("阈值"), bar)
+        h.addWidget(self.lbl_threshold)
+        self.spin_threshold = QDoubleSpinBox(bar)
+        self.spin_threshold.setObjectName("thresholdSpin")
+        self.spin_threshold.setRange(0.01, 0.99)
+        self.spin_threshold.setDecimals(2)
+        self.spin_threshold.setSingleStep(0.05)
+        self.spin_threshold.setValue(0.5)
+        h.addWidget(self.spin_threshold)
 
         self.btn_single = QPushButton(tr("单张推理"), bar)
         self.btn_single.setProperty("role", "accent")
@@ -265,9 +278,16 @@ class PredictPage(QWidget):
                 return
             self.lbl_model.setText(os.path.basename(path))
             self.status_changed.emit(tr("模型已加载"), task.value)
-        except (RuntimeError, OSError, ValueError) as exc:
+        except (RuntimeError, OSError, ValueError,
+                SupervisedEngineError) as exc:
+            # W28 审计折入：坏 checkpoint 时引擎 load 抛 SupervisedEngineError
+            # （AppError 子类）——旧元组漏收则逃出槽函数且引擎残留半加载态
             self.lbl_model.setText(tr("加载失败"))
             self.status_changed.emit(tr("模型加载失败"), str(exc)[:40])
+
+    def _threshold(self) -> float:
+        """当前推理阈值（单张/批量共用，W28）。"""
+        return round(self.spin_threshold.value(), 2)
 
     def _single_infer(self) -> None:
         """单张推理（W3-T3: 推理移出 UI 线程，结果经 invoke_main 回主线程）。"""
@@ -284,16 +304,18 @@ class PredictPage(QWidget):
         self.btn_single.setEnabled(False)
         self.btn_single.setText(tr("推理中..."))
         self._pending_single = None
+        threshold = self._threshold()  # W28 审计折入：UI 线程捕获（与批量对齐）
 
         def _work():
             try:
-                from core.exceptions import SupervisedEngineError
                 from core.image_io import imread_unicode
                 img = imread_unicode(path)
                 if img is None:
                     invoke_main(self, "_single_failed", tr("图像读取失败"))
                     return
-                result: DetectionResult = self._engine.infer(img)
+                result: DetectionResult = self._engine.infer(
+                    img, threshold=threshold
+                )
                 score = float(result.score) if result.score else 0.0
                 self._pending_single = (path, result)
                 invoke_main(self, "_single_done", os.path.basename(path), score)
@@ -374,36 +396,42 @@ class PredictPage(QWidget):
             self._progress.setVisible(True)
 
         save_dir = batch_save_dir(self._project_dir, d)
-        os.makedirs(save_dir, exist_ok=True)
 
         engine = self._engine
         total = len(images)
+        threshold = self._threshold()  # W28：批量全程共用当前阈值
 
         # W18（P2-3 退出链补完）：声明 cancel 参数 → run_job 自动注入注册表
         # threading.Event；退出停机（jobs.request_stop_all）即可协作取消批量，
         # 不必干等全量跑完。页面私有 _batch_cancel（取消按钮）仍并集生效。
         def _work(cancel):
             _BATCH_SIZE = 16
+            cancelled = False
             for i in range(0, total, _BATCH_SIZE):
                 if self._batch_cancel or cancel.is_set():
+                    cancelled = True
                     break
                 batch_paths = images[i:i + _BATCH_SIZE]
                 try:
                     if hasattr(engine, "infer_batch"):
-                        results = engine.infer_batch(batch_paths)
+                        results = engine.infer_batch(batch_paths, threshold=threshold)
                         for img_path, result in zip(batch_paths, results):
                             self._batch_add_row(img_path, result)
                     else:
                         from core.image_io import imread_unicode
                         for img_path in batch_paths:
                             if self._batch_cancel or cancel.is_set():
+                                cancelled = True
                                 break
                             img = imread_unicode(img_path)
                             if img is None:
                                 continue
-                            result = engine.infer(img)
+                            result = engine.infer(img, threshold=threshold)
                             self._batch_add_row(img_path, result)
-                except (RuntimeError, OSError, ValueError):
+                except (RuntimeError, OSError, ValueError,
+                        SupervisedEngineError):
+                    # W28 审计折入：引擎级异常（坏权重/推理失败）同收——
+                    # 旧元组漏收会击穿到 on_error 且引擎残留半加载态
                     logger.exception(
                         "批量推理失败 (batch %d-%d)", i, i + len(batch_paths)
                     )
@@ -411,12 +439,21 @@ class PredictPage(QWidget):
                 done = min(i + _BATCH_SIZE, total)
                 invoke_main(self, "_batch_set_progress", done, total)
 
-            # 保存批量结果：原子落盘细节（temp+replace/tmp 清理）见
-            # workers.atomic_write_json（P2-2/W17 异常路由语义原样迁出）
-            out_path = os.path.join(save_dir, "batch_results.json")
-            atomic_write_json(out_path, self._results)
+            if cancelled:
+                # W28 落盘卫生：取消即跳过 batch_results.json（表内结果仍在，
+                # 可经导出按钮手动落盘）——旧实现取消后仍写空/截断 JSON
+                logger.info("批量推理已取消（%d/%d），跳过结果落盘",
+                            len(self._results), total)
+            else:
+                # 保存批量结果：原子落盘细节（temp+replace/tmp 清理）见
+                # workers.atomic_write_json（P2-2/W17 异常路由语义原样迁出）
+                # 审计折入：建目录也推迟到真正写盘——取消路径不再残留空
+                # batchPredict_{ts} 目录
+                os.makedirs(save_dir, exist_ok=True)
+                out_path = os.path.join(save_dir, "batch_results.json")
+                atomic_write_json(out_path, self._results)
 
-            invoke_main(self, "_batch_done", len(self._results), total)
+            invoke_main(self, "_batch_done", len(self._results), total, cancelled)
 
         run_job(_work, name="predict_batch", on_error=ui_on_error(self, "_batch_failed"))
 
@@ -444,9 +481,9 @@ class PredictPage(QWidget):
         self.table.setItem(row, 2, QTableWidgetItem(f"{score:.3f}"))
         self.table.setItem(row, 3, QTableWidgetItem(info))
 
-    @Slot(int, int)
-    def _batch_done(self, count: int, total: int) -> None:
-        logger.info("批量推理完成: %d/%d", count, total)
+    @Slot(int, int, bool)
+    def _batch_done(self, count: int, total: int, cancelled: bool = False) -> None:
+        logger.info("批量推理完成: %d/%d (cancelled=%s)", count, total, cancelled)
         self.btn_batch.setEnabled(True)
         self.btn_batch.setText(tr("批量推理"))
         if hasattr(self, "_btn_cancel_batch"):
@@ -454,6 +491,13 @@ class PredictPage(QWidget):
         if hasattr(self, "_progress"):
             self._progress.setValue(0)
             self._progress.setVisible(False)
+        if cancelled:
+            # W28 审计折入：取消要有显式反馈——旧实现照常报"批量完成"并弹
+            # 统计，用户误以为 batch_results.json 已落盘（按钮恢复≠用户知情）
+            self.status_changed.emit(
+                tr("批量已取消"), tr("结果未落盘，可在表内导出")
+            )
+            return
         self.status_changed.emit(tr("批量完成"), f"{count}/{total}")
         # 批量推理完成后自动展示统计报表（R3-11）
         if self._results:
@@ -725,6 +769,7 @@ class PredictPage(QWidget):
 
     def retranslate(self) -> None:
         self.btn_load_model.setText(tr("加载模型"))
+        self.lbl_threshold.setText(tr("阈值"))
         self.btn_single.setText(tr("单张推理"))
         self.btn_batch.setText(tr("批量推理"))
         self.btn_export_csv.setText(tr("导出CSV"))

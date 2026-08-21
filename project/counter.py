@@ -10,6 +10,7 @@ import os
 from typing import Dict, Optional
 
 from core.interfaces_supervised import TaskType
+from project.paths import resolve_base_root
 
 _COUNTER_FILENAME = "task_counter.json"
 
@@ -25,9 +26,9 @@ class TaskCounter:
     """
 
     def __init__(self, base_root: str = "") -> None:
-        self._base_root = base_root or os.path.expanduser(
-            "~/AutoVisionAgent_Projects"
-        )
+        # W28：默认根走 resolve_base_root 单源（workspace 可配；原为内联
+        # expanduser 硬编码——设置页 workspace 键曾持久化但零消费）
+        self._base_root = base_root or resolve_base_root()
         self._counts: Dict[str, int] = {}
         self._load()
 

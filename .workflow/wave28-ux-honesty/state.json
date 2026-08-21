@@ -1,0 +1,61 @@
+{
+  "wave": "W28",
+  "title": "UX 诚实化——预标注预检/推理阈值/设置三死键/批量落盘卫生/flaw_gen 三修/主页接线（W26 计划 P1）",
+  "date": "2026-08-21",
+  "plan": ".claude/plan/skolpha-benchmark-optimization.md",
+  "commits": ["(待审计后提交)"],
+  "changes": {
+    "prelabel_honesty": {
+      "preflight": "label/workers.py det_engine_available 改查引擎 info()['loaded']（注册≠可用——旧实现 ultralytics 装了就过检，冷启动 infer 期 SupervisedEngineError 逃出元组落泛化 on_error）；docstring 文档化 registry 缓存耦合（predict 页加载与标注页预标注共享缓存实例，有意耦合勿拆）",
+      "exception": "审计折入定稿语义：workers 不收编 SupervisedEngineError（上抛），页面 _work 显式路由 _prelabel_failed——「零检出」反馈只留给真实零框结果，引擎失败不得冒充零检出",
+      "zero_feedback": "_prelabel_done 零检出 emit '零检出（未生成标注）'（W18 无静默路径收口）"
+    },
+    "threshold": {
+      "control": "predict 工具栏 QDoubleSpinBox（objectName=thresholdSpin，0.01–0.99 步进 0.05 默认 0.5，无内联样式）",
+      "wiring": "单张+批量（infer_batch 与逐张回退）三处传 threshold=；审计折入：单张与批量统一在 UI 线程 run_job 前捕获（worker 线程不触 Qt 控件）；9/9 引擎签名全部合规（实测核对）"
+    },
+    "settings_dead_keys": {
+      "workspace": "新建 project/paths.py resolve_base_root()（user_settings.workspace 优先，~/ 前缀 expanduser 兜平语义对称 → DEFAULT_PROJECT_ROOT_TILDE 调用期展开；settings_io 惰性导入+全异常兜底）；counter.py 与 project/page.py 两处内联硬编码替换；predict 批量落盘回退与主页刷新同走单源；constants __all__ 补 TILDE",
+      "precision": "删除（虚假能力比缺失更糟——引擎无精度档位概念）",
+      "cache_dir": "删除（defer-with-trigger：离线权重缓存需求触发再建）",
+      "about": "删「零样本+有监督双范式」stale 宣称（零样本 W18 起未实装；Python 3.10+ 与 pyproject 一致经计划验证裁定保留）"
+    },
+    "batch_hygiene": {
+      "fallback": "batch_save_dir 无项目时回退 workspace 根，绝不写进被扫描数据集目录（污染源数据）",
+      "cancel": "取消（页面 _batch_cancel 或注册表 Event）→ cancelled 标志 → 跳过 batch_results.json 写盘（表内结果可手动导出）；审计折入：makedirs 推迟到写盘分支（取消不再残留空 batchPredict_{ts} 目录）；_batch_done 收 cancelled 参数——状态栏报「批量已取消/结果未落盘，可在表内导出」且不弹统计报表（旧实现照常报完成+弹统计，用户误以为已落盘）"
+    },
+    "flaw_gen": "删过期建设横幅（SGAN W2 已真化）/删生成模式死下拉（选择从未传给引擎）/engine.load device 硬编码 cpu→resolve_device(\"cuda\")（W19/W21 契约）",
+    "home_wiring": "gui/main.py _wire_home_refresh：登录成功+项目打开 → refresh_recent(resolve_base_root())+refresh_history()；**关键时序（UIA 实证）**：登录槽内先 win.select('home') 再 QTimer.singleShot(0, 刷新)——同步磁盘 IO 在槽内先行会拖长 login→home 切换，与 UIA 助手的导航点击竞争致页面不切（同步版 4/4 失败，解耦后恢复）"
+  },
+  "audit_foldins": {
+    "reviewer": "HIGH-1 home_env 补 settings_io.CONFIG_DIR patch（机器依赖红线：开发机保存过 workspace 则测试越界写真实工作区）；MEDIUM-2 引擎失败不冒充零检出；MEDIUM-3 单张阈值 UI 线程捕获；MEDIUM-4 workspace expanduser；LOW：i18n 死词条/预测页元组",
+    "codex": "#5 取消显式反馈+不弹统计；#7 空目录残留（makedirs 延迟）；#8 W18 停机路径补不落盘断言；#9 constants __all__+死词条；#12 predict _load_model/batch 元组补 SupervisedEngineError+坏权重恢复用例；拒绝 #10（Python 3.10+ 为最低版本宣称，计划验证已裁定）；#11 sgan device 标注为 INFO 不动（引擎内部超 W28 范围，留 W30+）"
+  },
+  "tests": {
+    "new": [
+      "tests/test_w28_prelabel_honesty.py（4：预检三态/引擎错误上抛/页面失败槽路由+不冒充零检出/零检出反馈）",
+      "tests/test_w28_threshold.py（3：控件在场有界/单张传参/批量传参）",
+      "tests/test_w28_settings_wiring.py（8：resolve_base_root 三态/两处硬编码替换守卫/死键删除/About 文案）",
+      "tests/test_w28_predict_hygiene.py（3：无项目回退 workspace/取消不落盘+显式反馈+不弹统计/坏权重恢复）",
+      "tests/test_w28_ux_honesty.py（4：flaw_gen 三修/主页接线源码守卫）"
+    ],
+    "migrations": [
+      "接口契约迁移：7 个测试文件的假引擎 infer/infer_batch 补 threshold 形参（接口契约本就含 threshold，假体过时）",
+      "预检收紧迁移：3 个既有用例补 det_engine_available→True 补丁（锚定各自主题，不锚引擎可用性）",
+      "取消语义迁移：tail 取消用例断言改「批量已取消+无 json」（有意行为变更）；W18 停机路径补不落盘断言",
+      "settings 死键迁移：misc_pages 两用例改残留键容忍+保存键不含死键；home_env 补 CONFIG_DIR 隔离"
+    ]
+  },
+  "verification": {
+    "gate": "1042 passed / 4 skipped / rc=0（1020 基线+20 RED+2 审计折入，严丝合缝；cov 首轮 96.32% 地板 92）",
+    "packaging": "--clean 重打包 rc=0；PYZ 12359 模块含 project.paths 等 6 个新旧模块；打包守卫 44/44；lite 重派生 1.983GiB/14 守卫全过（无新三方依赖，体积不变）",
+    "uia": "predict flow：首轮 exe 1F（未找到加载模型）——**非环境归因**（复跑不过打破判据）→ venv 同败排除打包 → UIA 探针实锤导航后页面停主页 → 摘除登录期刷新 2/2 过 → 根因=登录槽内同步 IO 与导航时序竞争 → QTimer.singleShot(0) 解耦后 venv 2/2 过；exe 复跑待最终打包",
+    "incidents": [
+      "expanduser 接缝失守：resolve_base_root 首版用导入期常量 DEFAULT_PROJECT_ROOT，home_env fixture 靠调用期 patch os.path.expanduser 重定向——失败运行把测试项目写进真实 ~/AutoVisionAgent_Projects（已清理）；修法=DEFAULT_PROJECT_ROOT_TILDE 调用期展开",
+      "test_sam_wiring 原生 access violation 全量期偶发 2 次（不同位置、复跑全绿不复发）=Windows 原生偶发非回归（留档观察，若复现频升需专项）",
+      "UIA 环境判据的价值实证：复跑不过 → 追到底 → 真回归（登录槽时序），幸未偷懒归因环境"
+    ]
+  },
+  "residual": ["exe 重打包+UIA exe 复跑进行中", "sgan device 标注（INFO 级）留后续波次"],
+  "next": "W29 角色权限最小面（gui/core/permissions.py 纯函数 + 导航过滤 + 审计 denied + 消费 gui/main.py 登录 role——注意 W28 已把登录 lambda 重构为 _on_login_success(u, r)，W29 直接在此消费 role）"
+}

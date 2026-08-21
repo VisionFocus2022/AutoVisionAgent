@@ -273,7 +273,7 @@ def test_load_model_engine_load_failure_status(det_page, tmp_path, monkeypatch):
 def test_single_infer_cancelled_dialog(pred_page, monkeypatch):
     from gui.pages.predict import page as pred_mod
 
-    pred_page._engine = type("E", (), {"infer": lambda self, im: _det_result(1)})()
+    pred_page._engine = type("E", (), {"infer": lambda self, im, threshold=0.5, labels=None: _det_result(1)})()  # W28：接口契约含 threshold
     monkeypatch.setattr(pred_mod, "pick_open_file", lambda *a, **k: "")
     pred_page._single_infer()
     assert pred_page._msgs == []  # 取消：无"请先加载模型"也无失败
@@ -299,7 +299,7 @@ def test_single_done_audit_failure_swallowed(
     """审计模块导入失败 → except Exception 吞掉，推理结果仍须落表。"""
     img = tmp_path / "img.png"
     _png(img)
-    pred_page._engine = type("E", (), {"infer": lambda self, im: _det_result(1)})()
+    pred_page._engine = type("E", (), {"infer": lambda self, im, threshold=0.5, labels=None: _det_result(1)})()  # W28：接口契约含 threshold
     from gui.pages.predict import page as pred_mod
 
     monkeypatch.setattr(pred_mod, "pick_open_file", lambda *a, **k: str(img))
@@ -316,7 +316,7 @@ def test_single_done_audit_failure_swallowed(
 def test_batch_infer_cancelled_dialog(pred_page, monkeypatch):
     from gui.pages.predict import page as pred_mod
 
-    pred_page._engine = type("E", (), {"infer": lambda self, im: _det_result(1)})()
+    pred_page._engine = type("E", (), {"infer": lambda self, im, threshold=0.5, labels=None: _det_result(1)})()  # W28：接口契约含 threshold
     monkeypatch.setattr(pred_mod, "pick_directory", lambda *a, **k: "")
     pred_page._batch_infer()
     assert pred_page._msgs == []
@@ -329,7 +329,7 @@ def test_batch_worker_per_image_path_and_cancel_breaks(
     pred_page, fake_threads, tmp_path, monkeypatch, qapp
 ):
     """无 infer_batch 的逐张路径 + 首张后取消：内层 break、第二批外层 break、
-    进度仍上报、已完成结果照常落表/落 json。"""
+    进度仍上报、已完成结果照常落表（W28：取消不再落 json）。"""
     d = tmp_path / "many"
     d.mkdir()
     for i in range(17):  # > _BATCH_SIZE=16 → 两个外层批次
@@ -337,7 +337,7 @@ def test_batch_worker_per_image_path_and_cancel_breaks(
 
     calls = []
 
-    def _infer(self, im):
+    def _infer(self, im, threshold=0.5, labels=None):  # W28：接口契约含 threshold
         calls.append(1)
         pred_page._batch_cancel = True  # 第一张推理后立即取消
         return _det_result(1)
@@ -355,9 +355,12 @@ def test_batch_worker_per_image_path_and_cancel_breaks(
     assert len(calls) == 1  # 第 2 张内层 break；第 2 批（i=16）外层 break
     assert pred_page.table.rowCount() == 1
     assert any(t == "推理中" and a == "16/17" for t, a in pred_page._msgs)
-    assert any(t == "批量完成" and a == "1/17" for t, a in pred_page._msgs)
-    out = next((tmp_path / "results").glob("batchPredict_*/batch_results.json"))
-    assert len(json.loads(out.read_text("utf-8"))) == 1
+    # W28 审计折入：取消路径状态栏显式报"批量已取消"（旧"批量完成"话术
+    # 会让用户误以为结果已落盘）
+    assert any(t == "批量已取消" and "未落盘" in a for t, a in pred_page._msgs)
+    # W28 落盘卫生：取消后不再写 batch_results.json（表内结果仍可手动导出）
+    leftovers = list((tmp_path / "results").glob("batchPredict_*/batch_results.json"))
+    assert leftovers == [], f"取消后不得落盘 batch_results.json: {leftovers}"
 
 
 @pytest.mark.unit
@@ -370,7 +373,7 @@ def test_batch_worker_imread_fail_continue_and_infer_batch_swallowed(
     (d / "bad.png").write_bytes(b"not-an-image")
 
     class _Slow:  # 无 infer_batch → 逐张路径；坏图 imread None → continue
-        def infer(self, im):
+        def infer(self, im, threshold=0.5, labels=None):  # W28：接口契约含 threshold
             return _det_result(1)
 
     pred_page._engine = _Slow()
@@ -384,7 +387,7 @@ def test_batch_worker_imread_fail_continue_and_infer_batch_swallowed(
     qapp.processEvents()
     assert pred_page.table.rowCount() == 1  # 坏图跳过，好图照常
 
-    def _boom(self, paths):
+    def _boom(self, paths, threshold=0.5, labels=None):  # W28：接口契约含 threshold
         raise RuntimeError("batch boom")
 
     pred_page._engine = type("E", (), {"infer_batch": _boom})()

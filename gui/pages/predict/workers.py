@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from core.constants import IMG_EXTS
 from gui.core.i18n import tr
+from project.paths import resolve_base_root
 
 # R5-2: CSV/Excel 公式注入防护（CWE-1236）
 _CSV_INJECTION_CHARS = frozenset("=+-\t\r@")
@@ -49,9 +50,15 @@ def collect_images(directory: str) -> List[str]:
 
 
 def batch_save_dir(project_dir: Optional[str], scanned_dir: str) -> str:
-    """批量推理结果目录：{项目根 or 被扫描目录}/results/batchPredict_{ts}。"""
+    """批量推理结果目录：{项目根 or workspace 根}/results/batchPredict_{ts}。
+
+    W28 落盘卫生：无项目时回退 workspace 根（resolve_base_root 单源），
+    绝不写进被扫描数据集目录本身（污染源数据）。scanned_dir 参数保留
+    仅为调用方签名兼容。
+    """
     ts = int(time.time())
-    return os.path.join(project_dir or scanned_dir, "results", f"batchPredict_{ts}")
+    root = project_dir or resolve_base_root()
+    return os.path.join(root, "results", f"batchPredict_{ts}")
 
 
 def result_to_record(img_path: str, result) -> dict:

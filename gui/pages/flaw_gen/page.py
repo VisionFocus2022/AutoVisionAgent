@@ -11,7 +11,6 @@ from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
-    QComboBox,
     QFormLayout,
     QFrame,
     QHBoxLayout,
@@ -52,12 +51,7 @@ class FlawGenPage(QWidget):
         self._title.setStyleSheet("font-size: 22px; font-weight: bold; color: #FFFFFF;")
         root.addWidget(self._title)
 
-        hint = QLabel(
-            tr("本页建设中") + "\n"
-            + tr("该功能将在后续里程碑实装。")
-        )
-        hint.setStyleSheet("color: #94a3b8; font-size: 13px;")
-        root.addWidget(hint)
+        # （W28：删过期建设横幅——SGAN 引擎 W2 已真化，该话术不再成立）
 
         # 配置区
         config_box = QFrame()
@@ -97,11 +91,8 @@ class FlawGenPage(QWidget):
         self._count_spin.setValue(100)
         form.addRow(tr("生成数量"), self._count_spin)
 
-        # 生成模式
-        self._mode_combo = QComboBox()
-        self._mode_combo.addItem(tr("随机混合"), "random")
-        self._mode_combo.addItem(tr("指定缺陷类型"), "specific")
-        form.addRow(tr("生成模式"), self._mode_combo)
+        # （W28：删生成模式死下拉——"随机混合/指定缺陷类型"选择从未传给
+        #  引擎 infer，纯装饰；引擎支持模式参数时再随接线建回）
 
         root.addWidget(config_box)
 
@@ -183,7 +174,10 @@ class FlawGenPage(QWidget):
                 engine = get_engine(TaskType.SGAN)
 
                 # 缺陷库 = 真实缺陷图目录；目录无效 → SupervisedEngineError → 失败提示
-                engine.load(flaw_database=flaw_dir, device="cpu")
+                # W28：device 走 resolve_device 契约（W19/W21 同款——cuda 可用
+                # 透传/回退 cpu，lite 的 CPU torch 自动回退；原硬编码 "cpu"）
+                from models.supervised.device import resolve_device
+                engine.load(flaw_database=flaw_dir, device=resolve_device("cuda"))
 
                 ok_imgs = [
                     os.path.join(r, f)
@@ -259,8 +253,6 @@ class FlawGenPage(QWidget):
         self._out_btn.setText(tr("浏览..."))
         self._gen_btn.setText(tr("开始生成"))
         self._log_label.setText(tr("等待开始..."))
-        self._mode_combo.setItemText(0, tr("随机混合"))
-        self._mode_combo.setItemText(1, tr("指定缺陷类型"))
 
 
 __all__ = ["FlawGenPage"]

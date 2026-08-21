@@ -15,7 +15,7 @@ import re
 import sys
 import tempfile
 
-from PySide6.QtCore import QLockFile
+from PySide6.QtCore import QLockFile, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from gui.core.i18n import current_language, set_language, tr
@@ -222,10 +222,8 @@ def build_window() -> MainWindow:
     # ---- 主页导航 ----
     home_page.navigate.connect(win.select)
 
-    # ---- 登录成功 → 跳转主页 ----
-    login_page.login_success.connect(
-        lambda _u, _r: win.select("home")
-    )
+    # ---- 主页最近项目/检测历史刷新（W28 生产接线，见 _wire_home_refresh）----
+    _wire_home_refresh(win, home_page, login_page, project_page)
 
     # ---- 语言切换 → 全部页面 retranslate ----
     win.language_changed.connect(
@@ -248,6 +246,36 @@ def build_window() -> MainWindow:
     # 默认进登录页
     win.select("login")
     return win
+
+
+def _wire_home_refresh(win, home_page, login_page, project_page) -> None:
+    """主页最近项目/检测历史的生产接线（W28）。
+
+    refresh_recent/refresh_history 此前无任何生产调用方——最近项目列表
+    恒空、历史统计恒旧。两触发点：登录成功（进主页前）与项目打开。
+    根目录经 resolve_base_root 单源（设置页 workspace 可配）。
+    """
+    from project.paths import resolve_base_root
+
+    def _refresh_home_lists() -> None:
+        try:
+            home_page.refresh_recent(resolve_base_root())
+        except (OSError, ValueError, RuntimeError):
+            logging.getLogger(__name__).warning(
+                "刷新最近项目列表失败", exc_info=True
+            )
+        home_page.refresh_history()
+
+    def _on_login_success(_username: str, _role: str) -> None:
+        # 先切页再延一拍刷新：登录槽内同步走磁盘 IO 会拖长 login→home
+        # 切换（UIA 以「登录按钮从树中消失」为硬校验，随后导航点击与
+        # 槽尾执行竞争——实测同步刷新致导航点击失效 4/4，singleShot 0
+        # 解耦后恢复）。功能不变：主页入场即可见最新列表。
+        win.select("home")
+        QTimer.singleShot(0, _refresh_home_lists)
+
+    login_page.login_success.connect(_on_login_success)
+    project_page.project_opened.connect(lambda _dir: _refresh_home_lists())
 
 
 def _load_user_settings() -> dict:
