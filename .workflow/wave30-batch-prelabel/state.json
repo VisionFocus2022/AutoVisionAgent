@@ -1,0 +1,15 @@
+{
+  "wave": "W30",
+  "title": "文件夹批量预标注——目录→逐图 DET 推理→LabelMe JSON（W26 计划 P1/P2）",
+  "date": "2026-08-22",
+  "plan": ".claude/plan/skolpha-benchmark-optimization.md",
+  "docs": ["docs/prd-w30-batch-prelabel.md"],
+  "changes": {
+    "worker": "新建 gui/pages/label/batch_prelabel.py（Qt-free）：run_batch_prelabel（预检查 loaded/坏图跳过+记录/协作取消/零检出写空 shapes JSON）+ autolabel_save_dir（{root}/results/autolabel_{ts} 与 W33 共享约定，无项目回退 workspace）+ manifest 原子写",
+    "page": "标注页增批量预标注按钮 + 三槽（完成/取消/失败，W17 on_error 收口）+ retranslate",
+    "permissions": "label.batch_prelabel 三角色登记（W29 面更新首例）",
+    "i18n": "7 词条 zh+en"
+  },
+  "verification": {"gate": "1064 passed / 4 skipped / rc=0（1056+8 严丝合缝）", "packaging": "打包后台进行中"},
+  "next": "W31 AMP 预检"
+}

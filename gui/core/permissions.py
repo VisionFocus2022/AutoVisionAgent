@@ -43,8 +43,11 @@ _PAGE_MATRIX: Dict[str, FrozenSet[str]] = {
     }),
 }
 
-# ---- 动作矩阵（空集起步：各波冻结动作集后逐波登记） ----
-_ACTION_MATRIX: Dict[str, FrozenSet[str]] = {}
+# ---- 动作矩阵（W29 空集起步；各波冻结动作集后逐波登记） ----
+# W30：批量预标注（标注页 operator 可见，动作不收紧——三角色全允许）
+_ACTION_MATRIX: Dict[str, FrozenSet[str]] = {
+    "label.batch_prelabel": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
+}
 
 
 def page_allowed(role: str, page_id: str) -> bool:

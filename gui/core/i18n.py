@@ -73,6 +73,13 @@ _EN_US: Dict[str, str] = {
     "已重做": "Redone",
     "标注数": "Shapes",
     "零检出（未生成标注）": "No detections (no annotations generated)",
+    "批量预标注": "Batch Prelabel",
+    "批量预标注中": "Batch prelabeling...",
+    "批量预标注完成": "Batch Prelabel Complete",
+    "批量预标注已取消": "Batch Prelabel Cancelled",
+    "AI预标注不可用": "AI prelabel unavailable",
+    "请先在推理页加载 DET 模型": "Load a DET model on the Predict page first",
+    "选择批量预标注目录": "Select batch prelabel directory",
 
     # ---- 数据管理页 ----
     "选择目录": "Select Directory",
