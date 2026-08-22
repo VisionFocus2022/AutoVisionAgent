@@ -132,6 +132,8 @@ _EN_US: Dict[str, str] = {
     "单张推理": "Single Inference",
     "批量推理": "Batch Inference",
     "阈值": "Threshold",
+    "对象类型过滤（逗号分隔，空=全部）": "Object filter (comma-separated, empty=all)",
+    "叠加图": "Overlay",
     "导出CSV": "Export CSV",
     "导出JSON": "Export JSON",
     "选择模型权重": "Select Model Weights",

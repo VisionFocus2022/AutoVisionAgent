@@ -1,0 +1,15 @@
+{
+  "wave": "W33",
+  "title": "batchPredict 产物补齐——masks RLE/叠加图/对象类型过滤（W26 计划 P2）",
+  "date": "2026-08-22",
+  "docs": ["docs/prd-w33-batchpredict-artifacts.md"],
+  "changes": {
+    "workers": "filter_result_by_labels（四元组协同过滤）+ save_batch_artifacts（masks RLE npz 可解码恢复 + overlay jpg；失败 WARNING 不炸批）",
+    "page": "edit_label_filter/chk_overlay 控件（objectName）+ _process 管线；规模守卫 800/100 双线触发 → _batch_infer 批处理体抽 gui/pages/predict/batch_runner.py（W27 式行为保持抽取，overlay_renderer 注入保测试缝）",
+    "permissions": "predict.batch_infer 三角色",
+    "root_config": "输出根可配置经设置页 workspace 单源（W28 已建；test_w28_predict_hygiene 留守卫）",
+    "i18n": "3 词条"
+  },
+  "verification": {"gate": "1086 passed / 4 skipped / rc=0（1081+5）", "packaging": "--clean rc=0；PYZ 12494 含 batch_runner/ocr 等；lite 1.998GiB 守卫 28/28 过（余量薄 ~2MB——W34 打包若破线启用 W26 Agg-only 杠杆）"},
+  "next": "W34 逐帧视频超分"
+}

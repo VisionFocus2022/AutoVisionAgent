@@ -82,6 +82,69 @@ def row_display_fields(result) -> tuple:
     return labels, score, info
 
 
+# ============================== W33：过滤与产物 ============================== #
+
+
+def filter_result_by_labels(result, allowed_labels):
+    """对象类型过滤（W33）：boxes/labels/scores/masks 协同保留。
+
+    allowed_labels 为 None/空集 → 原样返回（SKolpha「阈值+对象类型」
+    双参对标的收尾——阈值 W28 已接）。
+    """
+    if not allowed_labels:
+        return result
+    keep = [i for i, lab in enumerate(result.labels or ()) if lab in allowed_labels]
+    from core.interfaces_supervised import DetectionResult
+
+    return DetectionResult(
+        task=result.task,
+        boxes=tuple(result.boxes[i] for i in keep) if result.boxes else (),
+        labels=tuple(result.labels[i] for i in keep),
+        scores=tuple(result.scores[i] for i in keep) if result.scores else (),
+        masks=result.masks[keep] if result.masks is not None else None,
+        score=result.score,
+    )
+
+
+def save_batch_artifacts(save_dir: str, img_path: str, result, overlay=None) -> None:
+    """批量产物补齐（W33）：masks RLE 持久化 + 调用方渲染好的叠加图。
+
+    - result.masks 非 None 且非空 → masks_{stem}.npz（逐实例 RLE，可经
+      serving.mask_codec.decode_mask_rle 恢复——现状批量 seg masks 丢失）；
+    - overlay（BGR ndarray）非 None → overlay_{stem}.jpg；
+    - 失败只记 WARNING 不炸整批（产物是增益件，批结果 JSON 仍原子落盘）。
+    """
+    try:
+        stem = os.path.splitext(os.path.basename(img_path))[0]
+        if getattr(result, "masks", None) is not None and len(result.masks):
+            import numpy as np
+
+            from serving.mask_codec import encode_mask_rle
+
+            rle = {
+                f"mask_{i}": np.frombuffer(
+                    encode_mask_rle(m), dtype=np.uint8
+                )
+                for i, m in enumerate(result.masks)
+            }
+            os.makedirs(save_dir, exist_ok=True)
+            np.savez_compressed(os.path.join(save_dir, f"masks_{stem}.npz"), **rle)
+        if overlay is not None:
+            from core.image_io import imwrite_unicode
+
+            os.makedirs(save_dir, exist_ok=True)
+            imwrite_unicode(
+                os.path.join(save_dir, f"overlay_{stem}"), overlay, ext=".jpg"
+            )
+    except (OSError, ValueError, RuntimeError):
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "批量产物写盘失败（跳过，批结果 JSON 不受影响）: %s",
+            img_path, exc_info=True,
+        )
+
+
 def atomic_write_json(path: str, data: object) -> None:
     """temp + os.replace 原子写 JSON（P2-2：直写会在中途截断既有文件）。
 

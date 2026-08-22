@@ -47,6 +47,8 @@ _PAGE_MATRIX: Dict[str, FrozenSet[str]] = {
 # W30：批量预标注（标注页 operator 可见，动作不收紧——三角色全允许）
 _ACTION_MATRIX: Dict[str, FrozenSet[str]] = {
     "label.batch_prelabel": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
+    # W33：批量推理（operator 推理页可见，动作不收紧）
+    "predict.batch_infer": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
 }
 
 
