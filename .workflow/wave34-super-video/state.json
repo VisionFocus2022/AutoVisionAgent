@@ -1,0 +1,14 @@
+{
+  "wave": "W34",
+  "title": "逐帧视频超分——VideoCapture→super 引擎→mp4v（W26 计划 P2，用户指令含本波不裁撤）",
+  "date": "2026-08-22",
+  "docs": ["docs/prd-w34-super-video.md"],
+  "changes": {
+    "worker": "新建 gui/pages/predict/video_super.py：super_video 纯函数（帧数保持/尺寸随引擎/progress 单调/协作取消/坏输入 raise）+ superres_save_dir 共享约定；插帧显式 non-goal",
+    "page": "视频超分按钮（仅 SUPER 任务）+ 四方法抽 VideoSuperActionsMixin（W27 SamSession 同款；Mixin 内 pick_open_file 解析接缝——测试 patch 目标随迁，offscreen 挂起 60s 被 pytest-timeout 擒获后修正）",
+    "permissions": "predict.video_super 三角色",
+    "i18n": "6 词条"
+  },
+  "verification": {"gate": "1092 passed / 4 skipped / rc=0（1086+6 严丝合缝）", "packaging": "--clean rc=0；lite 1.998GiB 守卫 28/28 过（预算紧贴，留档：再增依赖须先启用 W26 Agg-only 杠杆）"},
+  "plan_complete": "W26-W34 九波全部闭环"
+}

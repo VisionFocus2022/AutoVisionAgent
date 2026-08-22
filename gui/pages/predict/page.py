@@ -45,11 +45,12 @@ from gui.pages.predict.workers import (
     sanitize_csv_cell,
 )
 from inference.sv_bridge import render_result  # W33：批量叠加图（页面级绑定保测试缝）
+from gui.pages.predict.video_super_actions import VideoSuperActionsMixin  # W34
 
 logger = logging.getLogger(__name__)
 
 
-class PredictPage(QWidget):
+class PredictPage(VideoSuperActionsMixin, QWidget):
     """推理页：加载模型 → 单张/批量推理 → 结果表 → 导出。"""
 
     status_changed = Signal(str, str)
@@ -144,6 +145,11 @@ class PredictPage(QWidget):
         self.btn_batch = QPushButton(tr("批量推理"), bar)
         h.addWidget(self.btn_batch)
 
+        # W34：逐帧视频超分（零新依赖；插帧 non-goal）
+        self.btn_video_super = QPushButton(tr("视频超分"), bar)
+        self.btn_video_super.setProperty("tool", True)
+        h.addWidget(self.btn_video_super)
+
         self._btn_cancel_batch = QPushButton(tr("取消"), bar)
         self._btn_cancel_batch.setVisible(False)
         self._btn_cancel_batch.setStyleSheet("color: #ff6b6b;")
@@ -228,6 +234,7 @@ class PredictPage(QWidget):
         self.btn_load_model.clicked.connect(self._load_model)
         self.btn_single.clicked.connect(self._single_infer)
         self.btn_batch.clicked.connect(self._batch_infer)
+        self.btn_video_super.clicked.connect(self._video_super)
         self._btn_cancel_batch.clicked.connect(self._batch_cancel_infer)
         self.btn_export_csv.clicked.connect(self._export_csv)
         self.btn_export_json.clicked.connect(self._export_json)
@@ -478,6 +485,11 @@ class PredictPage(QWidget):
         # 批量推理完成后自动展示统计报表（R3-11）
         if self._results:
             self._show_stats()
+
+    # ---- W34：视频超分四方法混入自 VideoSuperActionsMixin ----
+    # （_video_super/_video_super_progress/_video_super_done/
+    #   _video_super_failed 见 video_super_actions.py——invoke_main
+    #   槽名派发经 MRO 命中 Mixin，行为不变）
 
     def _batch_cancel_infer(self) -> None:
         self._batch_cancel = True
@@ -750,6 +762,8 @@ class PredictPage(QWidget):
         self.chk_overlay.setText(tr("叠加图"))
         self.btn_single.setText(tr("单张推理"))
         self.btn_batch.setText(tr("批量推理"))
+        self.btn_video_super.setText(tr("视频超分"))
+        self.btn_video_super.setText(tr("视频超分"))
         self.btn_export_csv.setText(tr("导出CSV"))
         self.btn_export_json.setText(tr("导出JSON"))
         self.btn_export_excel.setText(tr("导出Excel"))

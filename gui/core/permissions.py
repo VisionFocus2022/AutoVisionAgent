@@ -49,6 +49,8 @@ _ACTION_MATRIX: Dict[str, FrozenSet[str]] = {
     "label.batch_prelabel": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
     # W33：批量推理（operator 推理页可见，动作不收紧）
     "predict.batch_infer": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
+    # W34：视频超分
+    "predict.video_super": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
 }
 
 
