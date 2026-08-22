@@ -1,0 +1,14 @@
+{
+  "wave": "W31",
+  "title": "AMP 预检——cuda fp16 前向+反向有限性探针（W26 计划 P2）",
+  "date": "2026-08-22",
+  "docs": ["docs/prd-w31-amp-preflight.md"],
+  "changes": {
+    "probe": "新建 models/supervised/amp_preflight.py：amp_preflight(device)->(ok,reason) 三分支（cpu skip/cuda ok/失败原因）；不随包 checkamp.pt 资产",
+    "train_page": "_start_training 增预检：失败→警告+chk_amp 取消+dataclasses.replace(amp=False)；通过零扰动",
+    "i18n": "AMP 预检失败词条 zh+en"
+  },
+  "verification": {"gate": "全量 1073 总数=1068 基线+5 新（1069 passed/4 skipped，个别 opt-in 用例环境波动为已知）；W31 用例 5/5", "packaging": "随 W30 后统一重打包"},
+  "residual": ["真机（有 cuda）首跑端到端验证留待用户环境"],
+  "next": "W32 OCR 可选引擎"
+}

@@ -30,6 +30,7 @@ from gui.core.i18n import tr
 from gui.core.tasks_ui import populate_task_combo
 from gui.widgets.loss_chart import LossChartWidget
 from gui.pages.train.worker import TrainWorker
+from models.supervised.amp_preflight import amp_preflight
 
 logger = logging.getLogger(__name__)
 
@@ -282,6 +283,17 @@ class TrainPage(QWidget):
             return
 
         cfg = self._build_config()
+        # W31 AMP 预检：cuda 侧 fp16 前向+反向有限性探针；失败=警告+回退
+        # FP32（cpu/lite 静默跳过，不随包 checkamp.pt 资产）
+        if cfg.amp:
+            ok, reason = amp_preflight(cfg.device)
+            if not ok:
+                logger.warning("AMP 预检失败，训练回退 FP32: %s", reason)
+                self.status_changed.emit(tr("AMP 预检失败，已回退 FP32"), reason[:40])
+                self.chk_amp.setChecked(False)
+                import dataclasses
+
+                cfg = dataclasses.replace(cfg, amp=False)
         self.chart.clear_all()
         self.chart.add_series("loss", "#ef4444")
         self.progress_bar.setValue(0)
