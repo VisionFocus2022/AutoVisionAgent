@@ -121,6 +121,30 @@ def _prune_cuda_dlls(dst: Path) -> Dict[str, int]:
     return pruned
 
 
+def _prune_optional_packages(dst: Path, packages: tuple) -> Dict[str, int]:
+    """删除 ``dst/_internal`` 下可选包目录（W32：lite 明确排除 easyocr——
+    推理-only 可选件不占 2GiB 预算；lite 内引擎照常注册、load 诚实报
+    安装指引）。
+
+    Returns:
+        ``{被删目录名: 字节数}``（供 LITE_MARKER.json 留档）。
+    """
+    pruned: Dict[str, int] = {}
+    internal = dst / "_internal"
+    for name in packages:
+        pkg_dir = internal / name
+        if not pkg_dir.is_dir():
+            continue
+        total = sum(
+            f.stat().st_size for f in pkg_dir.rglob("*") if f.is_file()
+        )
+        import shutil as _shutil
+
+        _shutil.rmtree(pkg_dir)
+        pruned[name] = total
+    return pruned
+
+
 def _pkg_version(pkg_dir: Path) -> Optional[str]:
     """从包目录探读 ``__version__``（version.py 优先，回退 __init__.py）。
 
@@ -310,6 +334,8 @@ def derive_lite(
     shutil.copytree(src_path, dst_path)
 
     pruned = _prune_cuda_dlls(dst_path)
+    # W32：lite 明确排除 OCR 可选件（引擎注册零成本，load 诚实报指引）
+    pruned.update(_prune_optional_packages(dst_path, ("easyocr",)))
     replaced: Dict[str, str] = {}
     if cpu_wheels_dir is not None:
         replaced = _replace_with_cpu_wheels(

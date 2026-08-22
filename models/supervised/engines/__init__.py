@@ -1,4 +1,4 @@
-"""有监督任务引擎实现集（W2 移植后：9/9 全实装）。
+"""有监督任务引擎实现集（W2 移植后：9/9 全实装；W32 增 OCR 可选件 = 10）。
 
 det/seg/abdet 与 sgan_blend/super_cv2 于 W2 自兄弟树（era-4 "Option A 真化"产物）移植；
 sgan/super 已弃 mmedit 桩：sgan=seamlessClone Poisson 融合，super=cv2.dnn_superres，
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 
 def register_all_engines() -> None:
-    """惰性导入并注册全部 9 种有监督引擎。
+    """惰性导入并注册全部 10 种有监督引擎（OCR 为可选件）。
 
     缺失的引擎模块会被跳过并记录警告，不影响其他已实现引擎的注册。
     """
@@ -29,6 +29,8 @@ def register_all_engines() -> None:
         "sseg_smp",
         "sgan_blend",
         "super_cv2",
+        # W32：OCR 可选任务（模块级零 easyocr 依赖，惰性导入）
+        "ocr_easyocr",
     ]
     for _mod in _engine_modules:
         try:

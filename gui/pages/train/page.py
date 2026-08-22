@@ -144,11 +144,13 @@ class TrainPage(QWidget):
 
         self.cmb_task = QComboBox(form_frame)
         # W1: 下拉与引擎注册表实况对齐——全 9 项，缺引擎标"模拟"（首项保持 DET，兼容 UIA 默认）
+        # W32：OCR 推理-only（无训练语义）——训练页不列
         populate_task_combo(
             self.cmb_task,
             only_available=False,
             unavailable_suffix="（模拟）",
             unavailable_tooltip="引擎未安装：训练将使用模拟策略（假 loss，仅供流程验证）",
+            exclude=(TaskType.OCR,),
         )
         form.addRow(tr("任务"), self.cmb_task)
 

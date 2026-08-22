@@ -29,6 +29,7 @@ _EXPECTED_ENGINE_NAMES = {
     TaskType.ABDET: "AbdetAnomalibEngine",
     TaskType.SGAN: "SganBlendEngine",
     TaskType.SUPER: "SuperCv2Engine",
+    TaskType.OCR: "OcrEasyocrEngine",  # W32 可选任务
 }
 
 
@@ -75,7 +76,7 @@ class TestDispatcherMatrix:
         from industrial_vision_platform.vision_dispatcher import VisionModelDispatcher
 
         tasks = VisionModelDispatcher.list_all_tasks()
-        assert len(tasks) == 9
+        assert len(tasks) == 10  # W32：+OCR
         task_values = {t["task"] for t in tasks}
         assert "zero_shot" not in task_values
         for task in _ALL_9_TASKS:

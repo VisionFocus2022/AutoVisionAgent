@@ -38,7 +38,7 @@ def test_populate_lists_all_9_with_annotation(qapp):
 
     combo = QComboBox()
     items = populate_task_combo(combo, only_available=False, unavailable_suffix="（模拟）")
-    assert combo.count() == len(TaskType) == 9
+    assert combo.count() == len(TaskType) == 10  # W32：+OCR
     assert combo.itemData(0) is TaskType.DET  # UIA 兼容：首项保持 DET
     reg = _registry()
     for i, (task, available) in enumerate(items):
@@ -70,7 +70,7 @@ def test_train_page_combo_all_9_det_first(qapp):
 
     page = TrainPage()
     combo = page.cmb_task
-    assert combo.count() == 9
+    assert combo.count() == 9  # 10 任务 − OCR（W32：推理-only 排除）
     assert combo.itemData(0) is TaskType.DET
     # W2 移植引擎后 det 已可用 → 无"模拟"标注；缺引擎时须有标注（两种状态都正确）
     if _registry().has(TaskType.DET):

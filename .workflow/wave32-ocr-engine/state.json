@@ -1,0 +1,18 @@
+{
+  "wave": "W32",
+  "title": "OCR 可选引擎——easyocr 惰性接入 + 离线供给 + lite 剪除（W26 计划 P2）",
+  "date": "2026-08-22",
+  "docs": ["docs/prd-w32-ocr-engine.md"],
+  "changes": {
+    "enum": "TaskType.OCR='ocr'（proto 零改动）",
+    "engine": "models/supervised/engines/ocr_easyocr.py：注册零依赖（模块级不触 easyocr）/load 惰性导入+离线目录禁下载/缺库缺权重诚实 raise 带 fetch 脚本指引/quad→xyxy+labels=识别串+scores 逐行置信度+threshold 过滤",
+    "supply": "scripts/fetch_ocr_weights.py（craft_mlt_25k+zh_sim/latin+sha256 manifest；离线优先平台显式供给）",
+    "lock_guard": "test_lock_single_cv2_provider：lock 唯一 cv2=opencv-contrib-python（easyocr 元数据拉 headless 冲突防复发）",
+    "gui": "TASK_LABELS+文字识别词条；训练页 exclude=(OCR,)（推理-only）；predict 自动在列",
+    "packaging": "spec hiddenimports+engines 列表（五方守卫同步）；make_lite_dist 增 _prune_optional_packages——lite 剪除 easyocr（推理-only 不占预算，lite 内 load 诚实报安装指引）",
+    "migrations": "任务数 9→10 五处断言 + _EXPECTED_ENGINE_NAMES 补 OCR + 训练页下拉 9 项（10−OCR 排除）"
+  },
+  "verification": {"gate": "1081 passed / 4 skipped / rc=0（1073+10 新+2 参数化）", "packaging": "--clean rc=0；PYZ 12456 模块含 ocr_easyocr+easyocr(18 子模块)；lite 1.984GiB 剪除 easyocr；打包守卫 30/30"},
+  "residual": ["真机 OCR 端到端（fetch 权重后用户环境验证）"],
+  "next": "W33 batchPredict 产物补齐"
+}

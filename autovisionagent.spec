@@ -36,6 +36,10 @@ a = Analysis(
         "models.supervised.engines.sgan_blend",
         "models.supervised.engines.sseg_smp",
         "models.supervised.engines.super_cv2",
+        # W32：OCR 可选任务引擎 + easyocr 本体（引擎方法内惰性导入，
+        # 静态分析不可见——与引擎模块一并显式列出；lite 派生时剪除）
+        "models.supervised.engines.ocr_easyocr",
+        "easyocr",
         # 标注子系统（手动 4 模式必须显式列出：modes/__init__ 用变量拼
         # importlib 导入，PyInstaller 静态分析不可见——W4 发版检查实测漏打包
         # 导致 exe 内全部手动标注失效，UIA 曾以"软通过"掩盖）

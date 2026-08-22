@@ -35,6 +35,7 @@ class TaskType(Enum):
     ABDET = "abdet"   # 异常检测（zero-shot）
     SGAN = "sgan"     # GAN 缺陷生成
     SUPER = "super"   # 超分辨率（mmedit）
+    OCR = "ocr"       # 文字识别（W32 可选任务，easyocr）
 
 
 @dataclass(frozen=True)

@@ -407,7 +407,7 @@ def test_populate_only_available_empty_registry_degrades_to_full(qapp, monkeypat
         unavailable_suffix="（X未装）",
         unavailable_tooltip="TT 缺引擎",
     )
-    assert len(items) == len(TaskType) == 9
+    assert len(items) == len(TaskType) == 10  # W32：+OCR
     assert all(ok is False for _, ok in items)
     assert combo.itemData(0) is TaskType.DET  # UIA 兼容首项
     assert "（X未装）" in combo.itemText(0)
@@ -440,7 +440,7 @@ def test_populate_all_marks_unavailable_suffix_and_tooltip(qapp, monkeypatch):
         unavailable_suffix="（未装引擎）",
         unavailable_tooltip="该任务引擎未安装",
     )
-    assert len(items) == 9
+    assert len(items) == 10  # W32：+OCR
     det_seen = 0
     for i, (task, ok) in enumerate(items):
         assert combo.itemData(i) is task

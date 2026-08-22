@@ -24,6 +24,7 @@ TASK_LABELS = {
     TaskType.ABDET: "异常检测",
     TaskType.SGAN: "缺陷生成",
     TaskType.SUPER: "超分辨率",
+    TaskType.OCR: "文字识别",
 }
 
 
@@ -45,6 +46,7 @@ def populate_task_combo(
     only_available: bool = False,
     unavailable_suffix: str = "（未装引擎）",
     unavailable_tooltip: str = "该任务引擎未安装",
+    exclude: tuple = (),
 ) -> List[Tuple[TaskType, bool]]:
     """按 TaskType 全量填充任务下拉框。
 
@@ -54,6 +56,8 @@ def populate_task_combo(
             极端情况下注册表整体不可用时退化为全量展示，避免空下拉。
         unavailable_suffix: 缺引擎项的标签后缀。
         unavailable_tooltip: 缺引擎项的悬浮提示。
+
+    exclude: 不列入的任务（训练页排除推理-only 任务如 OCR）。
 
     Returns:
         [(TaskType, available), ...] 与下拉项一一对应（枚举序，DET 首项）。
@@ -65,6 +69,8 @@ def populate_task_combo(
     items: List[Tuple[TaskType, bool]] = []
     combo.clear()
     for task in TaskType:
+        if task in exclude:  # W32：推理-only 任务（如 OCR）训练页不列
+            continue
         ok = task in available
         if only_available and not ok:
             continue

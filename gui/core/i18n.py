@@ -177,6 +177,7 @@ _EN_US: Dict[str, str] = {
     "异常检测 (abdet)": "Anomaly (abdet)",
     "缺陷生成 (sgan)": "Defect Gen (sgan)",
     "超分辨率 (super)": "Super-Res (super)",
+    "文字识别": "Text Recognition (OCR)",
 
     # ---- 登录页 ----
     "AutoVisionAgent 登录": "AutoVisionAgent Login",
