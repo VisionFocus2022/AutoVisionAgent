@@ -267,6 +267,8 @@ def _wire_home_refresh(win, home_page, login_page, project_page) -> None:
         home_page.refresh_history()
 
     def _on_login_success(_username: str, _role: str) -> None:
+        # W29 角色消费：导航可见性过滤 + select 守卫（此前 role 被字面丢弃）
+        win.set_role(_role)
         # 先切页再延一拍刷新：登录槽内同步走磁盘 IO 会拖长 login→home
         # 切换（UIA 以「登录按钮从树中消失」为硬校验，随后导航点击与
         # 槽尾执行竞争——实测同步刷新致导航点击失效 4/4，singleShot 0

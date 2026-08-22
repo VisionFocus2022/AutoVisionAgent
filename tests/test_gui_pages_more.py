@@ -182,7 +182,7 @@ def test_login_offline_with_license(qapp, tmp_path, monkeypatch):
     page.login_success.connect(lambda u, r: logged.append((u, r)))
 
     page._do_offline()
-    assert logged == [("offline", "operator")]  # W18: 稳定枚举
+    assert logged == [("offline", "admin")]  # W18 枚举；W29 离线=完整权限
 
 
 @pytest.mark.unit

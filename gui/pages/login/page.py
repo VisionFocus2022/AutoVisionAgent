@@ -14,7 +14,6 @@ from typing import Dict, Optional, Tuple
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QDialog,
     QFormLayout,
     QFrame,
@@ -43,14 +42,14 @@ _LOCKOUT_SECONDS = 300  # 5 分钟锁定
 # 改密成功后由 _remove_initial_credentials 删除（FR-5.2）
 _INITIAL_CREDENTIALS_FILENAME = "initial_credentials.txt"
 
-# ---- W18 / P2-8: 角色稳定枚举 ----
-# 持久层（users.json）与 login_success 信号只落枚举值，与界面语言解耦；
-# 显示名经 _role_display_map() 按当前语言渲染（展示层再 tr()）。
-ROLE_ADMIN = "admin"
-ROLE_ENGINEER = "engineer"
-ROLE_OPERATOR = "operator"
-
-_ROLE_ORDER = (ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR)
+# ---- W18 / P2-8: 角色稳定枚举（W29 起真源=gui.core.permissions，此处 re-export 兼容） ----
+# 持久层（users.json）与 login_success 信号只落枚举值，与界面语言解耦。
+from gui.core.permissions import (  # noqa: F401（re-export 兼容既有 import 路径）
+    ROLE_ADMIN,
+    ROLE_ENGINEER,
+    ROLE_OPERATOR,
+    ROLES as _ROLE_ORDER,
+)
 
 # 中文旧值迁移映射（W18 前历史库落的是 tr() 显示名）
 _LEGACY_ROLE_MAP = {
@@ -58,18 +57,6 @@ _LEGACY_ROLE_MAP = {
     "工程师": ROLE_ENGINEER,
     "操作员": ROLE_OPERATOR,
 }
-
-
-def _role_display_map() -> Dict[str, str]:
-    """枚举 → 当前语言显示名。
-
-    tr() 依赖运行期语言状态，映射须函数内构造（模块导入期语言未定）。
-    """
-    return {
-        ROLE_ADMIN: tr("管理员"),
-        ROLE_ENGINEER: tr("工程师"),
-        ROLE_OPERATOR: tr("操作员"),
-    }
 
 
 def _migrate_role(value: object) -> str:
@@ -304,11 +291,8 @@ class LoginPage(QWidget):
         self._pass_edit.setEchoMode(QLineEdit.Password)
         form.addRow(tr("密码"), self._pass_edit)
 
-        self._role_combo = QComboBox()
-        # userData=稳定枚举：currentData() 取值，显示文本仅作渲染（语言切换不落库）
-        for _role in _ROLE_ORDER:
-            self._role_combo.addItem(_role_display_map()[_role], userData=_role)
-        form.addRow(tr("角色"), self._role_combo)
+        # W29：删装饰性角色下拉——角色真源是 users.json（_do_login 读取），
+        # 下拉选择从未被消费（虚假控件）；角色分配由管理员改库完成
 
         self._remember = QCheckBox(tr("记住登录状态"))
         form.addRow(self._remember)
@@ -530,7 +514,11 @@ class LoginPage(QWidget):
 
         实际语义：仅检查 configs/license.key 是否存在（无签名/内容校验——
         去 DRM 复刻决策，非许可证验证）；文件缺失时弹确认框，用户确认
-        即以受限离线模式进入。角色固定枚举 operator。
+        即以受限离线模式进入（"受限"=无 License 单工位，非页面裁剪）。
+
+        W29：离线会话角色= admin（本机单工位完整权限）——离线本就跳过
+        认证，等价本机所有者；若落 operator，UIA 全量导航（含 settings/
+        project/train 共 9 页）将被门控裁掉。
         """
         config_dir = str(_CONFIG_DIR)
         license_path = os.path.join(config_dir, "license.key")
@@ -542,26 +530,23 @@ class LoginPage(QWidget):
             )
             if reply != QMessageBox.Yes:
                 return
-        # W13-C3: 离线会话用户 + 审计（与登录成功同一审计通道）
+        # W13-C3: 离线会话用户 + 审计（与登录成功同一审计通道；角色与
+        # 门控消费一致=admin，审计不落与执行相悖的值）
         try:
             from core.audit_logger import log_login
             from core.session import set_current_user
 
             set_current_user("offline")
-            log_login(user="offline", role=ROLE_OPERATOR, mode="offline")
+            log_login(user="offline", role=ROLE_ADMIN, mode="offline")
         except (ImportError, OSError):
             logger.exception("离线模式审计写入失败")
-        self.login_success.emit("offline", ROLE_OPERATOR)
+        self.login_success.emit("offline", ROLE_ADMIN)
         self.status_changed.emit(tr("已进入离线模式"), "ok")
 
     def retranslate(self) -> None:
         self._title.setText(tr("AutoVisionAgent 登录"))
         self._user_edit.setPlaceholderText(tr("请输入用户名"))
         self._pass_edit.setPlaceholderText(tr("请输入密码"))
-        display = _role_display_map()
-        for _i, _role in enumerate(_ROLE_ORDER):
-            # 仅刷新显示文本；userData（稳定枚举）不动——显示/持久解耦
-            self._role_combo.setItemText(_i, display[_role])
         self._remember.setText(tr("记住登录状态"))
         self._login_btn.setText(tr("登录"))
         self._register_btn.setText(tr("注册许可证"))

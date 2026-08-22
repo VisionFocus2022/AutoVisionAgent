@@ -242,9 +242,29 @@ def log_login(
     )
 
 
+def log_access_denied(
+    user: str = "system",
+    role: str = "",
+    page: str = "",
+    **extra: Any,
+) -> None:
+    """记录页面访问被拒事件（W29 角色门控：操作护栏非安全边界）。
+
+    MainWindow.select 守卫拒绝时调用——被拒访问留审计痕。
+    """
+    get_audit_logger().log(
+        "access_denied",
+        user=user,
+        role=role,
+        page=page,
+        **extra,
+    )
+
+
 __all__ = [
     "AuditLogger",
     "get_audit_logger",
+    "log_access_denied",
     "log_detection_complete",
     "log_login",
     "log_model_export",

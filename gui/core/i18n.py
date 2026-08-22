@@ -183,6 +183,7 @@ _EN_US: Dict[str, str] = {
     "操作员": "Operator",
     "记住登录状态": "Remember login",
     "登录": "Login",
+    "无权限访问该页面": "No permission to access this page",
     "注册许可证": "Register License",
     "离线模式": "Offline Mode",
     "登录成功": "Login Successful",

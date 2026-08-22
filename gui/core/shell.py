@@ -19,6 +19,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from gui.core.i18n import tr
+from gui.core.permissions import page_allowed
+
 # 窗口控制按钮样式
 _BTN_STYLE = """
 QPushButton {
@@ -54,6 +57,8 @@ class MainWindow(QMainWindow):
         self._pages: Dict[str, QWidget] = {}
         self._nav_buttons: Dict[str, QPushButton] = {}
         self._theme_manager = None
+        # W29 角色消费：None=未登录（宽容态，全可见——消费点锚定登录成功处）
+        self._active_role: Optional[str] = None
 
         self._build_shell(title)
 
@@ -194,8 +199,15 @@ class MainWindow(QMainWindow):
         self._nav_lay.addWidget(btn)
 
     def select(self, key: str) -> None:
-        """切换到指定页面。"""
+        """切换到指定页面（W29：登录后按角色复查，拒绝不切页+审计）。"""
         if key not in self._pages:
+            return
+        if (self._active_role is not None
+                and not page_allowed(self._active_role, key)):
+            # 操作护栏非安全边界（见 gui/core/permissions.py）——拒绝即
+            # 显式反馈 + 审计留痕，不留静默路径
+            self.set_status(tr("无权限访问该页面"), key)
+            self._audit_access_denied(key)
             return
         widget = self._pages[key]
         self._stack.setCurrentWidget(widget)
@@ -204,6 +216,40 @@ class MainWindow(QMainWindow):
         for k, btn in self._nav_buttons.items():
             btn.setProperty("selected", k == key)
             btn.style().polish(btn)
+
+    # ============================== 角色门控（W29） ============================== #
+
+    def set_role(self, role: Optional[str]) -> None:
+        """设置当前会话角色并即时同步导航可见性。
+
+        None=未登录（宽容态，全可见）；登录成功处调用（gui/main.py）。
+        """
+        self._active_role = role
+        self._apply_nav_visibility()
+
+    def _apply_nav_visibility(self) -> None:
+        """按角色过滤导航按钮可见性（登录页按钮恒可见）。"""
+        role = self._active_role
+        for key, btn in self._nav_buttons.items():
+            btn.setVisible(
+                role is None or page_allowed(role, key)
+            )
+
+    def _audit_access_denied(self, page_key: str) -> None:
+        """拒绝访问审计（失败不阻塞导航反馈）。"""
+        try:
+            from core.audit_logger import log_access_denied
+            from core.session import get_current_user
+
+            log_access_denied(
+                user=get_current_user(),
+                role=self._active_role or "",
+                page=page_key,
+            )
+        except (ImportError, OSError):
+            import logging
+
+            logging.getLogger(__name__).exception("拒绝访问审计写入失败")
 
     def set_status(self, text: str, accent: str = "") -> None:
         """更新状态栏。"""

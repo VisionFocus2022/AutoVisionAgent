@@ -100,39 +100,10 @@ def test_migrate_role_enum_passthrough_and_fallback(qapp):
     assert _migrate_role(None) == ROLE_OPERATOR    # 缺失回退
 
 
-# ==================== ② 下拉 userData=枚举，显示/持久解耦 ==================== #
-@pytest.mark.unit
-def test_role_combo_current_data_enum_and_display_decoupled(
-    qapp, tmp_path, monkeypatch
-):
-    """currentData() 携带枚举；语言切换只改显示文本，枚举与落库值不变。"""
-    from gui.core.i18n import set_language
-
-    from gui.pages.login import page as login_mod
-
-    monkeypatch.setattr(login_mod, "_CONFIG_DIR", tmp_path)
-    _write_db(tmp_path, "engineer")
-    page = login_mod.LoginPage()
-
-    combo = page._role_combo
-    assert combo.count() == 3
-    datas = [combo.itemData(i) for i in range(combo.count())]
-    assert datas == list(_ROLES)           # userData=枚举（显示文本不参与取值）
-    assert combo.currentData() == "admin"  # currentData() 取枚举
-
-    set_language("en_US")
-    try:
-        page.retranslate()
-        texts = [combo.itemText(i) for i in range(combo.count())]
-        assert texts == ["Admin", "Engineer", "Operator"]  # 显示随语言切换
-        datas = [combo.itemData(i) for i in range(combo.count())]
-        assert datas == list(_ROLES)       # 枚举不随语言漂移
-        assert combo.currentData() == "admin"
-    finally:
-        set_language("ch_CN")
-
-    # 持久值与语言无关：落库角色未被 retranslate 触碰
-    assert _read_db(tmp_path)[USER]["role"] == "engineer"
+# ==================== ② 装饰性角色下拉（W29 已删） ==================== #
+# 原 test_role_combo_current_data_enum_and_display_decoupled 随下拉一并
+# 删除——该下拉从未被 _do_login 消费（虚假控件），角色真源=users.json；
+# 枚举/显示解耦语义仍由 _migrate_role（①）与 ③④ 的落库/信号断言守护。
 
 
 # ====================== ③ 新注册写盘 role == 枚举 ====================== #
@@ -172,8 +143,12 @@ def test_login_success_emits_enum_role(qapp, tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_offline_mode_emits_enum_role(qapp, tmp_path, monkeypatch):
-    """离线模式 login_success 同样收到枚举 "operator"。"""
+    """离线模式 login_success 收到枚举 "admin"。
+
+    W29 语义迁移：离线=本机单工位完整权限（原 operator 会把 UIA 全量
+    导航的 9 页裁掉）；「受限」指无 License 单工位，非页面裁剪。
+    """
     page = _make_page(tmp_path, monkeypatch, qapp)
     (tmp_path / "license.key").write_text("", encoding="utf-8")
     page._do_offline()
-    assert page._logged == [("offline", "operator")]
+    assert page._logged == [("offline", "admin")]

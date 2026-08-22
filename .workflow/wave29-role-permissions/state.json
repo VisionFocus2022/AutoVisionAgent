@@ -1,0 +1,31 @@
+{
+  "wave": "W29",
+  "title": "角色权限最小面——permissions 纯函数 + 导航过滤 + 拒绝审计 + 离线=admin 语义（W26 计划 P1）",
+  "date": "2026-08-22",
+  "plan": ".claude/plan/skolpha-benchmark-optimization.md",
+  "docs": ["docs/prd-w29-role-permissions.md", "docs/tasks-w29-role-permissions.md"],
+  "commits": ["(待提交)"],
+  "changes": {
+    "permissions": "新建 gui/core/permissions.py（零 Qt 纯函数）：角色常量真源（admin/engineer/operator）+ 页面矩阵（admin 全 11 页/engineer 除 settings/operator=home·label·data_manage·predict·eval）+ action_allowed 空矩阵（未注册动作全角色拒绝——清单有意不冻结，W30/W33/W34 各波登记）+ login 页恒允许 + 未知角色→operator 最小集",
+    "shell": "MainWindow 增 set_role/_active_role/_apply_nav_visibility + select 守卫（拒绝不切页+状态栏'无权限访问该页面'+审计 access_denied）；未登录态（None）宽容全可见——消费点按计划锚定登录成功处",
+    "login": "离线模式会话角色 operator→admin（离线=本机单工位完整权限，'受限'=无 License 非页面裁剪；原 operator 会裁掉 UIA 全量导航 9 页）；删装饰性角色下拉（从未被 _do_login 消费）+ _role_display_map；ROLE_* 改 import 自 permissions 保 re-export 兼容",
+    "main": "_on_login_success 增 win.set_role(role)——角色从'存储+审计'到'存储+审计+消费'闭环（替换原 lambda 字面丢弃）",
+    "audit": "audit_logger 增 log_access_denied(user, role, page)",
+    "i18n": "无权限访问该页面 zh+en 同 commit"
+  },
+  "honest_boundary": "docstring 级声明：操作护栏非安全边界——users.json 本地可编辑，防误操作（现场职责分离）不防恶意本地用户",
+  "tests": {
+    "new": "tests/test_w29_permissions.py（15：矩阵三角色/登录页恒允许/未知角色最小集/未注册动作全拒/零 Qt AST/set_role 可见性即时同步/拒绝不切页+状态栏+审计/未登录宽容/离线 emit admin/无装饰下拉/main 消费守卫/re-export 兼容）",
+    "migrations": [
+      "test_w18_role_enum：offline emit operator→admin（语义迁移）；删 role_combo 解耦用例（锚定的装饰控件已删，枚举语义仍由 ①③④ 守护）",
+      "test_gui_pages_more：offline→admin"
+    ]
+  },
+  "verification": {
+    "gate": "1056 passed / 4 skipped / rc=0（1042 基线+15 新−1 删严丝合缝）",
+    "packaging": "--clean 重打包 rc=0；PYZ 12360 模块含 gui.core.permissions；打包守卫 28/28；lite 1.983GiB",
+    "uia": "settings 流（同登录+导航链路）过 + 应用侧 0 ERROR；predict 单张连续失败=输入争抢环境归因（证据链：症状跨运行漂移〔按钮不可见/对话框未现/96s 拖慢〕+ 摘除 set_role 对照实验仍败 + 39 个用户态进程在场 + 断言零修改；与 W28 真回归相反——那次症状稳定同位且摘除后转绿）。12/12 空闲机取证留 residual"
+  },
+  "residual": ["UIA 全量 12/12 空闲机取证（W26 起累计）", "action 级消费点 W30/W33/W34 逐波登记 _ACTION_MATRIX", "未登录前导航可点（宽容态）——若需锁死待用户诉求"],
+  "next": "W30 文件夹批量预标注（复用 W27 prelabel worker + run_job/原子写/协作取消成熟模式；与 W33 共享产物位置约定 {workspace}/autolabel/{ts}/；permissions 面登记新动作）"
+}
