@@ -275,3 +275,37 @@ def test_label_page_batch_prelabel_preflight_honest(qapp, monkeypatch, tmp_path)
     assert any("AI预标注不可用" in t or "请先" in t for t, _ in page._msgs), (
         f"预检失败应诚实提示, got: {page._msgs}"
     )
+
+
+# ============================== 5. v5 P3#6：imagePath 相对化 ============================== #
+
+
+@pytest.mark.unit
+def test_batch_prelabel_imagepath_is_relative(tmp_path, monkeypatch):
+    """LabelMe 生态惯例：imagePath 相对 JSON 所在目录（绝对路径在标注
+    目录迁移后断链——v5 P3#6）。"""
+    from gui.pages.label.batch_prelabel import run_batch_prelabel
+
+    imgs = tmp_path / "imgs"
+    imgs.mkdir()
+    (imgs / "i0.png").write_bytes(PNG_1PX)
+
+    class _Engine:
+        def info(self):
+            return {"loaded": True}
+
+        def infer(self, img, threshold=0.5, labels=None):
+            return _det(1)
+
+    _fake_registry(monkeypatch, _Engine())
+    out = tmp_path / "out"
+    run_batch_prelabel([str(imgs / "i0.png")], str(out))
+
+    data = json.loads((out / "i0.json").read_text("utf-8"))
+    assert not os.path.isabs(data["imagePath"]), (
+        f"imagePath 应为相对路径（LabelMe 惯例），got {data['imagePath']}"
+    )
+    resolved = os.path.normpath(os.path.join(str(out), data["imagePath"]))
+    assert resolved == os.path.normpath(str(imgs / "i0.png")), (
+        f"相对路径应能从 JSON 目录解析回源图: {resolved}"
+    )

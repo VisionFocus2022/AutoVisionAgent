@@ -120,9 +120,12 @@ def run_batch_prelabel(
             shapes = _shapes_from_result(result)
             h, w = img.shape[:2]
             json_name = Path(image_path).stem + ".json"
+            # v5 P3#6：imagePath 相对 JSON 所在目录（LabelMe 生态惯例——
+            # 绝对路径在标注目录整体迁移后断链）
+            rel_image = os.path.relpath(image_path, out_dir)
             save_labelme(
                 os.path.join(out_dir, json_name),
-                shapes, image_path, h, w,
+                shapes, rel_image, h, w,
             )
             written += 1
         except (RuntimeError, OSError, ValueError) as exc:

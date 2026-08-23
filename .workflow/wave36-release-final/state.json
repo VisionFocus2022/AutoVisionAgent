@@ -1,0 +1,14 @@
+{
+  "wave": "W36",
+  "title": "发版收尾——imagePath 相对化（v5 第二波#6）+ RELEASES.md v2.1.0 + UIA 取证判定",
+  "date": "2026-08-23",
+  "changes": {
+    "t1": "batch_prelabel imagePath 绝对→相对（os.path.relpath(out_dir)——LabelMe 生态惯例，迁移不断链；RED 用例含『相对路径可从 JSON 目录解析回源图』往返断言）",
+    "t2": "RELEASES.md：v2.1.0 (M3) 发版说明（九波+清偿波汇总，含升级建议与已知待办）",
+    "t3": "UIA 取证：探测 38 用户态进程在场（与争抢时段同量级）——按环境判据不跑，留真空闲窗口（深夜 pytest tests/uia/ 约 15-20 分钟）"
+  },
+  "verification": {
+    "gate": "1102 passed / 4 skipped / rc=0（1101+1 新）；W30 批 9/9"
+  },
+  "next": "发版分发（tag/push 由用户裁决——外向动作）"
+}
