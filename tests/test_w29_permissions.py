@@ -196,8 +196,8 @@ def test_select_denied_does_not_switch_and_audits(qapp, monkeypatch):
 
 
 @pytest.mark.unit
-def test_select_allowed_before_login_is_permissive(qapp):
-    """未登录态（role=None）保持宽容——W29 消费点锚定登录成功处（PRD §5）。"""
+def test_select_home_before_login_allowed(qapp):
+    """home 在 operator 集内——未登录可达（W39 反转后仍成立）。"""
     from gui.core.shell import MainWindow
 
     win = MainWindow("t-perm3")
@@ -209,15 +209,45 @@ def test_select_allowed_before_login_is_permissive(qapp):
         win.deleteLater()
 
 
+@pytest.mark.unit
+def test_unlogged_role_gets_operator_min_set(qapp):
+    """W39 反转（v6 P2-3）：未登录（role=None）= operator 最小集。
+
+    原宽容态「全 11 页可见+全放行」废弃——操作员日常不登录开工的
+    旁路被收口；登录页恒可见保持。
+    """
+    from gui.core.shell import MainWindow
+
+    win = MainWindow("t-perm-w39")
+    try:
+        for key in ("home", "label", "settings", "train", "deploy"):
+            win.add_page(key, "ico", key, _dummy_widget(win))
+        win.set_role(None)
+        # 导航可见性：operator 集内可见，集外隐藏
+        assert win._nav_buttons["home"].isVisibleTo(win), "home 应可见"
+        assert win._nav_buttons["label"].isVisibleTo(win), "label 应可见"
+        for locked in ("settings", "train", "deploy"):
+            assert not win._nav_buttons[locked].isVisibleTo(win), (
+                f"未登录不应见 {locked}（operator 最小集）"
+            )
+        # select 直达也被拒（不只靠按钮隐藏），且留审计
+        win.select("settings")
+        assert win._stack.currentWidget() is not win._pages["settings"], (
+            "未登录 select 锁页应被拒绝"
+        )
+    finally:
+        win.deleteLater()
+
+
 # ============================== 3. 登录链路角色语义（FR-5/6） ============================== #
 
 
 @pytest.mark.unit
-def test_offline_mode_emits_admin_role(qapp, tmp_path, monkeypatch):
-    """离线模式 = 本机单工位完整权限 → emit ("offline","admin")。
+def test_offline_mode_emits_operator_role(qapp, tmp_path, monkeypatch):
+    """W39 反转（v6 P2-4）：离线模式 = operator 受限会话 → emit ("offline","operator")。
 
-    「受限」指无 License 单工位，非页面裁剪——operator 角色会裁掉
-    settings/project/train 等 UIA 全量导航的 9 页。
+    原 admin 语义废弃（一键 admin 使整套角色护栏对离线路径失效）；
+    全量导航类 UIA 流程改走真实 admin 登录（test_full_workflow）。
     """
     from gui.pages.login import page as login_mod
 
@@ -228,7 +258,7 @@ def test_offline_mode_emits_admin_role(qapp, tmp_path, monkeypatch):
     page.login_success.connect(lambda u, r: logged.append((u, r)))
 
     page._do_offline()
-    assert logged == [("offline", "admin")]
+    assert logged == [("offline", "operator")]
 
 
 @pytest.mark.unit

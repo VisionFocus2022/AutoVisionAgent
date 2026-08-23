@@ -484,3 +484,37 @@ def test_retranslate_refresh_texts(label_page):
     label_page.retranslate()
     assert label_page.btn_open_folder.text() == "打开文件夹"
     assert label_page.btn_save.text() == "保存标注"
+
+
+@pytest.mark.unit
+def test_run_ai_prelabel_multiclass_labels_per_box(tmp_path, monkeypatch):
+    """W39（v6 P2-7）：多类 DET 结果逐框取标签——原实现全框共用
+    labels[0]，与批量预标注（batch_prelabel 逐框 labels[i]）语义分叉，
+    两条 AI 预标注路径对同一结果必须产出一致标签。"""
+    from core.interfaces_supervised import DetectionResult, TaskType
+    from gui.pages.label.page import run_ai_prelabel
+    import models.supervised.registry as reg_mod
+
+    class _Engine:
+        def infer(self, im):
+            return DetectionResult(
+                task=TaskType.DET, score=0.9,
+                boxes=((1, 2, 30, 20), (5, 6, 40, 25)),
+                labels=("crack", "dent"), scores=(0.9, 0.8),
+            )
+
+    class _Reg:
+        def has(self, t):
+            return True
+
+        def get(self, t):
+            return _Engine()
+
+    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _Reg())
+
+    img = tmp_path / "img.png"
+    _png(img)
+    shapes = run_ai_prelabel(str(img))
+    assert [s.label for s in shapes] == ["crack", "dent"], (
+        f"逐框标签应与检出对应，got {[s.label for s in shapes]}"
+    )

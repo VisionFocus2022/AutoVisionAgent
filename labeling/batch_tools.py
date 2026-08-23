@@ -25,13 +25,15 @@ from typing import Any, Dict, List, Optional, Tuple
 from labeling.io_labelme import load_labelme
 
 
-def _atomic_write_json(path: str, doc: Dict[str, Any]) -> None:
+def atomic_write_json(path: str, doc: Dict[str, Any]) -> None:
     """原子写 JSON：先写同目录临时文件，再 os.replace 替换目标。
 
     P2-2：直写是 truncate-then-write，写盘中途失败/进程退出会把目标
     JSON 截断且旧内容已丢。本函数保证任何一步失败都不触碰旧文件：
 
-    - 临时文件与目标同目录（同盘，os.replace 原子性前提），名带 .tmp；
+    - 临时文件与目标同目录（同盘，os.replace 原子性前提），mkstemp
+      随机名（并发写同一目标不互踩——W39·v6 P2-8：升为全仓单源，
+      gui 两处固定 .tmp 名的弱版已删，此处为唯一实现）；
     - 写入参数与直写版一致（utf-8 / ensure_ascii=False / indent=2）；
     - 异常类型与直写版一致上抛（open OSError / dump 原样 / replace OSError），
       上抛前尽力清理残留临时文件。
@@ -130,7 +132,7 @@ def cut_labelme_json(
                 "imageWidth": tile_w,
             }
             out_path = os.path.join(out_dir, f"{base_name}_{tx}_{ty}.json")
-            _atomic_write_json(out_path, tile_doc)
+            atomic_write_json(out_path, tile_doc)
             results.append(out_path)
 
     return results
@@ -167,7 +169,7 @@ def batch_replace_label(
                 s["label"] = new_label
                 changed = True
         if changed:
-            _atomic_write_json(path, doc)
+            atomic_write_json(path, doc)
             count += 1
     return count
 
@@ -228,7 +230,7 @@ def batch_delete_labels(
             if s.get("label") not in delete_set
         ]
         if len(doc["shapes"]) != original_len:
-            _atomic_write_json(path, doc)
+            atomic_write_json(path, doc)
             count += 1
     return count
 
@@ -264,7 +266,7 @@ def flip_image_annotation(
         elif mode == "vertical":
             s["points"] = [[p[0], h - p[1]] for p in pts]
 
-    _atomic_write_json(json_path, doc)
+    atomic_write_json(json_path, doc)
     return True
 
 

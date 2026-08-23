@@ -143,7 +143,7 @@ def test_login_success_emits_enum_role(qapp, tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_offline_mode_emits_enum_role(qapp, tmp_path, monkeypatch):
-    """离线模式 login_success 收到枚举 "admin"。
+    """离线模式 login_success 收到枚举 "operator"（W39 反转：离线=受限会话）。
 
     W29 语义迁移：离线=本机单工位完整权限（原 operator 会把 UIA 全量
     导航的 9 页裁掉）；「受限」指无 License 单工位，非页面裁剪。
@@ -151,4 +151,4 @@ def test_offline_mode_emits_enum_role(qapp, tmp_path, monkeypatch):
     page = _make_page(tmp_path, monkeypatch, qapp)
     (tmp_path / "license.key").write_text("", encoding="utf-8")
     page._do_offline()
-    assert page._logged == [("offline", "admin")]
+    assert page._logged == [("offline", "operator")]

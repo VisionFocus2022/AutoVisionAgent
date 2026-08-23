@@ -57,7 +57,8 @@ class MainWindow(QMainWindow):
         self._pages: Dict[str, QWidget] = {}
         self._nav_buttons: Dict[str, QPushButton] = {}
         self._theme_manager = None
-        # W29 角色消费：None=未登录（宽容态，全可见——消费点锚定登录成功处）
+        # W29 角色消费（W39 反转）：None=未登录 → operator 最小集
+        # （原宽容态全可见废弃，v6 P2-3 收口）
         self._active_role: Optional[str] = None
 
         self._build_shell(title)
@@ -199,11 +200,10 @@ class MainWindow(QMainWindow):
         self._nav_lay.addWidget(btn)
 
     def select(self, key: str) -> None:
-        """切换到指定页面（W29：登录后按角色复查，拒绝不切页+审计）。"""
+        """切换到指定页面（W39 反转：未登录=operator 最小集，拒绝即审计）。"""
         if key not in self._pages:
             return
-        if (self._active_role is not None
-                and not page_allowed(self._active_role, key)):
+        if not page_allowed(self._active_role or "", key):
             # 操作护栏非安全边界（见 gui/core/permissions.py）——拒绝即
             # 显式反馈 + 审计留痕，不留静默路径
             self.set_status(tr("无权限访问该页面"), key)
@@ -228,12 +228,10 @@ class MainWindow(QMainWindow):
         self._apply_nav_visibility()
 
     def _apply_nav_visibility(self) -> None:
-        """按角色过滤导航按钮可见性（登录页按钮恒可见）。"""
+        """按角色过滤导航按钮可见性（登录页恒可见；W39：未登录=operator 最小集）。"""
         role = self._active_role
         for key, btn in self._nav_buttons.items():
-            btn.setVisible(
-                role is None or page_allowed(role, key)
-            )
+            btn.setVisible(page_allowed(role or "", key))
 
     def _audit_access_denied(self, page_key: str) -> None:
         """拒绝访问审计（失败不阻塞导航反馈）。"""

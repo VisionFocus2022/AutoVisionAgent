@@ -4,7 +4,8 @@
 测试技术：Windows UI Automation（uiautomation 库）从外部驱动真实 UI
 
 流程步骤（每步验证状态栏反馈）：
-  0. 登录页：点击"离线模式"免密登录 → 等"已进入离线模式"
+  0. 登录页：真实 admin 登录（W39：离线模式已降 operator，全流程需
+     导航 train/deploy 等 operator 不可见页；凭据由 ready_admin_cfg 预置）
      （conftest 会预创建 configs/license.key 以跳过确认对话框）
   1. 数据管理页：选择目标目录 → 导入图像（源目录）→ 等"导入完成"
   2. 标注页：打开文件夹 → 切矩形模式 → 画矩形 → 添加标签 → 保存标注 → 等"已保存"
@@ -37,31 +38,37 @@ try:
     from tests.uia.uia_helpers import (
         app_log_path,
         click_button,
+        click_login_button_precise,
         click_nav,
         confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
         find_control_by_name,
+        sort_login_edits,
         wait_any_status,
         wait_status,
         _iter_descendants,
         read_status_text,
+        set_edit_value,
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (  # type: ignore[no-redef]
         app_log_path,
         click_button,
+        click_login_button_precise,
         click_nav,
         confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
         find_control_by_name,
+        sort_login_edits,
         wait_any_status,
         wait_status,
         _iter_descendants,
         read_status_text,
+        set_edit_value,
     )
 
 logger = logging.getLogger(__name__)
@@ -73,11 +80,67 @@ T_LABEL = float(os.environ.get("AVA_UIA_T_LABEL", "30"))
 T_TRAIN = float(os.environ.get("AVA_UIA_T_TRAIN", "180"))
 T_DEPLOY = float(os.environ.get("AVA_UIA_T_DEPLOY", "30"))
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+_FLOW_PWD = "UiaFlow#2026"  # ≥8 字符（登录校验下限）
+
+
+def _uia_config_dirs() -> list:
+    """UIA 可用的应用 config 目录（python 源码模式 + exe 模式双覆盖）。"""
+    return [
+        REPO_ROOT / "configs",
+        REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs",
+    ]
+
+
+@pytest.fixture()
+def ready_admin_cfg():
+    """预置免改密 admin（users.json 直写，备份还原）——W39：离线模式降
+    operator 后，全流程导航 train/deploy 需真实 admin 登录。
+
+    双模式 config 目录均覆盖（python 源码/exe）；已有 users.json 先备份
+    （.uia-bak），teardown 还原；无则删除预置件。参数顺序上须先于
+    ava_app（users.json 需在应用启动前就位）。
+    """
+    import json
+
+    from core.auth import hash_password
+
+    h, s, iters = hash_password(_FLOW_PWD)
+    db = {"admin": {
+        "password_hash": h, "salt": s, "role": "admin",
+        "iterations": iters, "must_change": False,
+    }}
+    touched: list = []
+    try:
+        for cfg in _uia_config_dirs():
+            if not cfg.exists():
+                continue
+            users = cfg / "users.json"
+            if users.exists():
+                bak = cfg / (users.name + ".uia-bak")
+                users.replace(bak)
+                touched.append((bak, users))
+            users.write_text(
+                json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            touched.append((users, None))  # (预置文件, None)=teardown 删除
+        yield
+    finally:
+        for path, restore_to in reversed(touched):
+            try:
+                if restore_to is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.replace(restore_to)
+            except OSError:
+                logger.warning("还原 %s 失败", path, exc_info=True)
+
 
 # ================================ 全流程测试 ================================ #
 
 @pytest.mark.usefixtures("ava_app")
 def test_import_annotate_train_deploy(
+    ready_admin_cfg,
     ava_app,
     sample_images_dir: Path,
     workspace_dir: Path,
@@ -110,35 +173,30 @@ def test_import_annotate_train_deploy(
 # ================================ 各步骤实现 ================================ #
 
 def _step_login(win) -> None:
-    """登录页：点击"离线模式"免密登录 → 等"已进入离线模式"或主页就绪。
+    """登录页：真实 admin 登录（W39：离线模式已降 operator，全流程需
+    导航 train/deploy 等 operator 不可见页；凭据由 ready_admin_cfg 预置
+    免改密，避开首登强制改密弹窗）。
 
-    应用默认停在登录页（gui/main.py:172 win.select("login")）。
-    conftest 已预创建 configs/license.key，正常情况下离线模式直接进入。
-    若 license.key 未被识别（如自定义 exe 路径），会弹 QMessageBox 确认框，
-    此时调用 confirm_dialog_if_present 点击"是"以继续。
-
-    登录成功的判定：
-      - 状态栏出现"已进入离线模式"（_do_offline 直接 emit）
-      - 或状态栏出现"就绪"（主页加载后覆盖的状态，也代表已进入主页）
-      - 或"离线模式"按钮不再可见（页面已切换）
+    登录成功的判定：状态栏"登录成功"或主页"就绪"（主页加载后可能
+    覆盖登录状态）；精确点击'登录'按钮（泛匹配会命中含"登录"子串
+    的复选框，W25 R3 实测踩坑）。
     """
-    logger.info("--- 步骤0：离线模式登录 ---")
-    assert click_button(win, "离线模式", T_NAV), "未找到'离线模式'按钮"
+    logger.info("--- 步骤0：admin 真实登录 ---")
+    edits = sort_login_edits(win)
+    assert len(edits) >= 2, f"登录页应有用户名/密码两个输入框，got {len(edits)}"
+    assert set_edit_value(edits[0], "admin"), "用户名写入失败"
+    assert set_edit_value(edits[1], _FLOW_PWD), "密码写入失败"
+    assert click_login_button_precise(win), "未找到精确'登录'按钮"
 
-    # 短暂等待：若有 QMessageBox 确认框则点击"是"（license.key 不存在时）
-    # 用较短超时（3s），避免 license.key 已存在时白等
-    confirm_dialog_if_present("离线模式", timeout=3.0)
-
-    # 等待登录成功：状态栏出现"已进入离线模式"或主页"就绪"
-    # （主页加载后可能覆盖"已进入离线模式"状态，"就绪"也代表登录成功）
+    # 等待登录成功：状态栏"登录成功"或主页"就绪"/"仪表盘"
     status = wait_any_status(
-        win, ["已进入离线模式", "离线模式", "就绪", "仪表盘"], T_NAV
+        win, ["登录成功", "就绪", "仪表盘"], T_NAV
     )
     assert status is not None, (
-        f"离线登录未完成：状态栏未出现登录成功标志，"
+        f"admin 登录未完成：状态栏未出现登录成功标志，"
         f"最后状态='{_last_status(win)}'"
     )
-    logger.info("离线模式登录完成: %s", status)
+    logger.info("admin 登录完成: %s", status)
     # 等待主页渲染稳定
     time.sleep(1.0)
 

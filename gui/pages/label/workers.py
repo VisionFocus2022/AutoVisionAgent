@@ -66,15 +66,17 @@ def run_ai_prelabel(image_path: str) -> List:
         # 真引擎 boxes 是 numpy 数组——不得做真值判断（歧义异常，W9 修复）
         if result.boxes is None or len(result.boxes) == 0:
             return []
-        label = result.labels[0] if result.labels else "defect"
+        # W39（v6 P2-7）：逐框取标签（与 batch_prelabel._shapes_from_result
+        # 同语义——原全框共用 labels[0] 属两条预标注路径语义分叉）
+        labels = result.labels or ()
         return [
             Shape(
                 AnnotationMode.RECTANGLE,
                 ((float(box[0]), float(box[1])),
                  (float(box[2]), float(box[3]))),
-                label=label,
+                label=labels[i] if i < len(labels) else "defect",
             )
-            for box in result.boxes
+            for i, box in enumerate(result.boxes)
         ]
     except (ImportError, RuntimeError, OSError, ValueError):
         # W28 审计折入：SupervisedEngineError（引擎/权重级失败）不在此收编

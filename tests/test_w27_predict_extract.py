@@ -35,7 +35,14 @@ def test_workers_module_exists_and_qt_free():
 
 @pytest.mark.unit
 def test_workers_expects_pure_helpers():
-    """workers.py 提供批量收集/记录序列化/原子写盘/CSV 防注入纯函数。"""
+    """workers.py 提供批量收集/记录序列化/原子写盘/CSV 防注入纯函数。
+
+    W39·v6 P2-8：atomic_write_json 收敛为 labeling.batch_tools 单源
+    （mkstemp 强版），本模块经 import 再导出——模块面仍暴露该名，
+    batch_runner 与测试 monkeypatch 缝不变。
+    """
+    import gui.pages.predict.workers as workers_mod
+
     tree = ast.parse(WORKERS.read_text(encoding="utf-8"))
     funcs = {
         n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -47,8 +54,10 @@ def test_workers_expects_pure_helpers():
         "batch_save_dir",
         "result_to_record",
         "row_display_fields",
-        "atomic_write_json",
     } <= funcs
+    assert callable(workers_mod.atomic_write_json), (
+        "atomic_write_json 须从 labeling.batch_tools 再导出（单源收敛后缝不变）"
+    )
 
 
 @pytest.mark.unit

@@ -1,13 +1,11 @@
 """W35（v5 P2-N1 收口）：action_allowed 消费接线——登记≠消费的终局修复。
 
-背景：W29/W30/W33/W34 向 _ACTION_MATRIX 登记 4 个动作但生产调用点 0
-处（v5 攻方复核实锤）。本波：core/session 增角色持有 + permissions.check_action
-统一门控（拒绝→文案+审计）+ 三个按钮入口消费 + 登录单点设置角色。
+背景：W29-W34 向 _ACTION_MATRIX 登记 3 个动作但生产调用点 0 处
+（v5 攻方复核实锤；W39 增 data_manage.batch_label_edit 共 4 个）。
+本波：core/session 增角色持有 + permissions.check_action 统一门控
+（拒绝→文案+审计）+ 三个按钮入口消费 + 登录单点设置角色。
 """
 from __future__ import annotations
-
-import threading
-from pathlib import Path
 
 import pytest
 
@@ -16,8 +14,6 @@ pytest.importorskip("PySide6")
 import os  # noqa: E402
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 # ============================== 1. session 角色持有 ============================== #
@@ -40,17 +36,34 @@ def test_session_role_roundtrip():
 
 @pytest.mark.unit
 def test_check_action_permits_unlogged_and_registered(monkeypatch):
-    """未登录宽容放行；已登记动作按矩阵判定（三角色全允许的动作）。"""
+    """未登录按 operator 动作集判定（W39 反转；已登记动作 operator 全允许）。"""
     from core import session
     from gui.core.permissions import check_action
 
     session.reset_current_role()
-    assert check_action("predict.batch_infer") is None, "未登录应宽容放行"
+    assert check_action("predict.batch_infer") is None, "未登录×已登记(operator 允许) 应放行"
 
     session.set_current_role("operator")
     try:
         assert check_action("predict.batch_infer") is None, "operator×batch_infer 应放行"
         assert check_action("label.batch_prelabel") is None
+    finally:
+        session.reset_current_role()
+
+
+@pytest.mark.unit
+def test_check_action_unlogged_follows_operator_matrix(monkeypatch):
+    """W39 反转（v6 P2-3）：未登录 × 未登记动作 → 拒绝 + 审计留痕。
+
+    原宽容态「未登录全放行」废弃——与导航未登录=operator 最小集同语义。
+    """
+    from core import session
+    from gui.core.permissions import check_action
+
+    session.reset_current_role()
+    try:
+        denied = check_action("unregistered_action_w39")
+        assert denied is not None, "未登录×未登记动作应拒绝（operator 矩阵）"
     finally:
         session.reset_current_role()
 
@@ -69,7 +82,9 @@ def test_check_action_denies_unregistered_with_audit(monkeypatch):
     try:
         msg = check_action("dangerous.unregistered")
         assert msg is not None and "无权限" in msg
-        assert denied_log and denied_log[0].get("page") == "dangerous.unregistered"
+        # W39（v6 P3-2）：动作 id 以 action: 前缀入 page 字段——与导航拒绝
+        # 的纯 page id（"settings"）在审计流内可区分
+        assert denied_log and denied_log[0].get("page") == "action:dangerous.unregistered"
         assert denied_log[0].get("role") == "engineer"
     finally:
         session.reset_current_role()
@@ -83,20 +98,6 @@ def qapp():
     from PySide6.QtWidgets import QApplication
 
     return QApplication.instance() or QApplication([])
-
-
-class FakeThread:
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._target, self._args, self._kwargs = target, args, kwargs or {}
-
-    def start(self):
-        if self._target is not None:
-            self._target(*self._args, **self._kwargs)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    monkeypatch.setattr(threading, "Thread", FakeThread)
 
 
 @pytest.mark.unit
@@ -189,7 +190,81 @@ def test_video_super_denied(qapp, monkeypatch):
 
 
 @pytest.mark.unit
-def test_main_wires_session_role_on_login():
-    """gui/main 登录成功处理器单点设置 session 角色（与 win.set_role 同点）。"""
-    src = (REPO_ROOT / "gui" / "main.py").read_text(encoding="utf-8")
-    assert "set_current_role" in src, "登录处理器须同步 session 角色（动作门控数据源）"
+def test_main_wires_session_role_on_login(qapp):
+    """登录成功 → session 角色与 win.set_role 同点单点设置（行为化——
+    W39·v6 P3-10：原为子串存在性断言，删调用留 import 仍绿）。"""
+    import types
+
+    from PySide6.QtCore import QObject, Signal
+
+    from core import session
+    from gui.main import _wire_home_refresh
+
+    class _FakeLogin(QObject):
+        login_success = Signal(str, str)
+
+    class _FakeProject(QObject):
+        project_opened = Signal(str)
+
+    class _Win:
+        def __init__(self):
+            self.roles = []
+            self.selected = None
+
+        def set_role(self, role):
+            self.roles.append(role)
+
+        def select(self, key):
+            self.selected = key
+
+    win = _Win()
+    login, proj = _FakeLogin(), _FakeProject()
+    home = types.SimpleNamespace(
+        refresh_recent=lambda *_a, **_k: None,
+        refresh_history=lambda: None,
+    )
+    _wire_home_refresh(win, home, login, proj)
+
+    session.reset_current_role()
+    try:
+        login.login_success.emit("alice", "operator")
+        assert session.get_current_role() == "operator", (
+            "session 角色须随登录成功设置（动作门控数据源）"
+        )
+        assert win.roles == ["operator"], "导航角色须同点设置（同源不漂移）"
+        assert win.selected == "home", "登录后应切回主页"
+    finally:
+        session.reset_current_role()
+        # 排水 0ms singleShot（_refresh_home_lists），防定时器泄漏到后续测试
+        qapp.processEvents()
+
+
+# ============================== W39：data_manage 批量写盘工具入控（v6 P2-6） ============================== #
+
+
+@pytest.mark.unit
+def test_data_manage_batch_tools_denied(qapp, monkeypatch):
+    """数据管理页三个批量写盘工具（替换/删除/翻转）：动作拒绝 → 早退 +
+    状态栏文案，且不触目录选择（漏网收口——operator 可见页上的破坏性操作）。"""
+    from gui.pages.data_manage import page as dm_mod
+    from gui.pages.data_manage.page import DataManagePage
+
+    monkeypatch.setattr(
+        dm_mod, "check_action",
+        lambda action: "无权限执行该操作",
+    )
+    page = DataManagePage()
+    page._msgs = []
+    page.status_changed.connect(lambda t, a: page._msgs.append((t, a)))
+
+    picked = []
+    monkeypatch.setattr(
+        page, "_get_ann_dir", lambda: picked.append(1) or ""
+    )
+    for method in (
+        "_tool_replace_label", "_tool_delete_labels", "_tool_flip_annotation",
+    ):
+        page._msgs.clear()
+        getattr(page, method)()
+        assert any("无权限" in t for t, _ in page._msgs), (method, page._msgs)
+    assert picked == [], "拒绝路径不得触目录选择"

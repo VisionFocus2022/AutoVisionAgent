@@ -62,6 +62,7 @@ class AuditLogger:
         self._lock = threading.Lock()
         self._buffer: List[Dict[str, Any]] = []
         self._buffer_max = 100  # 缓冲区满后刷盘
+        self._buffer_hard_max = 1000  # W39·v6 P3-3：目录不可写时的内存硬上限（丢最旧）
         # W11-P1: 首次创建单例时注册退出钩子，退出/崩溃兜底刷盘，
         # 否则缓冲尾记录（最多 _buffer_max-1 条）随进程一起丢失。
         atexit.register(self.flush)
@@ -88,6 +89,14 @@ class AuditLogger:
 
         with self._lock:
             self._buffer.append(entry)
+            if len(self._buffer) > self._buffer_hard_max:
+                # W39·v6 P3-3：目录不可写时防无界增长——丢最旧并告警
+                dropped = len(self._buffer) - self._buffer_hard_max
+                del self._buffer[:dropped]
+                _logger.warning(
+                    "审计缓冲达硬上限 %d 条（审计目录不可写？），丢弃最旧 %d 条",
+                    self._buffer_hard_max, dropped,
+                )
             if len(self._buffer) >= self._buffer_max:
                 self._flush_locked()
 
@@ -103,14 +112,19 @@ class AuditLogger:
             self._flush_locked()
 
     def _flush_locked(self) -> None:
-        """在已持锁状态下写入磁盘。"""
+        """在已持锁状态下写入磁盘。
+
+        W39·v6 P3-3：mkdir/写盘失败不再上抛（原 mkdir 在 try 外——
+        目录不可写时每条 log 都从 log() 抛出）；失败仅告警，缓冲由
+        _buffer_hard_max 兜底有界，等待目录恢复后下次刷盘。
+        """
         if not self._buffer:
             return
 
-        self._log_dir.mkdir(parents=True, exist_ok=True)
         log_file = self._log_dir / f"audit_{datetime.now().strftime('%Y%m%d')}.jsonl"
 
         try:
+            self._log_dir.mkdir(parents=True, exist_ok=True)
             with open(log_file, "a", encoding="utf-8") as f:
                 for entry in self._buffer:
                     f.write(json.dumps(entry, ensure_ascii=False, default=str) + "\n")

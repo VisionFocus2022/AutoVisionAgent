@@ -1,5 +1,9 @@
 """角色权限面（W29）：页面可见性 + 动作允许的纯函数矩阵。
 
+W39·v6 P3-5 声明修正：矩阵部分（page_allowed/action_allowed）保持
+纯函数；check_action 是带审计写入与 i18n 副作用的门控入口，勿按
+纯函数假设复用（如并发场景缓存其结果）。
+
 诚实声明：本模块是【操作护栏非安全边界】——users.json 本地可编辑、
 单工位进程内的角色状态可被本地调试工具改写。目标是现场职责分离
 （操作员不误入系统设置/发布等工程域），不防恶意本地用户。
@@ -51,6 +55,8 @@ _ACTION_MATRIX: Dict[str, FrozenSet[str]] = {
     "predict.batch_infer": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
     # W34：视频超分
     "predict.video_super": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
+    # W39：数据管理批量写盘工具（替换/删除/翻转；v6 P2-6 漏网收口）
+    "data_manage.batch_label_edit": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
 }
 
 
@@ -78,9 +84,10 @@ def action_allowed(role: str, action: str) -> bool:
 
 
 def check_action(action: str) -> "str | None":
-    """动作门控统一入口（W35 · v5 P2-N1 收口：登记≠消费的终局修复）。
+    """动作门控统一入口（W35 · v5 P2-N1 收口；W39 反转未登录语义）。
 
-    - 未登录（session 无角色）→ 宽容放行（与导航未登录宽容态一致，W29 语义）；
+    - 未登录（session 无角色）→ 按 **operator 动作集**判定（W39：原
+      宽容全放行废弃，与导航未登录=operator 最小集同语义）；
     - 允许 → 返回 None；拒绝 → 状态栏文案 + access_denied 审计留痕，
       返回文案由调用方 emit 到状态栏并早退。
 
@@ -94,12 +101,16 @@ def check_action(action: str) -> "str | None":
     from core.session import get_current_role, get_current_user
 
     role = get_current_role()
-    if role is None or action_allowed(role, action):
+    effective = role if role is not None else ROLE_OPERATOR
+    if action_allowed(effective, action):
         return None
     try:
         from core.audit_logger import log_access_denied
 
-        log_access_denied(user=get_current_user(), role=role, page=action)
+        log_access_denied(
+            user=get_current_user(), role=role or "",
+            page=f"action:{action}",  # W39·v6 P3-2：前缀区分动作 id 与导航 page id
+        )
     except (ImportError, OSError):
         import logging
 

@@ -229,7 +229,6 @@ _EN_US: Dict[str, str] = {
     "管理员": "Admin",
     "工程师": "Engineer",
     "操作员": "Operator",
-    "记住登录状态": "Remember login",
     "登录": "Login",
     "无权限访问该页面": "No permission to access this page",
     "无权限执行该操作": "No permission for this action",
@@ -453,8 +452,6 @@ _EN_US: Dict[str, str] = {
     "移动": "Move",
     "符号链接": "Symlink",
     "确认退出": "Confirm Exit",
-    "有正在进行的操作（训练/推理）。\n确定要退出吗？未保存的数据可能丢失。":
-        "Operations in progress (training/inference).\nExit anyway? Unsaved data may be lost.",
     "最近项目": "Recent Projects",
     "暂无最近项目": "No recent projects",
     "张更多（仅加载前500张缩略图）": " more (only first 500 thumbnails loaded)",

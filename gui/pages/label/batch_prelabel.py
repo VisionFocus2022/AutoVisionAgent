@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from labeling import AnnotationMode, Shape
+from labeling.batch_tools import atomic_write_json  # W39·v6 P2-8：原子写单源
 from labeling.io_labelme import save_labelme
 from project.paths import resolve_base_root
 
@@ -53,21 +54,6 @@ def _shapes_from_result(result) -> List[Shape]:
             )
         )
     return shapes
-
-
-def _atomic_write_json(path: str, data: object) -> None:
-    """temp + os.replace 原子写（语义同 predict workers 同名函数）。"""
-    tmp_path = path + ".tmp"
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
 
 
 def run_batch_prelabel(
@@ -148,7 +134,7 @@ def run_batch_prelabel(
         "cancelled": cancelled,
         "relpath_fallback": cross_drive,
     }
-    _atomic_write_json(os.path.join(out_dir, "manifest.json"), manifest)
+    atomic_write_json(os.path.join(out_dir, "manifest.json"), manifest)
     logger.info(
         "批量预标注完成: %d/%d written=%d failed=%d cancelled=%s → %s",
         written, len(images), written, len(failed), cancelled, out_dir,

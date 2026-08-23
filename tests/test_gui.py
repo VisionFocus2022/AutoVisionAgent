@@ -72,6 +72,9 @@ def test_label_page_polygon_commit(label_page):
 
 @pytest.mark.unit
 def test_nav_switch(window):
+    # W39：未登录=operator 最小集（train 不可见）——本测关注切换机制，
+    # 以 admin 角色隔离门控语义（门控行为由 test_w29_permissions 覆盖）
+    window.set_role("admin")
     window.select("label")
     label_idx = window._stack.currentIndex()
     assert label_idx >= 0

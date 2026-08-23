@@ -30,10 +30,12 @@ try:
         _wait_dialog,
         _wait_dialog_gone,
         click_button,
+        click_login_button_precise as _click_login_button,
         find_edit_controls,
         find_main_window,
         read_status_text,
         set_edit_value,
+        sort_login_edits as _sort_edits,
         wait_status,
     )
     from tests.uia.test_pole_dataset_flows import _ensure_logged_in
@@ -43,10 +45,12 @@ except ImportError:  # pragma: no cover - 顶层模式兜底
         _wait_dialog,
         _wait_dialog_gone,
         click_button,
+        click_login_button_precise as _click_login_button,
         find_edit_controls,
         find_main_window,
         read_status_text,
         set_edit_value,
+        sort_login_edits as _sort_edits,
         wait_status,
     )
     from test_pole_dataset_flows import _ensure_logged_in  # type: ignore[no-redef]
@@ -87,38 +91,6 @@ def _parse_initial_pwd() -> str:
                 return m.group(1)
         time.sleep(0.5)
     pytest.fail(f"initial_credentials.txt 未生成或无初始密码行: {CRED_FILE}")
-
-
-def _sort_edits(container) -> list:
-    """收集容器内 Edit 控件并按纵坐标排序（QLineEdit 无可靠 Name）。"""
-    edits = find_edit_controls(container, timeout=10)
-    return sorted(edits, key=lambda c: c.BoundingRectangle.top)
-
-
-def _click_login_button(win) -> bool:
-    """精确点击登录按钮（ButtonControl 且 Name=='登录'）。
-
-    不能用 click_button(win, "登录")：登录页复选框「记住登录状态」
-    （CheckBoxControl，在 click_button 的 Button+CheckBox 匹配集内）包含
-    子串"登录"，树遍历先命中它——W25 R3 实测点击落在复选框上，槽函数
-    零触发、状态栏恒"就绪"。
-    """
-    deadline = time.time() + 10
-    while time.time() < deadline:
-        for c in _iter_descendants(win, max_depth=8):
-            if type(c).__name__ != "ButtonControl":
-                continue
-            if (c.Name or "").strip() == "登录":
-                try:
-                    c.SetFocus()
-                except Exception:  # noqa: BLE001
-                    pass
-                c.Click()
-                logger.info("已精确点击'登录'按钮（绕开'记住登录状态'复选框）")
-                return True
-        time.sleep(0.4)
-    logger.error("未找到精确'登录'按钮")
-    return False
 
 
 @pytest.fixture()

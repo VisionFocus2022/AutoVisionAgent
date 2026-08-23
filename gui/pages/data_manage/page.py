@@ -29,7 +29,9 @@ from PySide6.QtWidgets import (
 
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
+from gui.core.permissions import check_action  # W39：动作门控（v6 P2-6 漏网收口）
 from gui.core.thread_bridge import invoke_main, ui_on_error
+from gui.pages.data_manage.version_compare import version_diff_text  # W39·v6 P3：规模守卫抽取
 from gui.widgets.file_dialog import pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
 
@@ -50,9 +52,6 @@ _OP_TITLES = {
     # W19（v3 第三波 FR-4.2）：版本管理入口
     "snapshot": "快照完成",
 }
-
-# W19 FR-4.2：版本对比对话框每类示例上限（长清单只列前 20 条，计数仍全量）
-_MAX_DIFF_EXAMPLES = 20
 
 # W20：自然排序——把路径切成 文本/数字 交替块。W22：文件名仅首个数字块按
 # 数值（主序号 1<2<10），其后数字块按文本——位相关字段（时间戳）按文本即
@@ -580,6 +579,10 @@ class DataManagePage(QWidget):
 
     def _tool_replace_label(self) -> None:
         """批量替换标签名（W3-T3: worker 线程执行）。"""
+        denied = check_action("data_manage.batch_label_edit")
+        if denied:
+            self.status_changed.emit(denied, "!")
+            return
         d = self._get_ann_dir()
         if not d:
             return
@@ -600,6 +603,10 @@ class DataManagePage(QWidget):
 
     def _tool_delete_labels(self) -> None:
         """批量删除指定标签名的标注（W3-T3: worker 线程执行）。"""
+        denied = check_action("data_manage.batch_label_edit")
+        if denied:
+            self.status_changed.emit(denied, "!")
+            return
         d = self._get_ann_dir()
         if not d:
             return
@@ -620,6 +627,10 @@ class DataManagePage(QWidget):
 
     def _tool_flip_annotation(self) -> None:
         """翻转标注坐标（配合图像翻转）（W3-T3: worker 线程执行）。"""
+        denied = check_action("data_manage.batch_label_edit")
+        if denied:
+            self.status_changed.emit(denied, "!")
+            return
         d = self._get_ann_dir()
         if not d:
             return
@@ -756,19 +767,8 @@ class DataManagePage(QWidget):
         )
 
     def _version_diff_text(self, diff: dict) -> str:
-        """diff 三类 → 摘要文本：各类计数 + 每类前 _MAX_DIFF_EXAMPLES 条示例。"""
-        lines = []
-        for key, label in (
-            ("added", "新增"), ("removed", "删除"), ("changed", "变更"),
-        ):
-            items = diff.get(key, [])
-            lines.append(f"{tr(label)} {len(items)} {tr('项')}")
-            lines.extend(f"  {p}" for p in items[:_MAX_DIFF_EXAMPLES])
-            if len(items) > _MAX_DIFF_EXAMPLES:
-                lines.append(
-                    f"  {tr('……其余')} {len(items) - _MAX_DIFF_EXAMPLES} {tr('项略')}"
-                )
-        return "\n".join(lines)
+        """diff 摘要文本（W39 抽出至 version_compare 模块，薄委托保测试缝）。"""
+        return version_diff_text(diff)
 
     def retranslate(self) -> None:
         """切换语言时刷新文案。"""

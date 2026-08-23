@@ -823,3 +823,37 @@ __all__ = [
     "dismiss_stale_dialogs",
     "_wait_dialog_gone",
 ]
+
+
+def sort_login_edits(container) -> list:
+    """收集容器内 Edit 控件并按纵坐标排序（QLineEdit 无可靠 Name）。
+
+    登录页（用户名/密码）与改密对话框（旧/新/确认）共用。
+    """
+    edits = find_edit_controls(container, timeout=10)
+    return sorted(edits, key=lambda c: c.BoundingRectangle.top)
+
+
+def click_login_button_precise(win) -> bool:
+    """精确点击登录按钮（ButtonControl 且 Name=='登录'）。
+
+    不能用 click_button(win, "登录")：登录页若有含"登录"子串的
+    CheckBoxControl（在 click_button 的 Button+CheckBox 匹配集内），
+    树遍历会先命中它——点击落在复选框上、槽函数零触发（W25 R3 实测）。
+    """
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        for c in _iter_descendants(win, max_depth=8):
+            if type(c).__name__ != "ButtonControl":
+                continue
+            if (c.Name or "").strip() == "登录":
+                try:
+                    c.SetFocus()
+                except Exception:  # noqa: BLE001
+                    pass
+                c.Click()
+                logger.info("已精确点击'登录'按钮")
+                return True
+        time.sleep(0.4)
+    logger.error("未找到精确'登录'按钮")
+    return False

@@ -383,7 +383,9 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
                 score_avg=score,
             )
         except Exception:
-            pass  # 审计日志失败不影响推理
+            # W39·v6 P3-3：审计/历史写失败不阻塞推理，但须留痕可排查
+            # （原裸 pass——全仓最弱审计失败路径，与 train/deploy/login 不一致）
+            logger.exception("单张推理审计/检测历史写入失败（不阻塞推理）")
 
     @Slot(str)
     def _single_failed(self, err: str) -> None:
@@ -394,12 +396,14 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
 
     def _batch_infer(self) -> None:
         """批量推理（后台线程执行，避免 UI 冻结）。"""
-        if not self._engine:
-            self.status_changed.emit(tr("请先加载模型"), "!")
-            return
+        # W39（v6 P3-1）：门控置于按钮入口首行（与 check_action docstring
+        # 约定一致——原置于引擎预检后，被拒用户先见"请先加载模型"）
         denied = check_action("predict.batch_infer")
         if denied:
             self.status_changed.emit(denied, "!")
+            return
+        if not self._engine:
+            self.status_changed.emit(tr("请先加载模型"), "!")
             return
         d = pick_directory(
             self, "选择批量推理目录"

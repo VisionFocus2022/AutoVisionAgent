@@ -20,20 +20,6 @@ import numpy as np  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 
-class FakeThread:
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._target, self._args, self._kwargs = target, args, kwargs or {}
-
-    def start(self):
-        if self._target is not None:
-            self._target(*self._args, **self._kwargs)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    monkeypatch.setattr(threading, "Thread", FakeThread)
-
-
 @pytest.fixture(scope="session")
 def qapp():
     return QApplication.instance() or QApplication([])

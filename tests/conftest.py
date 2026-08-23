@@ -77,3 +77,26 @@ def pytest_sessionfinish(session, exitstatus) -> None:
         shiboken6.delete(app)
     except Exception:  # noqa: BLE001  # 收尾兜底：任何失败不得改写退出码语义
         pass
+
+
+# ============================== W39·v6 P3-16：FakeThread 单源收敛 ============================== #
+# 原 21 个测试文件逐字复制此类与夹具（gui/core/jobs.py:20 记载接缝约束）；
+# 本处为唯一定义，各文件本地副本已删，夹具经 pytest 自动发现生效。
+
+import threading
+
+import pytest
+
+
+class FakeThread:
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
+        self._target, self._args, self._kwargs = target, args, kwargs or {}
+
+    def start(self):
+        if self._target is not None:
+            self._target(*self._args, **self._kwargs)
+
+
+@pytest.fixture
+def fake_threads(monkeypatch):
+    monkeypatch.setattr(threading, "Thread", FakeThread)

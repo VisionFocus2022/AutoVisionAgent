@@ -294,8 +294,9 @@ class LoginPage(QWidget):
         # W29：删装饰性角色下拉——角色真源是 users.json（_do_login 读取），
         # 下拉选择从未被消费（虚假控件）；角色分配由管理员改库完成
 
-        self._remember = QCheckBox(tr("记住登录状态"))
-        form.addRow(self._remember)
+        # W39·v6 P3-12：删除「记住登录状态」死控件——QCheckBox 无
+        # isChecked 消费（勾选无效的虚假功能暗示），UIA 精确点击
+        # 助手（uia_helpers.click_login_button_precise）同步泛化
 
         root.addWidget(form_box)
 
@@ -530,24 +531,24 @@ class LoginPage(QWidget):
             )
             if reply != QMessageBox.Yes:
                 return
-        # W13-C3: 离线会话用户 + 审计（与登录成功同一审计通道；角色与
-        # 门控消费一致=admin，审计不落与执行相悖的值）
+        # W13-C3: 离线会话用户 + 审计（与登录成功同一审计通道）；W39 反转
+        # （v6 P2-4）：离线=operator 受限会话（原一键 admin 废弃），
+        # 审计不落与执行相悖的值
         try:
             from core.audit_logger import log_login
             from core.session import set_current_user
 
             set_current_user("offline")
-            log_login(user="offline", role=ROLE_ADMIN, mode="offline")
+            log_login(user="offline", role=ROLE_OPERATOR, mode="offline")
         except (ImportError, OSError):
             logger.exception("离线模式审计写入失败")
-        self.login_success.emit("offline", ROLE_ADMIN)
+        self.login_success.emit("offline", ROLE_OPERATOR)
         self.status_changed.emit(tr("已进入离线模式"), "ok")
 
     def retranslate(self) -> None:
         self._title.setText(tr("AutoVisionAgent 登录"))
         self._user_edit.setPlaceholderText(tr("请输入用户名"))
         self._pass_edit.setPlaceholderText(tr("请输入密码"))
-        self._remember.setText(tr("记住登录状态"))
         self._login_btn.setText(tr("登录"))
         self._register_btn.setText(tr("注册许可证"))
         self._offline_btn.setText(tr("离线模式"))

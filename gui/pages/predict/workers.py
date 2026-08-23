@@ -12,6 +12,7 @@ from typing import List, Optional
 
 from core.constants import IMG_EXTS
 from gui.core.i18n import tr
+from labeling.batch_tools import atomic_write_json  # W39·v6 P2-8：原子写单源（本模块保留此名再导出，原弱版固定 .tmp 名已删）
 from project.paths import resolve_base_root
 
 # R5-2: CSV/Excel 公式注入防护（CWE-1236）
@@ -143,22 +144,3 @@ def save_batch_artifacts(save_dir: str, img_path: str, result, overlay=None) -> 
             "批量产物写盘失败（跳过，批结果 JSON 不受影响）: %s",
             img_path, exc_info=True,
         )
-
-
-def atomic_write_json(path: str, data: object) -> None:
-    """temp + os.replace 原子写 JSON（P2-2：直写会在中途截断既有文件）。
-
-    失败时清理 .tmp 残留后上抛——由调用方的 on_error 兜底回 UI
-    （W17 v3 P2-1 附带：写盘段纳入异常路由）。
-    """
-    tmp_path = path + ".tmp"
-    try:
-        with open(tmp_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise

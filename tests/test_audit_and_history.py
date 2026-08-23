@@ -295,3 +295,22 @@ def test_single_done_audit_records_logged_in_user(predict_qapp, monkeypatch):
         )
     finally:
         reset_current_user()
+
+
+@pytest.mark.unit
+def test_audit_buffer_bounded_when_dir_unwritable(tmp_path, monkeypatch):
+    """W39（v6 P3-3）：审计目录不可写时——log 不抛异常、缓冲有硬上限
+    （丢最旧+告警），不无界增长；mkdir 失败不再从 flush 上抛。"""
+    from core.audit_logger import get_audit_logger
+
+    blocker = tmp_path / "blocker"
+    blocker.write_text("", encoding="utf-8")  # 文件占位：其下 mkdir 必败
+    audit = get_audit_logger()
+    monkeypatch.setattr(audit, "_log_dir", blocker / "audit")
+    audit._buffer.clear()
+    for i in range(1500):  # 超 _buffer_hard_max，触发丢最旧路径
+        audit.log("inference", user="t", seq=i)
+    assert len(audit._buffer) <= audit._buffer_hard_max, (
+        f"缓冲应被硬上限截住，got {len(audit._buffer)}"
+    )
+    audit._buffer.clear()

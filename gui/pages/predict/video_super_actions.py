@@ -31,14 +31,16 @@ class VideoSuperActionsMixin:
             return
         from core.interfaces_supervised import TaskType
 
+        # W39（v6 P3-1）：门控置于按钮入口首行（与 check_action docstring
+        # 约定一致——原置于任务类型预检后）
+        denied = check_action("predict.video_super")
+        if denied:
+            self.status_changed.emit(denied, "!")
+            return
         if self.cmb_task.currentData() is not TaskType.SUPER:
             self.status_changed.emit(
                 tr("视频超分仅支持超分辨率任务"), "!"
             )
-            return
-        denied = check_action("predict.video_super")
-        if denied:
-            self.status_changed.emit(denied, "!")
             return
         path = pick_open_file(
             self, "选择视频", "Videos (*.mp4 *.avi *.mov *.mkv)"

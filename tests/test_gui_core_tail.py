@@ -104,7 +104,7 @@ class _RecordingThemeManager:
 
 
 @pytest.mark.unit
-def test_add_page_select_and_unknown_key(win):
+def test_add_page_select_and_unknown_key(win, monkeypatch):
     w1, w2, w3 = QWidget(), QWidget(), QWidget()
     win.add_page("a", "ico_a", "页面A", w1)
     win.add_page("b", "ico_b", "页面B", w2)
@@ -117,6 +117,11 @@ def test_add_page_select_and_unknown_key(win):
     assert win._stack.count() == 3
     assert win._nav_buttons["a"].text().strip() == "页面A2"
 
+    # W39：未登录=operator 最小集且页面矩阵只认正式页 id——本测用任意
+    # key 验证 select 机制，旁路门控（门控行为由 test_w29_permissions 覆盖）
+    from gui.core import shell as shell_mod
+
+    monkeypatch.setattr(shell_mod, "page_allowed", lambda role, key: True)
     win.select("b")
     assert win._stack.currentWidget() is w2
     assert win._nav_buttons["b"].property("selected") is True
