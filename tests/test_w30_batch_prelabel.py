@@ -309,3 +309,64 @@ def test_batch_prelabel_imagepath_is_relative(tmp_path, monkeypatch):
     assert resolved == os.path.normpath(str(imgs / "i0.png")), (
         f"相对路径应能从 JSON 目录解析回源图: {resolved}"
     )
+
+
+# ============================== 6. v6 P2-2：跨盘符回退 ============================== #
+
+
+def _other_drive(tmp_path: Path):
+    """找一个与 tmp_path 不同盘符且存在的根（单盘环境返回 None → skip）。"""
+    tmp_drv, _ = os.path.splitdrive(str(tmp_path))
+    for cand in (str(Path.home()), "C:" + os.sep, "E:" + os.sep, "D:" + os.sep):
+        drv, _ = os.path.splitdrive(cand)
+        if drv.upper() != tmp_drv.upper() and os.path.isdir(cand):
+            return drv + os.sep
+    return None
+
+
+@pytest.mark.unit
+def test_batch_prelabel_cross_drive_falls_back_to_absolute(tmp_path, monkeypatch):
+    """跨盘符时 os.path.relpath 抛 ValueError（W36 相对化引入的回归面：
+    工业场景源图常在外接盘、workspace 在系统盘）——应回退写绝对路径
+    （LabelMe 兼容），图片正常 written 不进 failed，manifest.relpath_fallback
+    记录回退以区分「跨盘回退」与「坏图」。"""
+    other = _other_drive(tmp_path)
+    if other is None:
+        pytest.skip("单盘环境：无第二盘符可测跨盘场景")
+
+    from gui.pages.label.batch_prelabel import run_batch_prelabel
+
+    imgs = Path(other) / "ava_w38_cross_drive_imgs"
+    imgs.mkdir(exist_ok=True)
+    try:
+        img = imgs / "i0.png"
+        img.write_bytes(PNG_1PX)
+
+        class _Engine:
+            def info(self):
+                return {"loaded": True}
+
+            def infer(self, img, threshold=0.5, labels=None):
+                return _det(1)
+
+        _fake_registry(monkeypatch, _Engine())
+        out = tmp_path / "out"
+        manifest = run_batch_prelabel([str(img)], str(out))
+
+        assert manifest["written"] == 1, (
+            f"跨盘不应整批失败（v6 P2-2 回归面），manifest={manifest}"
+        )
+        assert manifest["failed"] == []
+        assert str(img) in manifest.get("relpath_fallback", []), (
+            f"跨盘回退应记入 manifest.relpath_fallback，manifest={manifest}"
+        )
+        data = json.loads((out / "i0.json").read_text("utf-8"))
+        assert os.path.isabs(data["imagePath"]) and os.path.normcase(
+            data["imagePath"]
+        ) == os.path.normcase(str(img)), (
+            f"跨盘回退应写绝对路径，got {data['imagePath']}"
+        )
+    finally:
+        import shutil
+
+        shutil.rmtree(imgs, ignore_errors=True)

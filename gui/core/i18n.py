@@ -85,7 +85,7 @@ _EN_US: Dict[str, str] = {
     "提示": "Notice",
     "AutoVisionAgent 已在运行，请勿重复启动。": "AutoVisionAgent is already running; duplicate launch blocked.",
     "有正在进行的后台任务：": "Background tasks in progress:",
-    "有正在进行的操作（训练/推理）。\\n": "Operations in progress (training/inference).\\n",
+    "有正在进行的操作（训练/推理）。\n": "Operations in progress (training/inference).\n",
     "确定要退出吗？未保存的数据可能丢失。": "Exit now? Unsaved data may be lost.",
     "创建快照": "Create Snapshot",
     "版本对比": "Version Compare",
@@ -104,6 +104,14 @@ _EN_US: Dict[str, str] = {
     "两次输入不一致": "Passwords do not match",
     "未修改密码，暂不登录": "Password unchanged; login deferred",
     "AMP 预检失败，已回退 FP32": "AMP preflight failed, falling back to FP32",
+
+    # ---- v6 P2-5 补译（守卫扩单引号口径后补齐，W38；版本对比对话框） ----
+    "旧": "Old",
+    "新": "New",
+    "处差异": "differences",
+    "项": "items",
+    "……其余": "... remaining",
+    "项略": "omitted",
 
     # ---- 数据管理页 ----
     "选择目录": "Select Directory",

@@ -7,7 +7,7 @@
   —— 镜像 predict 批量的 batchPredict_{ts} 约定（W28 卫生：无项目回退
   workspace 根，绝不写进被扫描数据集目录）。内容：
   - {图名}.json：LabelMe 标注（imagePath 指回源图，不复制图）
-  - manifest.json：{total, written, failed[], cancelled}（temp+replace 原子写）
+  - manifest.json：{total, written, failed[], cancelled, relpath_fallback[]}（temp+replace 原子写；relpath_fallback=跨盘符回退绝对路径的源图清单，W38·v6 P2-2）
 
 复用成熟模式：W27/W28 预检语义（注册≠可用，查 info()["loaded"]）+
 predict 批量 worker 的协作取消（threading.Event）与原子写。
@@ -105,6 +105,7 @@ def run_batch_prelabel(
     failed: List[str] = []
     written = 0
     cancelled = False
+    cross_drive: List[str] = []  # 跨盘符回退绝对路径的源图（v6 P2-2）
 
     for image_path in images:
         if cancel is not None and cancel.is_set():
@@ -121,11 +122,19 @@ def run_batch_prelabel(
             h, w = img.shape[:2]
             json_name = Path(image_path).stem + ".json"
             # v5 P3#6：imagePath 相对 JSON 所在目录（LabelMe 生态惯例——
-            # 绝对路径在标注目录整体迁移后断链）
-            rel_image = os.path.relpath(image_path, out_dir)
+            # 绝对路径在标注目录整体迁移后断链）；v6 P2-2：跨盘符时
+            # relpath 抛 ValueError——回退写绝对路径（LabelMe 兼容），
+            # 并记入 manifest.relpath_fallback 区分「跨盘回退」与「坏图」
+            img_drv, _ = os.path.splitdrive(os.path.abspath(image_path))
+            out_drv, _ = os.path.splitdrive(os.path.abspath(out_dir))
+            if img_drv.upper() == out_drv.upper():
+                image_path_field = os.path.relpath(image_path, out_dir)
+            else:
+                image_path_field = os.path.abspath(image_path)
+                cross_drive.append(image_path)
             save_labelme(
                 os.path.join(out_dir, json_name),
-                shapes, rel_image, h, w,
+                shapes, image_path_field, h, w,
             )
             written += 1
         except (RuntimeError, OSError, ValueError) as exc:
@@ -137,6 +146,7 @@ def run_batch_prelabel(
         "written": written,
         "failed": failed,
         "cancelled": cancelled,
+        "relpath_fallback": cross_drive,
     }
     _atomic_write_json(os.path.join(out_dir, "manifest.json"), manifest)
     logger.info(
