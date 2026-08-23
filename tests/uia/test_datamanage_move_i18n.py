@@ -172,9 +172,11 @@ def test_i18n_switch_persists(ava_app):
         assert find_control_by_name(win, "系统设置", None, T_NAV) is not None
         time.sleep(0.8)
 
-        # 设置页 combo 布局序：[0]主题 [1]语言 [2]设备 [3]精度（字面量项，语言无关）
+        # 设置页 combo 布局序：[0]主题 [1]语言 [2]设备（字面量项，语言无关；
+        # W28 删 precision 死键后为 3 个——本断言 ≥4 系 W28 漏迁移，潜伏至
+        # v5 后首次全量 UIA 才暴露，迁移留档）
         combos = find_combo_controls(win, timeout=T_NAV)
-        assert len(combos) >= 4, f"设置页应 ≥4 个 combo，实得 {len(combos)}"
+        assert len(combos) >= 3, f"设置页应 ≥3 个 combo，实得 {len(combos)}"
         lang = combos[1]
         assert _combo_select(lang, "English (US)"), "语言切换到 English 失败"
 

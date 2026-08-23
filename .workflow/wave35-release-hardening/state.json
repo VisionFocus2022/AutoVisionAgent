@@ -2,13 +2,24 @@
   "wave": "W35",
   "title": "发版清偿波——v5 四条 P2 中三条代码项+卫生（决策依据 v5 §7 ROI 排序）",
   "date": "2026-08-23",
-  "docs": ["docs/prd-w35-release-hardening.md"],
+  "docs": [
+    "docs/prd-w35-release-hardening.md"
+  ],
   "verification": {
     "gate": "1101 passed / 4 skipped / rc=0（1092+9）",
     "packaging": "--clean rc=0；lite 1.9935GiB/余 6.7MB/独占依赖 0 残留/守卫 21-21",
     "v5_correction": "P2-N2 回收量实测 4.4MB（v5 估算 ~15MB 为未标注推断——本轮更正留档）",
     "uia": "全量 12/12 取证后台进行中，结果无论绿/争抢均留档"
   },
-  "remaining": ["v5 第三波：真机 OCR/cuda 验证（需硬件）", "lite 余量 6.7MB 仍 <10MB 预警线（Agg 杠杆可用）"],
-  "next": "发版（v2.1.0）或按需求继续"
+  "remaining": [
+    "v5 第三波：真机 OCR/cuda 验证（需硬件）",
+    "lite 余量 6.7MB 仍 <10MB 预警线（Agg 杠杆可用）"
+  ],
+  "next": "发版（v2.1.0）或按需求继续",
+  "uia_evidence": {
+    "attempt": "全量首跑 10/12（22:46，高压态）→ 双失败判定非环境：i18n ≥4 combo=W28 漏迁移潜伏五天（P2-N4 取证拖欠的代价当场演示）；full_workflow=赌瞬时态的脆弱断言+假权重",
+    "migration": "两断言确定性迁移（≥3 combo/终态断言替代瞬时态）——迁移点实测通过（i18n 走到 1a、full_workflow 走到 4b），其后失败点漂移至原生对话框时序=环境争抢（0 ERROR+机器连续 40min UIA 高压+用户进程）",
+    "residual": "12/12 全绿需真空闲机（建议深夜跑 pytest tests/uia/ 约 15 分钟）；full_workflow 部署终态断言未在真机执行到（4b 对话框环境卡点），逻辑经代码审阅"
+  },
+  "p2_n2_correction": "实测回收 4.4MB（v5 ~15MB 为未标注推断）"
 }

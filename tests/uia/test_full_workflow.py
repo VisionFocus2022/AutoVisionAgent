@@ -336,10 +336,15 @@ def _step_deploy(win, model_path: Path, out_dir: Path) -> None:
     # 4c. 导出
     assert click_button(win, "导出", T_NAV), "未找到'导出'按钮"
 
-    # 等待导出流程触发（"导出进行中..."会立即出现）
-    triggered = wait_status(win, "导出进行中", T_DEPLOY)
+    # 等待导出流程触发的可观察证据（W35 修：不再赌"导出进行中"瞬时态——
+    # 假权重下 worker 毫秒级失败即覆盖该状态，高负载轮询易错过；改为接受
+    # 触发链路的任一可区分状态：进行中 / 部署失败（假权重预期终态，
+    # 证明已走到 torch.load）/ 导出完成（真权重环境））
+    triggered = wait_any_status(
+        win, ["导出进行中", "部署失败", "导出完成"], T_DEPLOY
+    )
     assert triggered is not None, (
-        f"部署未触发：状态栏未出现'导出进行中'，最后状态='{_last_status(win)}'"
+        f"部署未触发：状态栏无任何导出链路状态，最后='{_last_status(win)}'"
     )
     logger.info("部署流程已触发: %s", triggered)
 
