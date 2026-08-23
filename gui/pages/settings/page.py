@@ -130,7 +130,7 @@ class SettingsPage(QWidget):
         # 关于（W28：删除"零样本+有监督双范式"stale 宣称——零样本 W18 起未实装）
         about = QLabel(
             "<b>AutoVisionAgent</b><br>"
-            "v2.0.0 (M2)<br>"
+            "v2.1.0 (M3)<br>"
             "有监督工业视觉平台<br>"
             "PySide6 · Python 3.10+"
         )

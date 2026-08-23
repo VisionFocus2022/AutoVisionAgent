@@ -77,6 +77,40 @@ def action_allowed(role: str, action: str) -> bool:
     return allowed is not None and role in allowed
 
 
+def check_action(action: str) -> "str | None":
+    """动作门控统一入口（W35 · v5 P2-N1 收口：登记≠消费的终局修复）。
+
+    - 未登录（session 无角色）→ 宽容放行（与导航未登录宽容态一致，W29 语义）；
+    - 允许 → 返回 None；拒绝 → 状态栏文案 + access_denied 审计留痕，
+      返回文案由调用方 emit 到状态栏并早退。
+
+    页面消费示例（按钮入口首行）::
+
+        denied = check_action("predict.batch_infer")
+        if denied:
+            self.status_changed.emit(denied, "!")
+            return
+    """
+    from core.session import get_current_role, get_current_user
+
+    role = get_current_role()
+    if role is None or action_allowed(role, action):
+        return None
+    try:
+        from core.audit_logger import log_access_denied
+
+        log_access_denied(user=get_current_user(), role=role, page=action)
+    except (ImportError, OSError):
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "动作拒绝审计写入失败: %s", action, exc_info=True
+        )
+    from gui.core.i18n import tr
+
+    return tr("无权限执行该操作")
+
+
 __all__ = [
     "ROLE_ADMIN",
     "ROLE_ENGINEER",
@@ -86,4 +120,5 @@ __all__ = [
     "ALL_PAGES",
     "page_allowed",
     "action_allowed",
+    "check_action",
 ]

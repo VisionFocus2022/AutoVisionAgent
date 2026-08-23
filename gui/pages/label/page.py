@@ -36,6 +36,7 @@ from gui.widgets.thumbnail_loader import ThumbnailTask
 from gui.pages.label.sam_session import SamSessionMixin
 from gui.pages.label.workers import det_engine_available, run_ai_prelabel
 from gui.pages.label import batch_prelabel as _bp  # W30：批量预标注（模块引用保测试缝）
+from gui.core.permissions import check_action  # W35：动作门控
 
 from core.constants import IMG_EXTS as _IMG_EXTS
 
@@ -556,6 +557,10 @@ class LabelPage(SamSessionMixin, QWidget):
         （镜像 batchPredict；标注页无项目态 → workspace 根，绝不写进
         被扫描数据集目录）。坏图跳过记录、取消停在当前图（manifest 留痕）。
         """
+        denied = check_action("label.batch_prelabel")
+        if denied:
+            self.status_changed.emit(denied, "!")
+            return
         if not det_engine_available():
             self.status_changed.emit(
                 tr("AI预标注不可用"), tr("请先在推理页加载 DET 模型")

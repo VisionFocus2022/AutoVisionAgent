@@ -1,0 +1,14 @@
+{
+  "wave": "W35",
+  "title": "发版清偿波——v5 四条 P2 中三条代码项+卫生（决策依据 v5 §7 ROI 排序）",
+  "date": "2026-08-23",
+  "docs": ["docs/prd-w35-release-hardening.md"],
+  "verification": {
+    "gate": "1101 passed / 4 skipped / rc=0（1092+9）",
+    "packaging": "--clean rc=0；lite 1.9935GiB/余 6.7MB/独占依赖 0 残留/守卫 21-21",
+    "v5_correction": "P2-N2 回收量实测 4.4MB（v5 估算 ~15MB 为未标注推断——本轮更正留档）",
+    "uia": "全量 12/12 取证后台进行中，结果无论绿/争抢均留档"
+  },
+  "remaining": ["v5 第三波：真机 OCR/cuda 验证（需硬件）", "lite 余量 6.7MB 仍 <10MB 预警线（Agg 杠杆可用）"],
+  "next": "发版（v2.1.0）或按需求继续"
+}

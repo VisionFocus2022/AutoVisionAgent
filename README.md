@@ -1,4 +1,4 @@
-# AutoVisionAgent 2.0.0
+# AutoVisionAgent 2.1.0
 
 工业视觉智能平台——面向工业质检场景的一站式视觉工作站：数据/标注管理、模型训练、评估、推理与部署，配套 PySide6 桌面 GUI（后端 PyTorch）。
 

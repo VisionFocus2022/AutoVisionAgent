@@ -46,6 +46,7 @@ from gui.pages.predict.workers import (
 )
 from inference.sv_bridge import render_result  # W33：批量叠加图（页面级绑定保测试缝）
 from gui.pages.predict.video_super_actions import VideoSuperActionsMixin  # W34
+from gui.core.permissions import check_action  # W35：动作门控
 
 logger = logging.getLogger(__name__)
 
@@ -395,6 +396,10 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         """批量推理（后台线程执行，避免 UI 冻结）。"""
         if not self._engine:
             self.status_changed.emit(tr("请先加载模型"), "!")
+            return
+        denied = check_action("predict.batch_infer")
+        if denied:
+            self.status_changed.emit(denied, "!")
             return
         d = pick_directory(
             self, "选择批量推理目录"

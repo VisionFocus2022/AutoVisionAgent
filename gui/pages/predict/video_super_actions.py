@@ -18,6 +18,7 @@ from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file
+from gui.core.permissions import check_action  # W35：动作门控
 
 
 class VideoSuperActionsMixin:
@@ -34,6 +35,10 @@ class VideoSuperActionsMixin:
             self.status_changed.emit(
                 tr("视频超分仅支持超分辨率任务"), "!"
             )
+            return
+        denied = check_action("predict.video_super")
+        if denied:
+            self.status_changed.emit(denied, "!")
             return
         path = pick_open_file(
             self, "选择视频", "Videos (*.mp4 *.avi *.mov *.mkv)"

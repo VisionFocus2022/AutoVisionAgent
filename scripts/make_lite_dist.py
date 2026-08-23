@@ -335,7 +335,12 @@ def derive_lite(
 
     pruned = _prune_cuda_dlls(dst_path)
     # W32：lite 明确排除 OCR 可选件（引擎注册零成本，load 诚实报指引）
-    pruned.update(_prune_optional_packages(dst_path, ("easyocr",)))
+    pruned.update(_prune_optional_packages(
+        dst_path,
+        # easyocr 本体 + 独占依赖（pip Required-by 唯一依赖方=easyocr，
+        # v5 P2-N2：余量 2.4MB 时 ~15MB 残留不可接受）
+        ("easyocr", "bidi", "pyclipper", "shapely", "Shapely.libs"),
+    ))
     replaced: Dict[str, str] = {}
     if cpu_wheels_dir is not None:
         replaced = _replace_with_cpu_wheels(

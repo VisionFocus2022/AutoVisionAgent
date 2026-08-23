@@ -10,6 +10,7 @@ import threading
 
 _lock = threading.Lock()
 _current_user = "system"
+_current_role: str | None = None  # W35：动作门控数据源（未登录=None 宽容态）
 
 
 def set_current_user(user: str) -> None:
@@ -30,4 +31,30 @@ def reset_current_user() -> None:
     set_current_user("system")
 
 
-__all__ = ["get_current_user", "reset_current_user", "set_current_user"]
+def set_current_role(role: str | None) -> None:
+    """设置当前会话角色（W35：登录成功处与 win.set_role 同点单点设置；
+    None=未登录宽容态）。"""
+    global _current_role
+    with _lock:
+        _current_role = role or None
+
+
+def get_current_role() -> str | None:
+    """读取当前会话角色（未登录为 None）。"""
+    with _lock:
+        return _current_role
+
+
+def reset_current_role() -> None:
+    """重置角色（测试隔离/登出用）。"""
+    set_current_role(None)
+
+
+__all__ = [
+    "get_current_user",
+    "get_current_role",
+    "reset_current_user",
+    "reset_current_role",
+    "set_current_user",
+    "set_current_role",
+]
