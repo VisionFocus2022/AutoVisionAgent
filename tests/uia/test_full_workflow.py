@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -36,39 +37,35 @@ import pytest
 # 兼容 pytest 顶层模式加载（无 tests.uia 包），优先用包导入，失败则用直接导入
 try:
     from tests.uia.uia_helpers import (
+        login_admin,
         app_log_path,
         click_button,
-        click_login_button_precise,
         click_nav,
         confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
         find_control_by_name,
-        sort_login_edits,
         wait_any_status,
         wait_status,
         _iter_descendants,
         read_status_text,
-        set_edit_value,
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (  # type: ignore[no-redef]
+        login_admin,  # type: ignore[no-redef]
         app_log_path,
         click_button,
-        click_login_button_precise,
         click_nav,
         confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
         find_control_by_name,
-        sort_login_edits,
         wait_any_status,
         wait_status,
         _iter_descendants,
         read_status_text,
-        set_edit_value,
     )
 
 logger = logging.getLogger(__name__)
@@ -79,61 +76,6 @@ T_IMPORT = float(os.environ.get("AVA_UIA_T_IMPORT", "30"))
 T_LABEL = float(os.environ.get("AVA_UIA_T_LABEL", "30"))
 T_TRAIN = float(os.environ.get("AVA_UIA_T_TRAIN", "180"))
 T_DEPLOY = float(os.environ.get("AVA_UIA_T_DEPLOY", "30"))
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-_FLOW_PWD = "UiaFlow#2026"  # ≥8 字符（登录校验下限）
-
-
-def _uia_config_dirs() -> list:
-    """UIA 可用的应用 config 目录（python 源码模式 + exe 模式双覆盖）。"""
-    return [
-        REPO_ROOT / "configs",
-        REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs",
-    ]
-
-
-@pytest.fixture()
-def ready_admin_cfg():
-    """预置免改密 admin（users.json 直写，备份还原）——W39：离线模式降
-    operator 后，全流程导航 train/deploy 需真实 admin 登录。
-
-    双模式 config 目录均覆盖（python 源码/exe）；已有 users.json 先备份
-    （.uia-bak），teardown 还原；无则删除预置件。参数顺序上须先于
-    ava_app（users.json 需在应用启动前就位）。
-    """
-    import json
-
-    from core.auth import hash_password
-
-    h, s, iters = hash_password(_FLOW_PWD)
-    db = {"admin": {
-        "password_hash": h, "salt": s, "role": "admin",
-        "iterations": iters, "must_change": False,
-    }}
-    touched: list = []
-    try:
-        for cfg in _uia_config_dirs():
-            if not cfg.exists():
-                continue
-            users = cfg / "users.json"
-            if users.exists():
-                bak = cfg / (users.name + ".uia-bak")
-                users.replace(bak)
-                touched.append((bak, users))
-            users.write_text(
-                json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            touched.append((users, None))  # (预置文件, None)=teardown 删除
-        yield
-    finally:
-        for path, restore_to in reversed(touched):
-            try:
-                if restore_to is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    path.replace(restore_to)
-            except OSError:
-                logger.warning("还原 %s 失败", path, exc_info=True)
 
 
 # ================================ 全流程测试 ================================ #
@@ -152,7 +94,7 @@ def test_import_annotate_train_deploy(
     labels_dir = workspace_dir / "labels"
     deploy_out = workspace_dir / "models"
 
-    # -------- 步骤0：离线模式登录（应用默认停在登录页）--------
+    # -------- 步骤0：admin 真实登录（应用默认停在登录页）--------
     _step_login(win)
 
     # -------- 步骤1：导入图片（数据管理页）--------
@@ -173,32 +115,11 @@ def test_import_annotate_train_deploy(
 # ================================ 各步骤实现 ================================ #
 
 def _step_login(win) -> None:
-    """登录页：真实 admin 登录（W39：离线模式已降 operator，全流程需
-    导航 train/deploy 等 operator 不可见页；凭据由 ready_admin_cfg 预置
-    免改密，避开首登强制改密弹窗）。
-
-    登录成功的判定：状态栏"登录成功"或主页"就绪"（主页加载后可能
-    覆盖登录状态）；精确点击'登录'按钮（泛匹配会命中含"登录"子串
-    的复选框，W25 R3 实测踩坑）。
-    """
+    """登录页：真实 admin 登录（W39：离线已降 operator，全流程需导航
+    train/deploy 等 operator 不可见页；凭据由 conftest.ready_admin_cfg
+    预置免改密，共用 uia_helpers.login_admin，W40 共享化）。"""
     logger.info("--- 步骤0：admin 真实登录 ---")
-    edits = sort_login_edits(win)
-    assert len(edits) >= 2, f"登录页应有用户名/密码两个输入框，got {len(edits)}"
-    assert set_edit_value(edits[0], "admin"), "用户名写入失败"
-    assert set_edit_value(edits[1], _FLOW_PWD), "密码写入失败"
-    assert click_login_button_precise(win), "未找到精确'登录'按钮"
-
-    # 等待登录成功：状态栏"登录成功"或主页"就绪"/"仪表盘"
-    status = wait_any_status(
-        win, ["登录成功", "就绪", "仪表盘"], T_NAV
-    )
-    assert status is not None, (
-        f"admin 登录未完成：状态栏未出现登录成功标志，"
-        f"最后状态='{_last_status(win)}'"
-    )
-    logger.info("admin 登录完成: %s", status)
-    # 等待主页渲染稳定
-    time.sleep(1.0)
+    login_admin(win)
 
 
 def _step_import_images(win, data_dir: Path, sample_images_dir: Path) -> None:
@@ -262,7 +183,10 @@ def _step_annotate(win, data_dir: Path, labels_dir: Path) -> None:
         # 检查状态栏是否出现 "1 标注数"（_on_shapes_changed 触发）
         status = _last_status(win)
         logger.info("画矩形尝试 %d，状态: '%s'", attempt + 1, status)
-        if "1" in status and "标注数" in status:
+        # W40：≥1 即提交成功（空闲机上多次尝试可能各自提交——终态 N>1，
+        # 原字面 "1" 判定错过瞬时计数而误判未提交）
+        m = re.search(r"(\d+)\s*标注数", status)
+        if m and int(m.group(1)) >= 1:
             shape_committed = True
             break
         # 回退：发送 Enter 键强制 commit（controller.handle_commit）
@@ -271,7 +195,8 @@ def _step_annotate(win, data_dir: Path, labels_dir: Path) -> None:
             _ua.SendKey(_ua.Keys.VK_RETURN)
             time.sleep(0.3)
             status = _last_status(win)
-            if "1" in status and "标注数" in status:
+            m = re.search(r"(\d+)\s*标注数", status)
+            if m and int(m.group(1)) >= 1:
                 shape_committed = True
                 logger.info("Enter 键提交成功: '%s'", status)
                 break
@@ -394,12 +319,14 @@ def _step_deploy(win, model_path: Path, out_dir: Path) -> None:
     # 4c. 导出
     assert click_button(win, "导出", T_NAV), "未找到'导出'按钮"
 
-    # 等待导出流程触发的可观察证据（W35 修：不再赌"导出进行中"瞬时态——
+    # 等待导出流程触发的可观察证据（W35 修 + W40 口径对齐：假权重下
+    # 真实终态是「导出失败 <torch.load 原因>」而非注释预设的「部署失败」——
+    # 不再赌"导出进行中"瞬时态——
     # 假权重下 worker 毫秒级失败即覆盖该状态，高负载轮询易错过；改为接受
     # 触发链路的任一可区分状态：进行中 / 部署失败（假权重预期终态，
     # 证明已走到 torch.load）/ 导出完成（真权重环境））
     triggered = wait_any_status(
-        win, ["导出进行中", "部署失败", "导出完成"], T_DEPLOY
+        win, ["导出进行中", "部署失败", "导出完成", "导出失败"], T_DEPLOY
     )
     assert triggered is not None, (
         f"部署未触发：状态栏无任何导出链路状态，最后='{_last_status(win)}'"

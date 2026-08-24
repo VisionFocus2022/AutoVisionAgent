@@ -20,6 +20,7 @@ import pytest
 
 try:
     from tests.uia.uia_helpers import (
+        login_admin,
         click_button,
         click_nav,
         enter_path_in_open_dialog,
@@ -29,7 +30,8 @@ try:
     )
     from tests.uia.test_pole_dataset_flows import _ensure_logged_in
 except ImportError:  # pragma: no cover - 顶层模式兜底
-    from uia_helpers import (  # type: ignore[no-redef]
+    from uia_helpers import (
+        login_admin,  # type: ignore[no-redef]
         click_button,
         click_nav,
         enter_path_in_open_dialog,
@@ -59,14 +61,14 @@ def test_predict_requires_model_first(ava_app):
 
 
 @pytest.mark.usefixtures("ava_app")
-def test_predict_single_image(ava_app, sample_images_dir, tiny_det_model_path):
+def test_predict_single_image(ready_admin_cfg, ava_app, sample_images_dir, tiny_det_model_path):
     """单张推理全链：加载模型→选图推理→分数渲染→结果行→预览更新。
 
     历史：W25 因 exe 缺 matplotlib 生产缺陷以 strict xfail 锁定，
     W26 重打包修复后转正（见模块 docstring）。
     """
     win = ava_app
-    _ensure_logged_in(win)
+    login_admin(win)
 
     assert click_nav(win, "推理", T_NAV), "无法切换到推理页"
     time.sleep(1.0)

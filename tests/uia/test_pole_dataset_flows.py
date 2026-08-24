@@ -30,6 +30,7 @@ import pytest
 
 try:
     from tests.uia.uia_helpers import (
+        login_admin,
         app_log_path,
         click_button,
         click_nav,
@@ -48,7 +49,8 @@ try:
         read_status_text,
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
-    from uia_helpers import (  # type: ignore[no-def]
+    from uia_helpers import (
+        login_admin,  # type: ignore[no-def]
         app_log_path,
         click_button,
         click_nav,
@@ -318,13 +320,13 @@ def test_pole_label_polygon_and_rectangle(ava_app, pole_subset_dir: Path, worksp
 
 
 @pytest.mark.usefixtures("ava_app")
-def test_project_create_flow(ava_app, workspace_dir: Path):
+def test_project_create_flow(ready_admin_cfg, ava_app, workspace_dir: Path):
     """项目创建：改名 → 浏览选存储目录（触发 store 重初始化）→ 创建 → 落盘 + 列表铁证。"""
     win = ava_app
     proj_name = "uia_proj_w11"
     proj_root = workspace_dir / "projects"
     proj_root.mkdir(parents=True, exist_ok=True)
-    _ensure_logged_in(win)
+    login_admin(win)
 
     assert click_nav(win, "项目管理", T_NAV), "无法切换到项目管理页（find timeout）"
     page_ready = find_control_by_name(win, "新建项目", None, timeout=T_NAV)
@@ -374,10 +376,10 @@ def test_project_create_flow(ava_app, workspace_dir: Path):
 
 
 @pytest.mark.usefixtures("ava_app")
-def test_settings_theme_persist(ava_app):
+def test_settings_theme_persist(ready_admin_cfg, ava_app):
     """设置页：主题切换 浅色 → 保存 → user_settings.json 持久化铁证 → 恢复深色。"""
     win = ava_app
-    _ensure_logged_in(win)
+    login_admin(win)
 
     assert click_nav(win, "设置", T_NAV), "无法切换到设置页（find timeout）"
     title = find_control_by_name(win, "系统设置", None, timeout=T_NAV)

@@ -24,6 +24,7 @@ import pytest
 
 try:
     from tests.uia.uia_helpers import (
+        login_admin,
         click_button,
         click_nav,
         confirm_dialog_if_present,
@@ -35,7 +36,8 @@ try:
     )
     from tests.uia.test_pole_dataset_flows import _ensure_logged_in
 except ImportError:  # pragma: no cover - 顶层模式兜底
-    from uia_helpers import (  # type: ignore[no-redef]
+    from uia_helpers import (
+        login_admin,  # type: ignore[no-redef]
         click_button,
         click_nav,
         confirm_dialog_if_present,
@@ -162,10 +164,10 @@ def _wait_settings_contains(token: str, timeout: float = 5.0) -> bool:
 
 
 @pytest.mark.usefixtures("ava_app")
-def test_i18n_switch_persists(ava_app):
+def test_i18n_switch_persists(ready_admin_cfg, ava_app):
     """切 English→保存→落盘 en_US→（还原）切回中文→落盘 ch_CN。"""
     win = ava_app
-    _ensure_logged_in(win)
+    login_admin(win)
     sp = _settings_path()
     try:
         assert click_nav(win, "设置", T_NAV), "无法切换到设置页"

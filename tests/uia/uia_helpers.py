@@ -857,3 +857,25 @@ def click_login_button_precise(win) -> bool:
         time.sleep(0.4)
     logger.error("未找到精确'登录'按钮")
     return False
+
+
+# W40（UIA 适配 W39 语义）：真实 admin 登录入口——离线已降 operator，
+# 需导航 train/deploy/settings/project 等锁页的流程一律真实 admin 登录。
+UIA_ADMIN_PWD = "UiaFlow#2026"  # 与 conftest.ready_admin_cfg 预置凭据一致（≥8 字符）
+
+
+def login_admin(win) -> None:
+    """真实 admin 登录（凭据由 conftest.ready_admin_cfg 预置免改密）。
+
+    应用为函数级夹具逐用例重启（每次停在登录页），无需幂等；等待口径：
+    状态栏「登录成功」或主页「就绪/仪表盘」。
+    """
+    edits = sort_login_edits(win)
+    assert len(edits) >= 2, f"登录页应有用户名/密码两个输入框，got {len(edits)}"
+    assert set_edit_value(edits[0], "admin"), "用户名写入失败"
+    assert set_edit_value(edits[1], UIA_ADMIN_PWD), "密码写入失败"
+    assert click_login_button_precise(win), "未找到精确'登录'按钮"
+    status = wait_any_status(win, ["登录成功", "就绪", "仪表盘"], 15.0)
+    assert status is not None, "admin 登录未完成：状态栏未出现登录成功标志"
+    logger.info("admin 登录完成: %s", status)
+    time.sleep(1.0)

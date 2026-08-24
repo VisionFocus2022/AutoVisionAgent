@@ -404,3 +404,60 @@ def eval_gt_dir(tmp_path) -> Path:
         encoding="utf-8",
     )
     return d
+
+
+# ============================== W40：真实 admin 登录预置（自 test_full_workflow 共享化） ============================== #
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_UIA_ADMIN_PWD_LOCAL = "UiaFlow#2026"  # 与 uia_helpers.UIA_ADMIN_PWD 同源
+
+
+def _uia_config_dirs() -> list:
+    """UIA 可用的应用 config 目录（python 源码模式 + exe 模式双覆盖）。"""
+    return [
+        _REPO_ROOT / "configs",
+        _REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs",
+    ]
+
+
+@pytest.fixture()
+def ready_admin_cfg():
+    """预置免改密 admin（users.json 直写，备份还原）——W39 离线降 operator
+    后，锁页（train/deploy/settings/project）UIA 流程需真实 admin 登录。
+
+    双模式 config 目录均覆盖；已有 users.json 先备份（.uia-bak），teardown
+    还原；无则删除预置件。参数顺序上须先于 ava_app（应用启动前就位）。
+    """
+    import json
+
+    from core.auth import hash_password
+
+    h, s, iters = hash_password(_UIA_ADMIN_PWD_LOCAL)
+    db = {"admin": {
+        "password_hash": h, "salt": s, "role": "admin",
+        "iterations": iters, "must_change": False,
+    }}
+    touched: list = []
+    try:
+        for cfg in _uia_config_dirs():
+            if not cfg.exists():
+                continue
+            users = cfg / "users.json"
+            if users.exists():
+                bak = cfg / (users.name + ".uia-bak")
+                users.replace(bak)
+                touched.append((bak, users))
+            users.write_text(
+                json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            touched.append((users, None))
+        yield
+    finally:
+        for path, restore_to in reversed(touched):
+            try:
+                if restore_to is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    path.replace(restore_to)
+            except OSError:
+                logger.warning("还原 %s 失败", path, exc_info=True)
