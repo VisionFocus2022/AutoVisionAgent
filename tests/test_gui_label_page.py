@@ -18,11 +18,12 @@ pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np  # noqa: E402
-from PySide6.QtCore import Qt  # noqa: E402
-from PySide6.QtGui import QImage  # noqa: E402
+from PySide6.QtCore import QPoint, QPointF, Qt  # noqa: E402
+from PySide6.QtGui import QImage, QWheelEvent  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
+    QGraphicsScene,
     QGraphicsView,
     QListWidgetItem,
 )
@@ -190,7 +191,10 @@ def test_apply_mode_buttons_dragmode_and_sam_warning(label_page, monkeypatch):
 
     label_page._apply_mode(AnnotationMode.POLYGON)
     assert label_page._mode_btns[AnnotationMode.POLYGON].property("active") is True
-    assert label_page.view.dragMode() == QGraphicsView.ScrollHandDrag  # 保留平移
+    # W43：多边形同样 NoDrag + 箭头光标——controller 接管事件流后基类平移
+    # 从不触发，ScrollHandDrag 只剩强制手型光标的副作用
+    assert label_page.view.dragMode() == QGraphicsView.NoDrag
+    assert label_page.view.viewport().cursor().shape() == Qt.ArrowCursor
 
     # INTERACTIVE 且未选权重：诚实警告（必须屏蔽原生对话框，offscreen 会阻塞）
     # W27：_ensure_sam 自 page.py 抽出至 sam_session.py——对话框 monkeypatch
@@ -200,6 +204,58 @@ def test_apply_mode_buttons_dragmode_and_sam_warning(label_page, monkeypatch):
     label_page._msgs.clear()
     label_page._apply_mode(AnnotationMode.INTERACTIVE)
     assert any("SAM" in t for t, _ in label_page._msgs)
+
+
+@pytest.mark.unit
+def test_wheel_zoom_anchors_at_mouse_position(qapp):
+    """W43：Ctrl+滚轮缩放以鼠标指向的场景点为锚点，普通滚轮不缩放。
+
+    RED：原实现 scale() 绕视图中心缩放——鼠标下的场景点随缩放漂移，
+    放大后目标区域跑出视野，标注员需要反复找回调平位置。
+    """
+    from gui.pages.label.page import _ZoomableView
+
+    view = _ZoomableView()
+    scene = QGraphicsScene()
+    scene.setSceneRect(0.0, 0.0, 2000.0, 1500.0)
+    view.setScene(scene)
+    view.resize(400, 300)
+    view.show()
+    qapp.processEvents()
+
+    def wheel(x: float, y: float, delta_y: int, ctrl: bool = True):
+        view.wheelEvent(QWheelEvent(
+            QPointF(x, y), QPointF(10_000, 10_000),
+            QPoint(0, 0), QPoint(0, delta_y),
+            Qt.NoButton,
+            Qt.ControlModifier if ctrl else Qt.NoModifier,
+            Qt.NoScrollPhase, False,
+        ))
+
+    # 放大：锚点下的场景点缩放后仍在锚点下（滚动条整数值 → ±1 容差）
+    pos = QPoint(120, 80)
+    before = view.mapToScene(pos)
+    wheel(120, 80, 120)
+    after = view.mapToScene(pos)
+    assert view.transform().m11() == pytest.approx(1.15, rel=1e-9)
+    assert (after.x(), after.y()) == pytest.approx(
+        (before.x(), before.y()), abs=1.0
+    )
+
+    # 缩小回 1.0：反向同样锚定
+    pos2 = QPoint(260, 220)
+    before2 = view.mapToScene(pos2)
+    wheel(260, 220, -120)
+    after2 = view.mapToScene(pos2)
+    assert view.transform().m11() == pytest.approx(1.0, rel=1e-9)
+    assert (after2.x(), after2.y()) == pytest.approx(
+        (before2.x(), before2.y()), abs=1.0
+    )
+
+    # 普通滚轮（无 Ctrl）交给基类滚动，不改变缩放
+    m11 = view.transform().m11()
+    wheel(120, 80, 120, ctrl=False)
+    assert view.transform().m11() == pytest.approx(m11, rel=1e-9)
 
 
 @pytest.mark.unit

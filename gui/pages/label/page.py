@@ -71,25 +71,46 @@ class _ZoomableView(QGraphicsView):
         self._controller = controller
 
     def set_draw_mode(self, active: bool) -> None:
-        """根据是否处于"绘制标注"模式切换 dragMode。
+        """根据是否处于"绘制标注"模式切换 dragMode 与视口光标。
 
         绘制模式下用 NoDrag，避免左键拖拽被基类解释为画布平移，
-        导致 controller 收不到完整的鼠标按下/拖拽/释放事件流。
+        导致 controller 收不到完整的鼠标按下/拖拽/释放事件流；
+        并将视口光标固定为标准箭头——ScrollHandDrag 会强制显示手型
+        光标，妨碍多边形打点的精确定位。
         非绘制模式下恢复 ScrollHandDrag，保留手型平移体验。
         """
         self.setDragMode(QGraphicsView.NoDrag if active else QGraphicsView.ScrollHandDrag)
+        if active:
+            self.viewport().setCursor(Qt.ArrowCursor)
 
     def wheelEvent(self, event) -> None:
-        """Ctrl+滚轮缩放，普通滚轮由父类处理（滚动条）。"""
+        """Ctrl+滚轮缩放（以鼠标指向处为锚点），普通滚轮由父类处理（滚动条）。"""
         if event.modifiers() & Qt.ControlModifier:
             factor = (
                 self._zoom_factor
                 if event.angleDelta().y() > 0
                 else 1 / self._zoom_factor
             )
-            self.scale(factor, factor)
+            self._zoom_at(event.position().toPoint(), factor)
         else:
             super().wheelEvent(event)
+
+    def _zoom_at(self, view_pos, factor: float) -> None:
+        """以 view_pos（视口坐标）为锚点缩放 factor 倍。
+
+        记录缩放前光标下的场景点，缩放后按「滚动条值 = 场景点 × 新缩放
+        − 光标视口坐标」直接定位滚动条——滚动条值单位是视图像素而非
+        场景单位（scale 后需乘新缩放），使放大缩小始终围绕鼠标指向处展开。
+        """
+        anchor = self.mapToScene(view_pos)
+        self.scale(factor, factor)
+        t = self.transform()
+        self.horizontalScrollBar().setValue(
+            round(anchor.x() * t.m11() - view_pos.x())
+        )
+        self.verticalScrollBar().setValue(
+            round(anchor.y() * t.m22() - view_pos.y())
+        )
 
     def mousePressEvent(self, event) -> None:
         if self._controller is not None:
@@ -626,10 +647,11 @@ class LabelPage(SamSessionMixin, QWidget):
             btn.style().polish(btn)
         self.status_changed.emit(tr("工具") + f": {mode.value}", "AutoVisionAgent")
 
-        # 切换 dragMode：绘制类模式（矩形/画笔/关键点/交互式）禁用基类平移，
-        # 避免左键拖拽被解释为画布平移而吞掉鼠标事件流；
-        # 多边形模式左键仅打点不拖拽，保留平移体验
+        # 切换 dragMode：全部标注模式统一 NoDrag + 箭头光标——controller
+        # 接管鼠标事件流后基类平移从不触发，多边形保留 ScrollHandDrag 时
+        # 只剩强制手型光标的副作用（打点定位需要标准箭头）
         is_draw_mode = mode in (
+            AnnotationMode.POLYGON,
             AnnotationMode.RECTANGLE,
             AnnotationMode.BRUSH,
             AnnotationMode.KEYPOINT,
