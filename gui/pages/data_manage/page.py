@@ -241,6 +241,11 @@ class DataManagePage(QWidget):
         self.thumb_list.setIconSize(QSize(120, 120))
         self.thumb_list.setResizeMode(QListWidget.Adjust)
         self.thumb_list.setSpacing(6)
+        # W41：均一网格（icon 120 + 水平余量 12 / 垂直 icon+两行文字+余量）
+        # ——无 gridSize/wrapping 时条目尺寸随内容浮动，行首左缘错位
+        # （用户报障）；IconMode 下 wrapping=True 是 gridSize 生效前提
+        self.thumb_list.setWrapping(True)
+        self.thumb_list.setGridSize(QSize(132, 168))
         body.addWidget(self.thumb_list, 1)
 
         # 右侧统计面板

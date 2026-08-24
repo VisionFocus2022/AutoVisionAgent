@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QRunnable, Qt, Signal, QObject
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QPainter
 
 
 class _Signals(QObject):
@@ -45,6 +45,20 @@ class ThumbnailTask(QRunnable):
             Qt.KeepAspectRatio,
             Qt.SmoothTransformation,
         )
+        # W41：铺到恒定方形画布（保比例居中，不拉伸变形）——IconMode
+        # 条目尺寸随 pixmap 实际宽高浮动导致网格错位（用户报障：
+        # 行首左缘不齐、图片间距不均）
+        if image.width() != self.size or image.height() != self.size:
+            canvas = QImage(self.size, self.size, QImage.Format_ARGB32)
+            canvas.fill(Qt.transparent)
+            painter = QPainter(canvas)
+            painter.drawImage(
+                (self.size - image.width()) // 2,
+                (self.size - image.height()) // 2,
+                image,
+            )
+            painter.end()
+            image = canvas
         self.signals.loaded.emit(self.path, image)
 
 
