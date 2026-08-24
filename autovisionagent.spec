@@ -52,6 +52,7 @@ a = Analysis(
         "labeling.modes.rectangle",
         "labeling.modes.brush",
         "labeling.modes.keypoint",
+        "labeling.modes.region_sam",
         # 分发器
         "industrial_vision_platform.vision_dispatcher",
         # W5: supervision 标注优化（渲染/导出；函数内惰性导入，显式列出防漏打包）

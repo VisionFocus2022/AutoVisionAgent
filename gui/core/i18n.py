@@ -104,6 +104,9 @@ _EN_US: Dict[str, str] = {
     "两次输入不一致": "Passwords do not match",
     "未修改密码，暂不登录": "Password unchanged; login deferred",
     "AMP 预检失败，已回退 FP32": "AMP preflight failed, falling back to FP32",
+    # ---- W43：SAM 区域分割（模式标签经变量键传入，顺手补直译） ----
+    "SAM 区域": "SAM Region",
+    "拖拽划定区域，区域内点击分割": "Drag to set region, click inside to segment",
 
     # ---- v6 P2-5 补译（守卫扩单引号口径后补齐，W38；版本对比对话框） ----
     "旧": "Old",

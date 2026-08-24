@@ -199,7 +199,9 @@ class AnnotationController:
         Returns:
             是否注入成功。
         """
-        if self._mode is not AnnotationMode.INTERACTIVE or self._labeler is None:
+        # W43：REGION_SAM 同享 SAM 注入通道（INTERACTIVE 行为不变）
+        if (self._mode not in (AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM)
+                or self._labeler is None):
             return False
         if not hasattr(self._labeler, "set_adapter"):
             return False

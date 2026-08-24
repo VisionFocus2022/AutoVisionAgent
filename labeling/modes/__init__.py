@@ -44,6 +44,7 @@ for _name, _module_path in [
     ("KeypointLabeler", "labeling.modes.keypoint"),
     ("PolygonLabeler", "labeling.modes.polygon"),
     ("RectangleLabeler", "labeling.modes.rectangle"),
+    ("RegionSamLabeler", "labeling.modes.region_sam"),
 ]:
     try:
         import importlib
@@ -66,6 +67,7 @@ _MODE_LABELLER_MAP = {
     AnnotationMode.KEYPOINT: "KeypointLabeler",
     AnnotationMode.AUTO: "AutoLabeler",
     AnnotationMode.INTERACTIVE: "InteractiveLabeler",
+    AnnotationMode.REGION_SAM: "RegionSamLabeler",
 }
 
 for _mode, _cls_name in _MODE_LABELLER_MAP.items():

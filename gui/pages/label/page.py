@@ -49,6 +49,7 @@ _MODES = [
     (AnnotationMode.BRUSH, "画笔", "P"),
     (AnnotationMode.KEYPOINT, "关键点", "K"),
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
+    (AnnotationMode.REGION_SAM, "SAM 区域", "J"),
 ]
 
 
@@ -656,11 +657,12 @@ class LabelPage(SamSessionMixin, QWidget):
             AnnotationMode.BRUSH,
             AnnotationMode.KEYPOINT,
             AnnotationMode.INTERACTIVE,
+            AnnotationMode.REGION_SAM,
         )
         self.view.set_draw_mode(is_draw_mode)
 
         # W4-T3 (P2-6): 交互式模式接线 SAM（依赖检测/权重选择/注入）
-        if mode is AnnotationMode.INTERACTIVE:
+        if mode in (AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM):
             self._ensure_sam()
 
         # 切模式后刷新可用性

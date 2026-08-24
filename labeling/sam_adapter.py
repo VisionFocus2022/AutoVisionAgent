@@ -140,6 +140,44 @@ class SamAdapter:
         pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
         return simplify_polyline(pts, epsilon=2.0)
 
+    def predict_point_in_box(
+        self,
+        image: np.ndarray,
+        point: Tuple[float, float],
+        box: Tuple[float, float, float, float],
+        label: int = 1,
+    ) -> List[Tuple[float, float]]:
+        """区域分割（W43 · SKolpha 取证 §5）：点+box 组合 prompt → 掩码∩矩形 → 多边形。
+
+        矩形作为 box prompt 引导 SAM 语义（原品 ai_predict(point, boxs, image)
+        签名）；掩码与矩形硬求交（原品 intersect_merge_mask 语义）——
+        折点严格不越界。
+        """
+        self.set_image(image)
+        import cv2
+
+        masks, scores, _ = self._predictor.predict(
+            point_coords=np.array([point]),
+            point_labels=np.array([label]),
+            box=np.array(box)[None, :],
+            multimask_output=True,
+        )
+        best = masks[np.argmax(scores)].astype(np.uint8)
+        x1, y1, x2, y2 = (int(v) for v in box)
+        # 掩码级硬约束：矩形外置零（等价 mask ∩ rect），截平边即原品语义
+        clipped = np.zeros_like(best)
+        y_lo, y_hi = max(y1, 0), min(y2 + 1, best.shape[0])
+        x_lo, x_hi = max(x1, 0), min(x2 + 1, best.shape[1])
+        clipped[y_lo:y_hi, x_lo:x_hi] = best[y_lo:y_hi, x_lo:x_hi]
+        contours, _ = cv2.findContours(
+            clipped, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not contours:
+            return []
+        largest = max(contours, key=cv2.contourArea)
+        pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
+        return simplify_polyline(pts, epsilon=2.0)
+
     def to_shapes(
         self,
         image: np.ndarray,
