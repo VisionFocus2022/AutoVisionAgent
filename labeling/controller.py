@@ -210,6 +210,20 @@ class AnnotationController:
             self._labeler.set_image(image)
         return True
 
+    def attach_detector(self, detector, image=None) -> bool:
+        """为 AUTO 模式注入检测回调与当前帧（W44·C：SAM AMG 接入通道）。
+
+        仅在当前模式为 AUTO 且标注器支持 set_detector 时生效。
+        """
+        if self._mode is not AnnotationMode.AUTO or self._labeler is None:
+            return False
+        if not hasattr(self._labeler, "set_detector"):
+            return False
+        self._labeler.set_detector(detector)
+        if image is not None:
+            self._labeler.set_image(image)
+        return True
+
     def _commit_shape(self, shape: Shape) -> None:
         """将标注添加到画布。"""
         self._canvas.add_shape(

@@ -33,6 +33,20 @@ def _dict_keys() -> set:
     return set(keys)
 
 
+def _mode_label_keys() -> set:
+    """解析 page.py _MODES 字面量表的 label_key（W44·A：变量键消费面收口）。
+
+    模式按钮文案经 tr(label_key) 变量传入——字面量扫描永不覆盖；
+    _MODES 为静态字面量表，可源码级枚举（非白名单维护）。
+    """
+    src = (REPO_ROOT / "gui" / "pages" / "label" / "page.py").read_text(
+        encoding="utf-8"
+    )
+    m = re.search(r"_MODES = \[(.*?)\]", src, re.S)
+    assert m, "_MODES 表未找到——结构变更须同步本守卫"
+    return set(re.findall(r'"([^"]+)",\s*"[QRPKIJB]"', m.group(1)))
+
+
 def _tr_literals() -> dict:
     """扫描 gui 包全部 tr("…")/tr('…') 字面量调用 → {串: [文件名…]}。"""
     hits: dict = {}
@@ -103,3 +117,12 @@ def test_runtime_lookup_hits_newline_escaped_key():
         assert tr(s) != s, "tr() 回退源串：翻译未生效"
     finally:
         set_language(prev)
+
+
+@pytest.mark.unit
+def test_mode_label_keys_have_dict_entries():
+    """W44·A：_MODES 全部 label_key 须在 _EN_US（变量键盲区收口）。"""
+    missing = _mode_label_keys() - _dict_keys()
+    assert not missing, (
+        f"模式按钮变量键缺词条（en_US 露中文）：{sorted(missing)}"
+    )

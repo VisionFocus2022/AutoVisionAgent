@@ -178,6 +178,93 @@ class SamAdapter:
         pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
         return simplify_polyline(pts, epsilon=2.0)
 
+    def predict_points(
+        self,
+        image: np.ndarray,
+        points: List[Tuple[float, float]],
+        labels: List[int],
+        box: Optional[Tuple[float, float, float, float]] = None,
+        mask_input: Any = None,
+    ) -> Tuple[List[Tuple[float, float]], Any]:
+        """多点提示 + 迭代 mask_input（W44·B 笔刷精修；官方 logits 回传语义）。
+
+        Returns:
+            (多边形顶点, 本轮 logits)——logits 供下一笔 mask_input 透传。
+        """
+        self.set_image(image)
+        import cv2
+
+        masks, scores, logits = self._predictor.predict(
+            point_coords=np.array(points),
+            point_labels=np.array(labels),
+            box=None if box is None else np.array(box)[None, :],
+            mask_input=mask_input,
+            multimask_output=False,
+        )
+        best = masks[0].astype(np.uint8)
+        contours, _ = cv2.findContours(
+            best, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if not contours:
+            return [], logits
+        largest = max(contours, key=cv2.contourArea)
+        pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
+        return simplify_polyline(pts, epsilon=2.0), logits
+
+    def build_amg_detector(
+        self,
+        iou_thresh: float = 0.88,
+        min_area: int = 64,
+        max_masks: int = 64,
+        label: str = "defect",
+    ):
+        """全图自动分割 detector（W44·C；对标原品 AMG + thresh_iou 过滤）。
+
+        官方 SamAutomaticMaskGenerator：pred_iou_thresh/min_mask_region_area
+        过滤 + 掩码→ε 折点多边形；面积降序 + max_masks 截断（超限
+        logger.warning 留痕——状态栏提示需信号管道，v1 以日志代）。
+        """
+        from segment_anything import SamAutomaticMaskGenerator
+        import cv2
+
+        gen = SamAutomaticMaskGenerator(
+            self._predictor.model,
+            pred_iou_thresh=iou_thresh,
+            min_mask_region_area=min_area,
+        )
+
+        def _detector(image):
+            anns = gen.generate(image)
+            anns.sort(key=lambda a: a.get("area", 0), reverse=True)
+            if len(anns) > max_masks:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "AMG 掩码 %d 个超上限 %d，已截断（面积最小者丢弃）",
+                    len(anns), max_masks,
+                )
+                anns = anns[:max_masks]
+            shapes: List[Shape] = []
+            for ann in anns:
+                contours, _ = cv2.findContours(
+                    ann["segmentation"].astype(np.uint8),
+                    cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE,
+                )
+                if not contours:
+                    continue
+                largest = max(contours, key=cv2.contourArea)
+                pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
+                poly = simplify_polyline(pts, epsilon=2.0)
+                if len(poly) >= 3:
+                    shapes.append(Shape(
+                        mode=AnnotationMode.POLYGON,
+                        points=tuple(poly),
+                        label=label,
+                    ))
+            return shapes
+
+        return _detector
+
     def to_shapes(
         self,
         image: np.ndarray,

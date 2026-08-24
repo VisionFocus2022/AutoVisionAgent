@@ -29,6 +29,7 @@ class AnnotationMode(Enum):
     AUTO = "auto"                # W — AI 自动标注
     INTERACTIVE = "interactive"  # I — SAM 交互式标注
     REGION_SAM = "region_sam"    # J — SAM 区域分割（W43：拖拽定区+点击分割）
+    SAM_BRUSH = "sam_brush"      # B — SAM 笔刷精修（W44：笔划点提示+logits 迭代）
 
     @classmethod
     def manual_modes(cls):

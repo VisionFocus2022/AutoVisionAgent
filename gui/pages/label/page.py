@@ -50,7 +50,19 @@ _MODES = [
     (AnnotationMode.KEYPOINT, "关键点", "K"),
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
     (AnnotationMode.REGION_SAM, "SAM 区域", "J"),
+    (AnnotationMode.SAM_BRUSH, "SAM 笔刷", "B"),
 ]
+
+# W44：SAM 系模式集合——触发 _ensure_sam 注入（含 AUTO 走 AMG detector）；
+# 绘制模式集合=SAM 系+手动系（规模守卫触发抽取，v6 P3 棘轮语义）
+_SAM_MODES = frozenset({
+    AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM,
+    AnnotationMode.SAM_BRUSH, AnnotationMode.AUTO,
+})
+_DRAW_MODES = _SAM_MODES | {
+    AnnotationMode.POLYGON, AnnotationMode.RECTANGLE,
+    AnnotationMode.BRUSH, AnnotationMode.KEYPOINT,
+}
 
 
 class _ZoomableView(QGraphicsView):
@@ -651,18 +663,10 @@ class LabelPage(SamSessionMixin, QWidget):
         # 切换 dragMode：全部标注模式统一 NoDrag + 箭头光标——controller
         # 接管鼠标事件流后基类平移从不触发，多边形保留 ScrollHandDrag 时
         # 只剩强制手型光标的副作用（打点定位需要标准箭头）
-        is_draw_mode = mode in (
-            AnnotationMode.POLYGON,
-            AnnotationMode.RECTANGLE,
-            AnnotationMode.BRUSH,
-            AnnotationMode.KEYPOINT,
-            AnnotationMode.INTERACTIVE,
-            AnnotationMode.REGION_SAM,
-        )
-        self.view.set_draw_mode(is_draw_mode)
+        self.view.set_draw_mode(mode in _DRAW_MODES)
 
         # W4-T3 (P2-6): 交互式模式接线 SAM（依赖检测/权重选择/注入）
-        if mode in (AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM):
+        if mode in _SAM_MODES:
             self._ensure_sam()
 
         # 切模式后刷新可用性

@@ -96,7 +96,20 @@ class SamSessionMixin:
 
     @Slot()
     def _sam_attach(self) -> None:
-        """槽：预热完成（主线程）——注入 InteractiveLabeler。"""
+        """槽：预热完成（主线程）——按当前模式注入。
+
+        W44·C：AUTO 模式注入 AMG detector（全图自动分割 + IOU 阈值过滤）；
+        其余 SAM 模式（INTERACTIVE/REGION_SAM/SAM_BRUSH）注入 adapter。
+        """
+        from labeling.base import AnnotationMode
+
+        mode = self.controller.mode
+        if mode is AnnotationMode.AUTO:
+            label = self.label_input.text().strip() or "defect"
+            detector = self._sam_adapter.build_amg_detector(label=label)
+            if self.controller.attach_detector(detector, self._pending_sam_image):
+                self.status_changed.emit(tr("SAM 已加载"), tr("自动标注就绪"))
+            return
         if self.controller.attach_interactive(
             self._sam_adapter, self._pending_sam_image
         ):
