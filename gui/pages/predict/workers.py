@@ -111,7 +111,7 @@ def save_batch_artifacts(save_dir: str, img_path: str, result, overlay=None) -> 
     """批量产物补齐（W33）：masks RLE 持久化 + 调用方渲染好的叠加图。
 
     - result.masks 非 None 且非空 → masks_{stem}.npz（逐实例 RLE，可经
-      serving.mask_codec.decode_mask_rle 恢复——现状批量 seg masks 丢失）；
+      core.mask_codec.decode_mask_rle 恢复——现状批量 seg masks 丢失）；
     - overlay（BGR ndarray）非 None → overlay_{stem}.jpg；
     - 失败只记 WARNING 不炸整批（产物是增益件，批结果 JSON 仍原子落盘）。
     """
@@ -120,7 +120,7 @@ def save_batch_artifacts(save_dir: str, img_path: str, result, overlay=None) -> 
         if getattr(result, "masks", None) is not None and len(result.masks):
             import numpy as np
 
-            from serving.mask_codec import encode_mask_rle
+            from core.mask_codec import encode_mask_rle
 
             rle = {
                 f"mask_{i}": np.frombuffer(

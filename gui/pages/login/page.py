@@ -252,6 +252,7 @@ class LoginPage(QWidget):
         """
         cred_path = os.path.join(config_dir, _INITIAL_CREDENTIALS_FILENAME)
         content = (
+            "⚠ 工位交付后立即登录修改密码并删除本文件（明文初始口令）\n"
             "AutoVisionAgent 首次启动——默认管理员账户\n"
             "用户名: admin\n"
             f"初始密码: {default_pwd}\n"

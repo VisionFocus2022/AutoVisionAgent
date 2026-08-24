@@ -60,6 +60,15 @@ _ACTION_MATRIX: Dict[str, FrozenSet[str]] = {
 }
 
 
+def _normalize_role(role: "str | None") -> str:
+    """未知/异常/未登录角色归一为 operator（W45·P3-6）。
+
+    与 W39「未登录=operator 最小集」同精神：最小特权、不放大、不锁死；
+    登录页恒可达由 LOGIN_PAGE 显式白名单保证，不经本函数。
+    """
+    return role if role in ROLES else ROLE_OPERATOR
+
+
 def page_allowed(role: str, page_id: str) -> bool:
     """角色是否可访问页面。
 
@@ -69,7 +78,7 @@ def page_allowed(role: str, page_id: str) -> bool:
     """
     if page_id == LOGIN_PAGE:
         return True
-    pages = _PAGE_MATRIX.get(role, _PAGE_MATRIX[ROLE_OPERATOR])
+    pages = _PAGE_MATRIX[_normalize_role(role)]
     return page_id in pages
 
 
@@ -80,7 +89,9 @@ def action_allowed(role: str, action: str) -> bool:
     集后在此登记：_ACTION_MATRIX[action] = frozenset({ROLE_...})。
     """
     allowed = _ACTION_MATRIX.get(action)
-    return allowed is not None and role in allowed
+    # W45·P3-6：未知角色回退 operator（与 page_allowed 同口径；未登记动作
+    # 仍全角色拒绝——W29「漏登记=显式拒绝」语义不变）
+    return allowed is not None and _normalize_role(role) in allowed
 
 
 def check_action(action: str) -> "str | None":
@@ -101,8 +112,7 @@ def check_action(action: str) -> "str | None":
     from core.session import get_current_role, get_current_user
 
     role = get_current_role()
-    effective = role if role is not None else ROLE_OPERATOR
-    if action_allowed(effective, action):
+    if action_allowed(_normalize_role(role), action):
         return None
     try:
         from core.audit_logger import log_access_denied

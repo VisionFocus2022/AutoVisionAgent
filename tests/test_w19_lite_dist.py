@@ -364,6 +364,17 @@ def test_real_lite_dist_guard():
 
     total = product_bytes(_LITE_DIST)
     assert total < _TWO_GIB, f"PRD AC-3.2 要求 lite <2GiB，实测 {total} 字节"
+    # W45·P3-14 余量棘轮：硬线 5MiB（现状 ~6.5MiB）；<10MiB 打预警非阻塞。
+    # 棘轮只升不降——击穿硬线先减重（剪除/换 CPU 轮）再谈升线。
+    margin = _TWO_GIB - total
+    assert margin >= 5 * 1024 * 1024, (
+        f"lite 余量 {margin / 1048576:.2f}MiB 击穿 5MiB 棘轮——先减重再调整"
+    )
+    if margin < 10 * 1024 * 1024:
+        print(
+            f"[WARN] lite 余量 {margin / 1048576:.2f}MiB < 10MiB 预警线"
+            "（非阻塞；任一新依赖波动即破线，建议下个版本节点减重）"
+        )
 
     marker_path = _LITE_DIST / "LITE_MARKER.json"
     assert marker_path.is_file()
