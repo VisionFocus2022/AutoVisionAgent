@@ -43,7 +43,7 @@ class _FakeRunner:
         self.calls: list = []
 
     def __call__(self, image, text=None, boxes=None):
-        self.calls.append({"text": text, "boxes": boxes})
+        self.calls.append({"image": image, "text": text, "boxes": boxes})
         return self.masks, self.scores
 
 
@@ -335,3 +335,4 @@ class TestSam3RealWeightsSmoke:
         poly = adapter.predict_box(img, (32, 32, 224, 224))
         for x, y in poly:
             assert 0 <= x < 256 and 0 <= y < 256
+

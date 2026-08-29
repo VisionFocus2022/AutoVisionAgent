@@ -48,8 +48,6 @@ except ImportError:  # pragma: no cover
 _CLICK_BOX_R = 16
 # 笔划外包盒外扩边距（px）
 _BRUSH_MARGIN = 8
-
-
 def _mask_to_polygon(mask: np.ndarray, epsilon: float = 2.0) -> List[Tuple[float, float]]:
     """二值掩码 → 最大轮廓 → ε 折点多边形（与 SamAdapter 同管线）。"""
     import cv2
@@ -246,9 +244,11 @@ class Sam3Adapter:
         SAM3 后端下 iou_thresh 语义 = 实例分数阈值（真机实测：极柱域
         有效实例大量落在 0.3-0.5 带，默认 0.3 对齐 post_process 阈值，
         0.5 会滤掉过半真实例）；label 即概念文本提示（label 输入框=
-        概念提示词，空值回落 "defect"）。概念词需贴域——实测 "pole"/
-        "defect" 在微距表面图零命中，"hole"/"scratch"/"metal surface"
-        命中良好。
+        概念提示词，空值回落 "defect"）。概念词必须贴域——W47 以极柱
+        GT 实测（12 图对照标注）：唯一有效词 "scratch"（精确率 32%/
+        GT 覆盖 57%，阈值 0.3），"mark" 次之（11%/68%）；"hole" 高分
+        实例全为误检（精确率 0%），"pole"/"defect"/"dent"/"flaw" 零
+        命中。分数高≠命中 GT——以 scripts/eval_sam3_accuracy.py 复测。
         """
         text = (label or "").strip() or "defect"
 
