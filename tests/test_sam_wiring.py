@@ -130,3 +130,28 @@ def test_controller_attach_interactive_only_in_interactive_mode(qapp):
     ctrl.set_mode(AnnotationMode.INTERACTIVE)
     assert ctrl.attach_interactive(FakeAdapter(), np.zeros((2, 2, 3), np.uint8))
     assert ctrl._labeler._image is not None
+
+
+@pytest.mark.unit
+def test_controller_attach_interactive_covers_sam_modes(qapp):
+    """attach_interactive：SAM 三模式（INTERACTIVE/REGION_SAM/SAM_BRUSH）全通。
+
+    W46·B 回归守卫：W44 建 SAM_BRUSH 时漏加白名单——笔刷在 GUI 装配链
+    拿不到 adapter（UIA 真窗擒获）；POLYGON 仍拒绝（不误注入手动模式）。
+    """
+    from labeling.canvas import AnnotationCanvas
+    from labeling.controller import AnnotationController
+
+    for mode in (AnnotationMode.REGION_SAM, AnnotationMode.SAM_BRUSH):
+        c = AnnotationCanvas()
+        ctrl = AnnotationController(c, mode=mode, label="d")
+        ok = ctrl.attach_interactive(
+            FakeAdapter(), np.zeros((2, 2, 3), np.uint8)
+        )
+        assert ok, f"{mode} 应可注入 SAM 适配器"
+        assert ctrl._labeler._adapter is not None
+        assert ctrl._labeler._image is not None
+
+    c = AnnotationCanvas()
+    ctrl = AnnotationController(c, mode=AnnotationMode.POLYGON, label="d")
+    assert ctrl.attach_interactive(FakeAdapter()) is False

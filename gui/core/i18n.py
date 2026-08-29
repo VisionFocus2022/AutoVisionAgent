@@ -108,6 +108,7 @@ _EN_US: Dict[str, str] = {
     # ---- W43：SAM 区域分割（模式标签经变量键传入，顺手补直译） ----
     "SAM 区域": "SAM Region",
     "SAM 笔刷": "SAM Brush",
+    "SAM 全图": "SAM Full-Image",
     "自动标注就绪": "Auto-annotation ready",
     "拖拽划定区域，区域内点击分割": "Drag to set region, click inside to segment",
 

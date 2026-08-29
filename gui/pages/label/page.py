@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from labeling import AnnotationMode, Shape, save_labelme
-from core.exceptions import AnnotationIOError, SupervisedEngineError
+from core.exceptions import AnnotationIOError, InvalidShapeError, SupervisedEngineError
 from labeling.canvas import AnnotationCanvas
 from labeling.controller import AnnotationController
 from gui.core.i18n import tr
@@ -51,6 +51,9 @@ _MODES = [
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
     (AnnotationMode.REGION_SAM, "SAM 区域", "J"),
     (AnnotationMode.SAM_BRUSH, "SAM 笔刷", "B"),
+    # W46·B：补 W44 AUTO/AMG 通道缺失的 UI 入口（此前 _sam_attach 的
+    # AUTO 分支无按钮可达=死路）——SAM3 后端下 label 输入框即概念提示词
+    (AnnotationMode.AUTO, "SAM 全图", "G"),
 ]
 
 # W44：SAM 系模式集合——触发 _ensure_sam 注入（含 AUTO 走 AMG detector）；
@@ -374,23 +377,19 @@ class LabelPage(SamSessionMixin, QWidget):
             QShortcut(QKeySequence(key), self).activated.connect(
                 lambda m=mode: self._apply_mode(m)
             )
-        QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.canvas.undo)
-        QShortcut(QKeySequence("Ctrl+Y"), self).activated.connect(self.canvas.redo)
-        QShortcut(QKeySequence("Ctrl+Shift+Z"), self).activated.connect(self.canvas.redo)
-        QShortcut(QKeySequence("Return"), self).activated.connect(
-            self.controller.handle_commit
-        )
-        QShortcut(QKeySequence("Esc"), self).activated.connect(self.controller.cancel)
-        QShortcut(QKeySequence("Delete"), self).activated.connect(self._delete_selected)
-        QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self.save)
-        QShortcut(QKeySequence("Ctrl+O"), self).activated.connect(self.open_image)
-        QShortcut(QKeySequence("A"), self).activated.connect(self.prev_image)
-        QShortcut(QKeySequence("D"), self).activated.connect(self.next_image)
-        QShortcut(QKeySequence("W"), self).activated.connect(self._ai_prelabel)
-        QShortcut(QKeySequence("Space"), self).activated.connect(self._toggle_shapes_visible)
-        # copy/paste 标注
-        QShortcut(QKeySequence("Ctrl+C"), self).activated.connect(self._copy_shapes)
-        QShortcut(QKeySequence("Ctrl+V"), self).activated.connect(lambda: self._paste_shapes(20))
+        # 静态快捷键表驱动注册（W24 ≤800 行守卫：逐条注册已收敛为表）
+        for seq, handler in [
+            ("Ctrl+Z", self.canvas.undo), ("Ctrl+Y", self.canvas.redo),
+            ("Ctrl+Shift+Z", self.canvas.redo),
+            ("Return", self.controller.handle_commit),
+            ("Esc", self.controller.cancel), ("Delete", self._delete_selected),
+            ("Ctrl+S", self.save), ("Ctrl+O", self.open_image),
+            ("A", self.prev_image), ("D", self.next_image),
+            ("W", self._ai_prelabel), ("Space", self._toggle_shapes_visible),
+            ("Ctrl+C", self._copy_shapes),
+            ("Ctrl+V", lambda: self._paste_shapes(20)),
+        ]:
+            QShortcut(QKeySequence(seq), self).activated.connect(handler)
 
         self._on_shapes_changed(self.canvas.shapes)
         self._on_undo_redo_changed(self.canvas.can_undo(), self.canvas.can_redo())
@@ -698,9 +697,10 @@ class LabelPage(SamSessionMixin, QWidget):
         w, h = self.canvas.image_size
         try:
             save_labelme(path, shapes, self._image_path or "", h, w)
-        except (OSError, ValueError, TypeError, AnnotationIOError) as exc:
-            # AnnotationIOError 必收：save_labelme 把 IO/解析错误包成
-            # AppError 子类（非 OSError）——漏收则裸穿 Qt 槽（W9 实测）
+        except (OSError, ValueError, TypeError, AnnotationIOError,
+                InvalidShapeError) as exc:
+            # AnnotationIOError/InvalidShapeError 必收（AppError 子类非
+            # OSError）——漏收则裸穿 Qt 槽（W9 实测；W46·B 补 Invalid）
             self.status_changed.emit(str(exc), "ERROR")
             return
         logger.info("保存标注: %s（%d 个形状）", path, len(shapes))

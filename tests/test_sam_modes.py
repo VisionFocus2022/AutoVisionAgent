@@ -103,7 +103,9 @@ class TestInteractiveLabeler:
         labeler.on_press((30, 30))
         shape = labeler.preview()
         assert shape is not None
-        assert shape.mode is AnnotationMode.INTERACTIVE  # records the labeling mode
+        # W46·B：交互式提交形状=POLYGON（工具模式不再上形状——
+        # INTERACTIVE 形状会被 LabelMe 导出拒收，保存链裸穿）
+        assert shape.mode is AnnotationMode.POLYGON
         assert len(shape.points) == 4
 
     def test_commit_returns_shape_and_clears(self) -> None:

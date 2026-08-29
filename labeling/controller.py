@@ -200,8 +200,14 @@ class AnnotationController:
             是否注入成功。
         """
         # W43：REGION_SAM 同享 SAM 注入通道（INTERACTIVE 行为不变）
-        if (self._mode not in (AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM)
-                or self._labeler is None):
+        # W46·B：SAM_BRUSH 补齐——W44 建模式时漏加，笔刷在 GUI 装配链
+        # 永远拿不到 adapter（单测直接注 set_adapter 不经此路，UIA 真窗
+        # 测试擒获；BrushSamLabeler 有 set_adapter/set_image 同契约）
+        _SAM_ATTACH_MODES = (
+            AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM,
+            AnnotationMode.SAM_BRUSH,
+        )
+        if self._mode not in _SAM_ATTACH_MODES or self._labeler is None:
             return False
         if not hasattr(self._labeler, "set_adapter"):
             return False

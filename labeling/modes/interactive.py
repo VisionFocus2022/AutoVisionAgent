@@ -66,7 +66,15 @@ class InteractiveLabeler(AbstractLabeler):
             _log.getLogger(__name__).exception("SAM 交互预测失败")
             return
         if len(poly) >= 3:
-            self._pending = self._build(tuple(poly))
+            # W46·B：显式 POLYGON——_build 会带工具模式（INTERACTIVE），
+            # LabelMe 导出器拒收致保存裸穿（UIA 真窗擒获）；形状类型与
+            # 工具模式解耦，对齐 region_sam/brush_sam 提交语义
+            self._pending = Shape(
+                mode=AnnotationMode.POLYGON,
+                points=tuple(poly),
+                label=self.label,
+                color=self._color,
+            )
 
     def on_move(self, pt: Point) -> None:
         self._cursor = pt
