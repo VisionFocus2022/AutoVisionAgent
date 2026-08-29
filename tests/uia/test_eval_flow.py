@@ -39,7 +39,6 @@ T_NAV = 20
 T_EVAL = 120  # 引擎冷加载 + 逐 JSON 推理（实测热态 <1s、冷态 ~10-20s）
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_eval_det_metrics(ava_app, tiny_det_model_path, eval_gt_dir):
     """det 评估：填模型+标注目录 → 开始评估 → 指标表展示 + 完成状态。"""
     win = ava_app

@@ -151,7 +151,6 @@ def _count_bmp(directory: Path) -> int:
 
 # ================================ 用例 ================================ #
 
-@pytest.mark.usefixtures("ava_app")
 def test_pole_import_and_split(ava_app, pole_subset_dir: Path, workspace_dir: Path):
     """极柱真实 bmp（含 "(N)" 括号文件名）导入 + 数据集划分三目录铁证。"""
     win = ava_app
@@ -205,7 +204,6 @@ def test_pole_import_and_split(ava_app, pole_subset_dir: Path, workspace_dir: Pa
     logger.info("极柱导入+划分完成: %s", sub_counts)
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_pole_label_polygon_and_rectangle(ava_app, pole_subset_dir: Path, workspace_dir: Path):
     """极柱真实图：多边形（右键提交）→ 保存；切下一张 → 矩形 → 保存；双 JSON 铁证。"""
     win = ava_app
@@ -319,7 +317,6 @@ def test_pole_label_polygon_and_rectangle(ava_app, pole_subset_dir: Path, worksp
                 poly_doc.get("imagePath"), rect_doc.get("imagePath"))
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_project_create_flow(ready_admin_cfg, ava_app, workspace_dir: Path):
     """项目创建：改名 → 浏览选存储目录（触发 store 重初始化）→ 创建 → 落盘 + 列表铁证。"""
     win = ava_app
@@ -375,7 +372,6 @@ def test_project_create_flow(ready_admin_cfg, ava_app, workspace_dir: Path):
     logger.info("项目创建铁证通过: %s", matches[0])
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_settings_theme_persist(ready_admin_cfg, ava_app):
     """设置页：主题切换 浅色 → 保存 → user_settings.json 持久化铁证 → 恢复深色。"""
     win = ava_app
@@ -442,7 +438,6 @@ def test_settings_theme_persist(ready_admin_cfg, ava_app):
         logger.warning("恢复深色主题失败（不影响铁证）: %s", e)
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_home_dashboard(ava_app):
     """主页仪表盘渲染冒烟：关键区块标签在 UIA 树可见。"""
     win = ava_app

@@ -72,15 +72,22 @@ except ImportError:  # pragma: no cover - 顶层模式兜底
 
 logger = logging.getLogger(__name__)
 
-# exe 未打包 SAM3 栈（transformers/Sam3Adapter），重打包波次后放开
-if os.environ.get("AVA_UIA_SOURCE", "exe").lower() != "python":
-    pytest.skip(
-        "SAM3 UIA 用例需源码模式：设 AVA_UIA_SOURCE=python（exe 未打包 transformers）",
-        allow_module_level=True,
-    )
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SAM3_WEIGHTS = _REPO_ROOT / "weights" / "sam3"
+# W46·B 遗留 3：exe 是否带 SAM3 栈按产物探测（transformers hook 全量
+# 收集，_internal/transformers/models/sam3 在即支持；labeling.sam3_adapter
+# 经 spec hiddenimports 入 PYZ——若缺，T3 用例会以「SAM3 模块不可用」
+# 状态失败，即重打包缺失的明确信号）
+_SAM3_EXE_STACK = (
+    _REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal"
+    / "transformers" / "models" / "sam3"
+)
+if os.environ.get("AVA_UIA_SOURCE", "exe").lower() != "python" and not _SAM3_EXE_STACK.is_dir():
+    pytest.skip(
+        "SAM3 UIA 用例需源码模式或带 sam3 栈的 exe"
+        f"（{_SAM3_EXE_STACK} 不存在）",
+        allow_module_level=True,
+    )
 _BUTTON_TYPES = ["ButtonControl", "CheckBoxControl"]
 
 T_NAV = float(os.environ.get("AVA_UIA_T_NAV", "20"))

@@ -44,6 +44,10 @@ a = Analysis(
         # importlib 导入，PyInstaller 静态分析不可见——W4 发版检查实测漏打包
         # 导致 exe 内全部手动标注失效，UIA 曾以"软通过"掩盖）
         "labeling.sam_adapter",
+        # W46·A：SAM3 后端（_load_sam3 函数内惰性导入，静态分析不可见；
+        # transformers/models/sam3 栈已随依赖链入包——transformers hook
+        # 全量收集，无需逐一列出子模块）
+        "labeling.sam3_adapter",
         "labeling.batch_tools",
         "labeling.io_labelme",
         "labeling.modes.auto",

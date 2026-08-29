@@ -48,7 +48,6 @@ T_LOAD = 60    # 首次加载 exe 内冷 import ultralytics 实测 ~5-15s，宽�
 T_INFER = 60
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_predict_requires_model_first(ava_app):
     """负向探针（不依赖引擎加载，可绿）：未加载模型推理 → 提示先加载。"""
     win = ava_app
@@ -60,7 +59,6 @@ def test_predict_requires_model_first(ava_app):
     assert wait_status(win, "请先加载模型", 10), "未加载模型应提示'请先加载模型'"
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_predict_single_image(ready_admin_cfg, ava_app, sample_images_dir, tiny_det_model_path):
     """单张推理全链：加载模型→选图推理→分数渲染→结果行→预览更新。
 

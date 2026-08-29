@@ -80,7 +80,6 @@ T_DEPLOY = float(os.environ.get("AVA_UIA_T_DEPLOY", "30"))
 
 # ================================ 全流程测试 ================================ #
 
-@pytest.mark.usefixtures("ava_app")
 def test_import_annotate_train_deploy(
     ready_admin_cfg,
     ava_app,

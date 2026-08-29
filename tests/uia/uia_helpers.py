@@ -431,6 +431,10 @@ def enter_path_in_open_dialog(
       - 文件夹选择器：EditControl Name='文件夹:' AutoId='1152'
         + ButtonControl Name='选择文件夹' 确认
       - 文件选择器：EditControl Name='文件名:' + 回车确认
+
+    返回契约（W46·B 遗留 2 收紧）：True 仅当「确认后对话框已消失」；
+    确认点击未落上（对话框仍在）返回 False——调用方以 assert 消费时
+    卡框早败于本函数的清晰日志，而非下游状态漂移。
     """
     dlg = _wait_dialog(dialog_title, timeout)
     if dlg is None:
@@ -528,10 +532,16 @@ def enter_path_in_open_dialog(
             pass
 
     if confirmed:
-        # 确认可能异步生效：等对话框消失，仍在则补点一次确认
+        # 确认可能异步生效：等对话框消失，仍在则补点一次确认；
+        # 二次确认后仍未消失 → False（W46·B 遗留 2：原版假 True）
         if not _wait_dialog_gone(dialog_title, timeout=6.0):
             _click_confirm_button(dlg)
-            _wait_dialog_gone(dialog_title, timeout=4.0)
+            if not _wait_dialog_gone(dialog_title, timeout=4.0):
+                logger.error(
+                    "对话框 '%s' 二次确认后仍未关闭，返回 False（勿当作已确认）",
+                    dialog_title,
+                )
+                return False
         logger.info("对话框 '%s' 已输入路径并确认: %s", dialog_title, path)
         return True
     return False

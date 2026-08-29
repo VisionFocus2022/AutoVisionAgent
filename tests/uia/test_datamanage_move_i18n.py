@@ -100,7 +100,6 @@ def _combo_select(combo, item_text: str, direction: str = "down") -> bool:
         return False
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_move_split_groups_subdirs(ava_app, pole_subset_dir, workspace_dir):
     """move 模式划分：顶层搬空 + 相对路径分组展示 + 确定性 T6/V0/T2。"""
     win = ava_app
@@ -163,7 +162,6 @@ def _wait_settings_contains(token: str, timeout: float = 5.0) -> bool:
     return False
 
 
-@pytest.mark.usefixtures("ava_app")
 def test_i18n_switch_persists(ready_admin_cfg, ava_app):
     """切 English→保存→落盘 en_US→（还原）切回中文→落盘 ch_CN。"""
     win = ava_app
