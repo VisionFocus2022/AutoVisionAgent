@@ -461,3 +461,35 @@ def ready_admin_cfg():
                     path.replace(restore_to)
             except OSError:
                 logger.warning("还原 %s 失败", path, exc_info=True)
+
+
+# ================================ W49 环境治理 ================================ #
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _uia_memory_preflight():
+    """提交内存预检（W48 教训制度化：并行 AI 代理的僵尸 pytest 可耗尽
+    提交内存杀死 UIA 跑批）。低于阈值整组诚实 skip；AVA_UIA_SKIP_ON_LOW_MEM=0 关闭。"""
+    import ctypes
+
+    if os.environ.get("AVA_UIA_SKIP_ON_LOW_MEM", "1") == "0":
+        return
+
+    class _MEMSTATUSEX(ctypes.Structure):
+        _fields_ = [
+            ("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+            ("ullTotalPhys", ctypes.c_uint64), ("ullAvailPhys", ctypes.c_uint64),
+            ("ullTotalPageFile", ctypes.c_uint64), ("ullAvailPageFile", ctypes.c_uint64),
+            ("ullTotalVirtual", ctypes.c_uint64), ("ullAvailVirtual", ctypes.c_uint64),
+            ("ullAvailExtendedVirtual", ctypes.c_uint64),
+        ]
+
+    stat = _MEMSTATUSEX()
+    stat.dwLength = ctypes.sizeof(_MEMSTATUSEX)
+    ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+    avail_gb = stat.ullAvailPageFile / (1024 ** 3)
+    if avail_gb < 6.0:
+        pytest.skip(
+            f"提交内存 {avail_gb:.1f}GB < 6GB（并行代理/僵尸进程挤占）——"
+            "UIA 诚实跳过（AVA_UIA_SKIP_ON_LOW_MEM=0 可强制跑）"
+        )
