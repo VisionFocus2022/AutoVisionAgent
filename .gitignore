@@ -25,11 +25,13 @@ env/
 *~
 
 # 模型权重（大文件）
+weights/
 *.pth
 *.pt
 *.onnx
 *.ckpt
 *.engine
+*.safetensors
 *.plan
 
 # 数据集

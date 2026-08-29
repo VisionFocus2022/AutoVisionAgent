@@ -3,12 +3,20 @@
 行为保持抽取：五方法原名混入 LabelPage——invoke_main(self, "_sam_warmed")
 等槽名派发按字符串在实例上解析，经 MRO 命中本 Mixin，语义不变。
 
+W46：SAM3 后端装配——AVA_SAM3_DIR 有效目录或对话框选中 config.json
+（同目录含 model.safetensors）时走 Sam3Adapter（transformers）；
+否则原 SAM1（segment-anything）流程不变。
+
 宿主契约（LabelPage 提供）：
   - status_changed: Signal(str, str) —— 状态栏明示
   - controller: AnnotationController —— attach_interactive(adapter, image)
   - _image_path / _sam_adapter / _sam_busy / _pending_sam_image 会话状态
 """
 from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Optional, Union
 
 from PySide6.QtCore import Slot
 
@@ -18,13 +26,42 @@ from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file
 
 
+def resolve_sam3_model_dir(
+    env_value: Optional[str],
+    picked_path: Union[str, Path, None],
+) -> Optional[str]:
+    """SAM3 模型目录解析（纯函数，W46）。
+
+    - AVA_SAM3_DIR 指向有效目录 → 该目录（测试/幂等装配优先通道）；
+    - 对话框选中 config.json 且同目录存在 model.safetensors → 其父目录
+      （transformers from_pretrained 目录形态）；
+    - 其余（含 .pth 选择、env 目录无效）→ None，回落 SAM1 流程。
+    """
+    if env_value and Path(env_value).is_dir():
+        return str(Path(env_value))
+    if picked_path is not None and Path(picked_path).name == "config.json":
+        parent = Path(picked_path).parent
+        if (parent / "model.safetensors").is_file():
+            return str(parent)
+    return None
+
+
 class SamSessionMixin:
     """SAM 依赖探测 → 权重加载 → 帧预热 → 注入 InteractiveLabeler 全程接线。"""
 
     def _ensure_sam(self) -> None:
-        """进入交互式模式：依赖检测 + 权重选择/加载 + 注入（状态栏全程明示）。"""
+        """进入交互式模式：依赖检测 + 权重选择/加载 + 注入（状态栏全程明示）。
+
+        W46：AVA_SAM3_DIR 有效目录优先走 SAM3；对话框选中 config.json
+        （同目录含 model.safetensors）亦走 SAM3；其余回落 SAM1 原流程。
+        """
         if getattr(self._sam_adapter, "loaded", False):
             self._warm_sam()
+            return
+
+        sam3_dir = resolve_sam3_model_dir(os.environ.get("AVA_SAM3_DIR"), None)
+        if sam3_dir:
+            self._load_sam3(sam3_dir)
             return
 
         try:
@@ -33,9 +70,17 @@ class SamSessionMixin:
             self.status_changed.emit(tr("SAM 未安装"), tr("交互式标注不可用"))
             return
 
-        ckpt = pick_open_file(self, tr("选择 SAM 权重"), "SAM Checkpoint (*.pth)")
+        ckpt = pick_open_file(
+            self, tr("选择 SAM 权重"),
+            "SAM Checkpoint (*.pth);;SAM3 Model (config.json)",
+        )
         if not ckpt:
             self.status_changed.emit(tr("SAM 未加载权重"), tr("交互式标注不可用"))
+            return
+
+        sam3_dir = resolve_sam3_model_dir(None, Path(ckpt))
+        if sam3_dir:
+            self._load_sam3(sam3_dir)
             return
 
         from labeling.sam_adapter import SamAdapter
@@ -61,6 +106,39 @@ class SamSessionMixin:
 
         # W17（v3 P2-1）：on_error 兜底（意外异常时 _sam_busy 复位见 _sam_failed）
         run_job(_work, name="label_sam_load", on_error=ui_on_error(self, "_sam_failed"))
+
+    def _load_sam3(self, model_dir: str) -> None:
+        """W46：SAM3 后端加载（transformers 目录形态）——异步，模式同上。"""
+        try:
+            from labeling.sam3_adapter import Sam3Adapter
+        except ImportError as exc:
+            # exe 冻结态若未打包 sam3_adapter/transformers（函数级导入对
+            # PyInstaller 静态分析不可见，W16 同款）——诚实报错不裸穿 Qt 槽
+            self.status_changed.emit(
+                tr("SAM 未安装"), f"SAM3 模块不可用: {exc}"[:60]
+            )
+            return
+
+        adapter = Sam3Adapter()
+        self._sam_busy = True
+
+        def _work():
+            from models.supervised.device import resolve_device
+            err = ""
+            try:
+                adapter.load(model_dir, device=resolve_device("cuda"))
+            except (ImportError, RuntimeError, OSError, ValueError) as exc:
+                err = str(exc)
+            self._sam_adapter = adapter
+            self._sam_busy = False
+            if err:
+                invoke_main(self, "_sam_failed", err)
+                return
+            invoke_main(self, "_sam_warmed")
+
+        run_job(
+            _work, name="label_sam3_load", on_error=ui_on_error(self, "_sam_failed")
+        )
 
     @Slot()
     def _sam_warmed(self) -> None:
