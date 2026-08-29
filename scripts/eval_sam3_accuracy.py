@@ -57,15 +57,36 @@ def mask_iou(a, b):
     return inter / union if union else 0.0
 
 
-imgs = sorted(
-    p for p in glob.glob(str(DATA / "*.bmp"))
-    if not os.path.basename(p).startswith("(")
-)[:N_IMG]
-print(f"[eval] {len(imgs)} 缺陷图")
+if __name__ == "__main__":
+    import argparse
+
+    ap = argparse.ArgumentParser(description="SAM3 极柱标注精度评估（W47/W48）")
+    ap.add_argument("--ckpt", default=str(REPO / "weights/sam3"),
+                    help="模型目录（微调产物 weights/sam3-pole-ft 可指）")
+    ap.add_argument("--manifest", default=None,
+                    help="finetune manifest.json——限定 val 留出集（防训练集泄漏）")
+    ap.add_argument("--n", type=int, default=N_IMG)
+    _args = ap.parse_args()
+    if _args.manifest:
+        _val = set(json.loads(Path(_args.manifest).read_text(encoding="utf-8"))["val"])
+        imgs = sorted(
+            p for p in glob.glob(str(DATA / "*.bmp"))
+            if os.path.basename(p) in _val
+        )[: _args.n]
+    else:
+        imgs = sorted(
+            p for p in glob.glob(str(DATA / "*.bmp"))
+            if not os.path.basename(p).startswith("(")
+        )[: _args.n]
+else:  # 被 import 时不执行采集（eval 函数另行使用）
+    import json  # noqa: F401 — manifest 分支复用
+    _args = type("_A", (), {"ckpt": str(REPO / "weights/sam3")})()
+    imgs = []
+print(f"[eval] {len(imgs)} 缺陷图 ckpt={_args.ckpt}")
 
 t0 = time.time()
 adapter = Sam3Adapter()
-adapter.load(str(REPO / "weights/sam3"), device="cuda")
+adapter.load(_args.ckpt, device="cuda")
 print(f"[eval] 模型加载 {time.time()-t0:.1f}s", flush=True)
 
 ious_click, click_fail = [], 0
