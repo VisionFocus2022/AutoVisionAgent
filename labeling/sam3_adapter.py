@@ -133,6 +133,29 @@ class Sam3Adapter:
         scores = [float(s) for s in first["scores"].detach().cpu().numpy()]
         return masks, scores
 
+    def _best_polygon_near(
+        self, masks: List[np.ndarray], anchor: Tuple[float, float]
+    ) -> List[Tuple[float, float]]:
+        """实例选择 v2（W52 · 162 图实测）：质心离锚点最近者。
+
+        比全局 argmax 分数：mean 0.521→0.546、≥0.5 60%→63%、零产出
+        10→1——点击意图下「离点击最近」比「全局最高分」贴合目标
+        （W47 12 图小样本曾误判此杠杆中性，162 图翻案）。
+        """
+        if not masks:
+            return []
+
+        def _dist(i: int) -> float:
+            ys, xs = np.nonzero(masks[i])
+            if len(xs) == 0:
+                return 1e18
+            return float(
+                ((xs.mean() - anchor[0]) ** 2 + (ys.mean() - anchor[1]) ** 2) ** 0.5
+            )
+
+        best = masks[min(range(len(masks)), key=_dist)]
+        return _mask_to_polygon(best)
+
     def _best_polygon(
         self, masks: List[np.ndarray], scores: List[float]
     ) -> List[Tuple[float, float]]:
@@ -164,7 +187,8 @@ class Sam3Adapter:
             min(x + r, w - 1), min(y + r, h - 1),
         )
         masks, scores = self._run_instances(image, boxes=[[list(box)]])
-        return self._best_polygon(masks, scores)
+        # W52：点击场景实例选择=质心最近（离点击最近），非 argmax 分数
+        return self._best_polygon_near(masks, (x, y))
 
     def predict_box(
         self,

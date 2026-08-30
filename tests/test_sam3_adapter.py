@@ -128,16 +128,17 @@ class TestPredictPoint:
         assert adapter.predict_point(_DUMMY_IMG, (30, 30), label=0) == []
         assert runner.calls == []
 
-    def test_best_score_mask_selected(self):
+    def test_nearest_centroid_mask_selected(self):
+        """W52 v2：选质心离点击最近的实例（大掩码质心=点击点 30,30，
+        小掩码质心 25,25 较远且分高 0.95——旧 argmax 契约已废）。"""
         small = np.zeros((64, 64), dtype=bool)
         small[20:30, 20:30] = True
         adapter, _ = _make_adapter(
             masks=[_square_mask(), small], scores=[0.2, 0.95]
         )
         poly = adapter.predict_point(_DUMMY_IMG, (30, 30))
-        # 最高分 0.95 = 小掩码（20:30）被选中
         xs = [p[0] for p in poly]
-        assert max(xs) < 35 and min(xs) >= 20
+        assert max(xs) > 40, "应选质心在点击处的大掩码（_square_mask）"
 
     def test_no_instances_returns_empty(self):
         adapter, _ = _make_adapter(masks=[], scores=[])
@@ -336,3 +337,32 @@ class TestSam3RealWeightsSmoke:
         for x, y in poly:
             assert 0 <= x < 256 and 0 <= y < 256
 
+
+
+class TestNearestSelection:
+    """W52 实例选择 v2：点击场景选质心最近实例（162 图实测 +0.025 mean、
+    零产出 10→1），替代全局 argmax 分数。"""
+
+    def test_nearest_over_argmax(self):
+        """高分实例远、低分实例近——选近的（点击意图语义）。"""
+        near = np.zeros((64, 64), dtype=bool)
+        near[26:34, 26:34] = True   # 质心 ~(30,30) 离点击近
+        far = np.zeros((64, 64), dtype=bool)
+        far[50:58, 50:58] = True    # 质心 ~(54,54) 远
+        adapter, runner = _make_adapter(masks=[far, near], scores=[0.95, 0.10])
+        poly = adapter.predict_point(_DUMMY_IMG, (30, 30))
+        xs = [p[0] for p in poly]
+        assert max(xs) < 40, "应选离点击最近的实例，而非最高分"
+
+    def test_empty_instances(self):
+        adapter, _ = _make_adapter(masks=[], scores=[])
+        assert adapter.predict_point(_DUMMY_IMG, (30, 30)) == []
+
+    def test_empty_mask_instance_skipped(self):
+        """全空掩码实例（nonzero=0）不应被选中为 IndexError 崩溃。"""
+        empty = np.zeros((64, 64), dtype=bool)
+        good = np.zeros((64, 64), dtype=bool)
+        good[20:40, 20:40] = True
+        adapter, _ = _make_adapter(masks=[empty, good], scores=[0.9, 0.5])
+        poly = adapter.predict_point(_DUMMY_IMG, (30, 30))
+        assert len(poly) >= 3
