@@ -1,0 +1,58 @@
+{
+  "version": "2026-08-30",
+  "principle": "编排时预绑定、运行时白名单、不跨层耦合；Agent 是骨架（稳定），Skill 是肌肉（迭代）",
+  "layers": {
+    "process": {
+      "desc": "流程规约层：门禁判定、阶段编排、回环策略；不含领域知识",
+      "skills": ["feature-dev", "init-pipeline"]
+    },
+    "domain": {
+      "desc": "领域知识层：接口约束、标准动线；不含编排逻辑",
+      "skills": ["add-annotation-mode", "add-inference-engine", "add-gui-page", "run-eval-experiment"]
+    },
+    "base": {
+      "desc": "通用能力层：文件读写、记录持久化；与业务无关",
+      "skills": ["sync-biz-record", "sync-sys-record", "archive-tech-report"]
+    }
+  },
+  "role_whitelist": {
+    "entry": {
+      "desc": "主对话，入口角色：只驱动、只透传，禁止自行分析设计",
+      "skills": ["process/feature-dev", "process/init-pipeline"]
+    },
+    "orchestrator": {
+      "desc": "feature-dev 编排角色：只管调度，禁止产出计划文档",
+      "skills": ["base/sync-biz-record", "base/sync-sys-record"]
+    },
+    "architect-agent": {
+      "desc": "执行角色（调研可并行）",
+      "skills": ["base/sync-biz-record"]
+    },
+    "coder-agent": {
+      "desc": "执行角色（开发强制串行）",
+      "skills": ["domain/add-annotation-mode", "domain/add-inference-engine", "domain/add-gui-page", "domain/run-eval-experiment", "base/sync-biz-record"]
+    },
+    "test-agent": {
+      "desc": "执行角色",
+      "skills": ["base/sync-biz-record"]
+    },
+    "reviewer-agent": {
+      "desc": "门禁角色：只判定通过或打回，禁止改产物",
+      "skills": []
+    },
+    "eval-agent": {
+      "desc": "评估角色（判）：外挂于工序 01/04/05/06，L0 证据核验+G0/L1/L2 三层判定，只判不做",
+      "skills": []
+    },
+    "recorder-agent": {
+      "desc": "聚合角色：只汇总产物，禁止反向参与决策",
+      "skills": ["base/sync-biz-record", "base/sync-sys-record", "base/archive-tech-report"]
+    }
+  },
+  "runtime_rules": [
+    "运行时只加载 role_whitelist 清单内能力，防越权扩张",
+    "编排启动时一次性锁定本需求能力清单，写入 biz 记录 [PLAN] 章节的「能力绑定」行",
+    "调用方向只允许向下：process→执行角色→domain→base；禁止跨层与反向",
+    "新增 skill 必须先登记本文件（三层之一）+ AGENTS.md 索引 + sys 记录，否则视为不存在"
+  ]
+}
