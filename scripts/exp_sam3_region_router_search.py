@@ -230,14 +230,15 @@ def main() -> None:
                 return r["d_iou"]
             if target == "tight":
                 return r["d_iou"] if r["t_iou"] is None else r["t_iou"]
-            if target == "f05":
-                return r.get("f05_iou", r["d_iou"])
-            best = r["d_iou"] if r["t_iou"] is None else max(r["t_iou"], r["d_iou"])
-            return max(best, r.get("f05_iou", -1))
+            return r.get("f05_iou", r["d_iou"])
 
+        # ⚠️ 只搜可实现目标（tight / f05）。曾有 "→best"（路由时取
+        # max(direct,tight,f05) 的 IoU）——那是 oracle 作弊：生产无 GT
+        # 算不出 max，曾让 13 条规则假性过门，被 m=0 fired-subset
+        # win/loss 审计逮住（m=0 触发 9/162 全输 0.828→0.250）后删除。
         v4 = []  # (name, rule_fn, target)
         for thr in (0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6):
-            for target in ("tight", "f05", "best"):
+            for target in ("tight", "f05"):
                 v4.append((
                     f"ratio≤{thr:.2f}→{target}",
                     (lambda th: lambda r: r.get("ratio", 1.0) <= th)(thr),
@@ -245,7 +246,7 @@ def main() -> None:
                 ))
         for tbi in (0.90, 0.94, 0.96):
             for thr in (0.4, 0.5, 0.6):
-                for target in ("tight", "f05", "best"):
+                for target in ("tight", "f05"):
                     v4.append((
                         f"bi<{tbi:.2f}&ratio≤{thr:.1f}→{target}",
                         (lambda a, b: lambda r: r["bbox_in"] < a and r.get("ratio", 1.0) <= b)(tbi, thr),
