@@ -59,6 +59,7 @@ def mask_iou(a, b):
 
 if __name__ == "__main__":
     import argparse
+    import json
 
     ap = argparse.ArgumentParser(description="SAM3 极柱标注精度评估（W47/W48）")
     ap.add_argument("--ckpt", default=str(REPO / "weights/sam3"),

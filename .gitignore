@@ -26,6 +26,7 @@ env/
 
 # 模型权重（大文件）
 weights/
+dataset_yoloseg/
 *.pth
 *.pt
 *.onnx
