@@ -17,14 +17,13 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from labeling.base import AnnotationMode, Shape
-from labeling.sam3_adapter import Sam3Adapter, _CLICK_BOX_R, _BRUSH_MARGIN
+from labeling.sam3_adapter import _BRUSH_MARGIN, _CLICK_BOX_R, Sam3Adapter
 
 _DUMMY_IMG = np.zeros((64, 64, 3), dtype=np.uint8)
 
@@ -391,3 +390,4 @@ class TestRegionNearestSelection:
         adapter, _ = _make_adapter(masks=[empty, good], scores=[0.9, 0.5])
         poly = adapter.predict_point_in_box(_DUMMY_IMG, (30, 30), (0, 0, 63, 63))
         assert len(poly) >= 3
+

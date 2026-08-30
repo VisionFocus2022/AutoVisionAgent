@@ -20,7 +20,7 @@ transformers 5.12.1 能力边界（实现期源码实证，grep input_points=0�
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover — 与 sam_adapter 同款降级守卫
         return points
 
 try:
-    from labeling.base import Shape, AnnotationMode
+    from labeling.base import AnnotationMode, Shape
 except ImportError:  # pragma: no cover
     _logger.warning("labeling.base 不可用，使用桩定义")
     from enum import Enum
@@ -48,7 +48,9 @@ except ImportError:  # pragma: no cover
 _CLICK_BOX_R = 16
 # 笔划外包盒外扩边距（px）
 _BRUSH_MARGIN = 8
-def _mask_to_polygon(mask: np.ndarray, epsilon: float = 2.0) -> List[Tuple[float, float]]:
+
+
+def _mask_to_polygon(mask: np.ndarray, epsilon: float = 2.0) -> list[tuple[float, float]]:
     """二值掩码 → 最大轮廓 → ε 折点多边形（与 SamAdapter 同管线）。"""
     import cv2
 
@@ -69,10 +71,10 @@ class Sam3Adapter:
         self._model: Any = None
         self._processor: Any = None
         self._device: str = "cpu"
-        self._cached_image_hash: Optional[int] = None
+        self._cached_image_hash: int | None = None
         # W21 同款引用快路径：SAM3 无独立 embedding API（编码在前向内），
         # 缓存仅免去重复 tobytes 哈希
-        self._cached_image_ref: Optional[np.ndarray] = None
+        self._cached_image_ref: np.ndarray | None = None
 
     def load(self, model_dir: str, device: str = "cuda") -> None:
         """从 transformers 格式模型目录加载（config.json + model.safetensors）。"""
@@ -106,9 +108,9 @@ class Sam3Adapter:
     def _run_instances(
         self,
         image: np.ndarray,
-        text: Optional[str] = None,
-        boxes: Optional[List[List[List[float]]]] = None,
-    ) -> Tuple[List[np.ndarray], List[float]]:
+        text: str | None = None,
+        boxes: list[list[list[float]]] | None = None,
+    ) -> tuple[list[np.ndarray], list[float]]:
         """单次前向 → (实例掩码列表, 分数列表)（原图尺寸，numpy）。
 
         测试接缝：单测直接替换本方法注入合成实例。
@@ -134,8 +136,8 @@ class Sam3Adapter:
         return masks, scores
 
     def _best_mask_near(
-        self, masks: List[np.ndarray], anchor: Tuple[float, float]
-    ) -> Optional[np.ndarray]:
+        self, masks: list[np.ndarray], anchor: tuple[float, float]
+    ) -> np.ndarray | None:
         """质心离锚点最近的实例掩码（None=无实例）——W52 点击/W53 区域共用。
 
         W52（点击口径 162 图）：比全局 argmax 分数 mean 0.521→0.546、
@@ -156,8 +158,8 @@ class Sam3Adapter:
         return masks[min(range(len(masks)), key=_dist)]
 
     def _best_polygon_near(
-        self, masks: List[np.ndarray], anchor: Tuple[float, float]
-    ) -> List[Tuple[float, float]]:
+        self, masks: list[np.ndarray], anchor: tuple[float, float]
+    ) -> list[tuple[float, float]]:
         """实例选择 v2（W52 · 162 图实测）：质心离锚点最近者。
 
         （W47 12 图小样本曾误判此杠杆中性，162 图翻案。）
@@ -166,8 +168,8 @@ class Sam3Adapter:
         return _mask_to_polygon(best) if best is not None else []
 
     def _best_polygon(
-        self, masks: List[np.ndarray], scores: List[float]
-    ) -> List[Tuple[float, float]]:
+        self, masks: list[np.ndarray], scores: list[float]
+    ) -> list[tuple[float, float]]:
         if not masks:
             return []
         best = masks[int(np.argmax(scores))] if scores else masks[0]
@@ -178,9 +180,9 @@ class Sam3Adapter:
     def predict_point(
         self,
         image: np.ndarray,
-        point: Tuple[float, float],
+        point: tuple[float, float],
         label: int = 1,
-    ) -> List[Tuple[float, float]]:
+    ) -> list[tuple[float, float]]:
         """点击预测：点 → 代偿盒提示 → 最佳实例多边形。
 
         label=1 前景；label=0 背景——SAM3 无背景点提示，返回空（诚实降级）。
@@ -202,8 +204,8 @@ class Sam3Adapter:
     def predict_box(
         self,
         image: np.ndarray,
-        box: Tuple[float, float, float, float],
-    ) -> List[Tuple[float, float]]:
+        box: tuple[float, float, float, float],
+    ) -> list[tuple[float, float]]:
         """框选预测：盒提示直通 → 最佳实例多边形。"""
         self.set_image(image)
         masks, scores = self._run_instances(image, boxes=[[list(box)]])
@@ -212,16 +214,22 @@ class Sam3Adapter:
     def predict_point_in_box(
         self,
         image: np.ndarray,
-        point: Tuple[float, float],
-        box: Tuple[float, float, float, float],
+        point: tuple[float, float],
+        box: tuple[float, float, float, float],
         label: int = 1,
-    ) -> List[Tuple[float, float]]:
+    ) -> list[tuple[float, float]]:
         """区域分割（W43 语义）：盒提示 + 掩码∩矩形硬约束。
 
         SAM3 无点提示——区域内对象由盒语义引导（区域通常含单一目标）；
         实例选择=质心离点击最近（W53 · val 162 GT bbox m=0 实测
         0.739→0.755、零产出 4→0，与 predict_point v2 同语义）；
         掩码级硬求交保留：折点严格不越界。
+
+        W54 松框优化两轮证伪后回滚至此单发语义：链 v1（fill≥0.85 收紧）
+        e2e 触发率仅 1-10% 无分离力；路由器三族搜索（先验特征 1419 规则
+        + CV 决策树 + 双臂择优）全灭，oracle m=16 上限 0.590 亦不达「显著
+        超 0.546 兜底」。证据留档：weights/sam3-pole-ft/router_diag_w54.json
+        + scripts/exp_sam3_region_router_search.py。
         """
         self.set_image(image)
         masks, scores = self._run_instances(image, boxes=[[list(box)]])
@@ -238,11 +246,11 @@ class Sam3Adapter:
     def predict_points(
         self,
         image: np.ndarray,
-        points: List[Tuple[float, float]],
-        labels: List[int],
-        box: Optional[Tuple[float, float, float, float]] = None,
+        points: list[tuple[float, float]],
+        labels: list[int],
+        box: tuple[float, float, float, float] | None = None,
         mask_input: Any = None,
-    ) -> Tuple[List[Tuple[float, float]], Any]:
+    ) -> tuple[list[tuple[float, float]], Any]:
         """多点提示（笔刷）：笔划点外包盒 ∪ box → 多边形。
 
         mask_input（上轮 logits 迭代）transformers 后端不支持——忽略，
@@ -288,7 +296,7 @@ class Sam3Adapter:
         def _detector(image):
             masks, scores = self._run_instances(image, text=text)
             kept = [
-                (m, s) for m, s in zip(masks, scores)
+                (m, s) for m, s in zip(masks, scores, strict=True)
                 if s >= iou_thresh and int(np.count_nonzero(m)) >= min_area
             ]
             kept.sort(key=lambda p: int(np.count_nonzero(p[0])), reverse=True)
@@ -298,7 +306,7 @@ class Sam3Adapter:
                     len(kept), max_masks,
                 )
                 kept = kept[:max_masks]
-            shapes: List[Shape] = []
+            shapes: list[Shape] = []
             for mask, _s in kept:
                 poly = _mask_to_polygon(mask)
                 if len(poly) >= 3:
@@ -314,10 +322,10 @@ class Sam3Adapter:
     def to_shapes(
         self,
         image: np.ndarray,
-        points: List[Tuple[Tuple[float, float], int]],
-    ) -> List[Shape]:
+        points: list[tuple[tuple[float, float], int]],
+    ) -> list[Shape]:
         """批量点击预测 → Shape 列表（与 SamAdapter 同语义）。"""
-        shapes: List[Shape] = []
+        shapes: list[Shape] = []
         for (pt, lbl) in points:
             poly = self.predict_point(image, pt, lbl)
             if len(poly) >= 3:
