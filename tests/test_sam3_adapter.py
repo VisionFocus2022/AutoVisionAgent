@@ -342,7 +342,6 @@ class TestSam3RealWeightsSmoke:
 class TestNearestSelection:
     """W52 实例选择 v2：点击场景选质心最近实例（162 图实测 +0.025 mean、
     零产出 10→1），替代全局 argmax 分数。"""
-
     def test_nearest_over_argmax(self):
         """高分实例远、低分实例近——选近的（点击意图语义）。"""
         near = np.zeros((64, 64), dtype=bool)
@@ -365,4 +364,30 @@ class TestNearestSelection:
         good[20:40, 20:40] = True
         adapter, _ = _make_adapter(masks=[empty, good], scores=[0.9, 0.5])
         poly = adapter.predict_point(_DUMMY_IMG, (30, 30))
+        assert len(poly) >= 3
+
+
+class TestRegionNearestSelection:
+    """W53：区域分割（predict_point_in_box）实例选择 v2——质心离点击最近
+    （val 162 · GT bbox m=0 实测：mean 0.739→0.755、零产出 4→0、
+    ≥0.5 96%→99%），与 predict_point v2 同语义。"""
+
+    def test_region_nearest_over_argmax(self):
+        """高分实例远、低分实例近——选近的（点击意图语义移植区域场景）。"""
+        near = np.zeros((64, 64), dtype=bool)
+        near[26:34, 26:34] = True   # 质心 ~(30,30) 离点击近
+        far = np.zeros((64, 64), dtype=bool)
+        far[50:58, 50:58] = True    # 质心 ~(54,54) 远且分高
+        adapter, _ = _make_adapter(masks=[far, near], scores=[0.95, 0.10])
+        poly = adapter.predict_point_in_box(_DUMMY_IMG, (30, 30), (10, 10, 60, 60))
+        xs = [p[0] for p in poly]
+        assert max(xs) < 40, "应选离点击最近的实例（near），而非最高分（far）"
+
+    def test_region_empty_mask_instance_skipped(self):
+        """全空掩码实例（nonzero=0）不应成为区域分割 IndexError 崩溃源。"""
+        empty = np.zeros((64, 64), dtype=bool)
+        good = np.zeros((64, 64), dtype=bool)
+        good[20:40, 20:40] = True
+        adapter, _ = _make_adapter(masks=[empty, good], scores=[0.9, 0.5])
+        poly = adapter.predict_point_in_box(_DUMMY_IMG, (30, 30), (0, 0, 63, 63))
         assert len(poly) >= 3

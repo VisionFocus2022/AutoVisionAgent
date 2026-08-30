@@ -133,17 +133,17 @@ class Sam3Adapter:
         scores = [float(s) for s in first["scores"].detach().cpu().numpy()]
         return masks, scores
 
-    def _best_polygon_near(
+    def _best_mask_near(
         self, masks: List[np.ndarray], anchor: Tuple[float, float]
-    ) -> List[Tuple[float, float]]:
-        """实例选择 v2（W52 · 162 图实测）：质心离锚点最近者。
+    ) -> Optional[np.ndarray]:
+        """质心离锚点最近的实例掩码（None=无实例）——W52 点击/W53 区域共用。
 
-        比全局 argmax 分数：mean 0.521→0.546、≥0.5 60%→63%、零产出
-        10→1——点击意图下「离点击最近」比「全局最高分」贴合目标
-        （W47 12 图小样本曾误判此杠杆中性，162 图翻案）。
+        W52（点击口径 162 图）：比全局 argmax 分数 mean 0.521→0.546、
+        零产出 10→1；W53（区域口径 162 图 · GT bbox m=0）：0.739→0.755、
+        零产出 4→0——点击意图下「离点击最近」比「全局最高分」贴合目标。
         """
         if not masks:
-            return []
+            return None
 
         def _dist(i: int) -> float:
             ys, xs = np.nonzero(masks[i])
@@ -153,8 +153,17 @@ class Sam3Adapter:
                 ((xs.mean() - anchor[0]) ** 2 + (ys.mean() - anchor[1]) ** 2) ** 0.5
             )
 
-        best = masks[min(range(len(masks)), key=_dist)]
-        return _mask_to_polygon(best)
+        return masks[min(range(len(masks)), key=_dist)]
+
+    def _best_polygon_near(
+        self, masks: List[np.ndarray], anchor: Tuple[float, float]
+    ) -> List[Tuple[float, float]]:
+        """实例选择 v2（W52 · 162 图实测）：质心离锚点最近者。
+
+        （W47 12 图小样本曾误判此杠杆中性，162 图翻案。）
+        """
+        best = self._best_mask_near(masks, anchor)
+        return _mask_to_polygon(best) if best is not None else []
 
     def _best_polygon(
         self, masks: List[np.ndarray], scores: List[float]
@@ -210,15 +219,15 @@ class Sam3Adapter:
         """区域分割（W43 语义）：盒提示 + 掩码∩矩形硬约束。
 
         SAM3 无点提示——区域内对象由盒语义引导（区域通常含单一目标）；
+        实例选择=质心离点击最近（W53 · val 162 GT bbox m=0 实测
+        0.739→0.755、零产出 4→0，与 predict_point v2 同语义）；
         掩码级硬求交保留：折点严格不越界。
         """
         self.set_image(image)
         masks, scores = self._run_instances(image, boxes=[[list(box)]])
         if not masks:
             return []
-        best = (
-            masks[int(np.argmax(scores))] if scores else masks[0]
-        ).astype(np.uint8)
+        best = self._best_mask_near(masks, point).astype(np.uint8)
         x1, y1, x2, y2 = (int(v) for v in box)
         clipped = np.zeros_like(best)
         y_lo, y_hi = max(y1, 0), min(y2 + 1, best.shape[0])
