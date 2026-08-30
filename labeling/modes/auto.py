@@ -14,13 +14,14 @@ detector 签名：Callable[[ndarray], List[Shape]]——
 """
 from __future__ import annotations
 
-from typing import Any, Callable, List, Optional
+from collections.abc import Callable
+from typing import Any
 
-from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
+from labeling.base import DEFAULT_COLOR, RGBA, AnnotationMode, Point, Shape
 from labeling.modes._base import AbstractLabeler
 
 # 检测器类型：image → Shape 列表
-DetectorFn = Callable[[Any], List[Shape]]
+DetectorFn = Callable[[Any], list[Shape]]
 
 
 class AutoLabeler(AbstractLabeler):
@@ -40,14 +41,14 @@ class AutoLabeler(AbstractLabeler):
         self,
         label: str,
         color: RGBA = DEFAULT_COLOR,
-        detector: Optional[DetectorFn] = None,
+        detector: DetectorFn | None = None,
         image: Any = None,
         **_options: object,
     ) -> None:
         super().__init__(label, color, min_points=0)
-        self._detector: Optional[DetectorFn] = detector
+        self._detector: DetectorFn | None = detector
         self._image = image
-        self._queue: List[Shape] = []
+        self._queue: list[Shape] = []
 
     # ---- 外部注入 ---- #
     def set_detector(self, detector: DetectorFn) -> None:
@@ -86,13 +87,13 @@ class AutoLabeler(AbstractLabeler):
     def on_move(self, pt: Point) -> None:
         self._cursor = pt
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         return None
 
-    def preview(self) -> Optional[Shape]:
+    def preview(self) -> Shape | None:
         return None
 
-    def commit(self) -> Optional[Shape]:
+    def commit(self) -> Shape | None:
         """逐个返回队列中的 Shape（控制器多次调用取完）。"""
         if self._queue:
             shape = self._queue.pop(0)

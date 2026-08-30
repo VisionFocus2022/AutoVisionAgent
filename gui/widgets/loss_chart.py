@@ -5,15 +5,12 @@
 """
 from __future__ import annotations
 
-import math
 from collections import deque
-from typing import Deque, Dict, List, Optional, Tuple
 
-from PySide6.QtCore import Qt, QRectF, QPointF
+from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QColor,
     QFont,
-    QMouseEvent,
     QPainter,
     QPen,
     QPolygonF,
@@ -50,7 +47,7 @@ class LossChartWidget(QFrame):
         chart.update()
     """
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("lossChart")
         self.setMinimumHeight(200)
@@ -58,8 +55,8 @@ class LossChartWidget(QFrame):
         self.setStyleSheet("background-color: #13151c; border-radius: 8px;")
 
         # 数据：series_name → deque of (epoch, value)
-        self._series: Dict[str, Deque[Tuple[int, float]]] = {}
-        self._colors: Dict[str, QColor] = {}
+        self._series: dict[str, deque[tuple[int, float]]] = {}
+        self._colors: dict[str, QColor] = {}
         self._max_points: int = 500  # 最大保留点数
         self._y_min: float = 0.0
         self._y_max: float = 1.0
@@ -111,7 +108,7 @@ class LossChartWidget(QFrame):
 
     def _recalc_scale(self) -> None:
         """根据数据自动计算 Y 轴范围。"""
-        all_vals: List[float] = []
+        all_vals: list[float] = []
         max_epoch = 1
         for dq in self._series.values():
             for ep, val in dq:

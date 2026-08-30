@@ -9,7 +9,7 @@ mask embedding 缓存：同图只算一次（R-6/R-8）。
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 
@@ -24,7 +24,7 @@ except ImportError:
         return points
 
 try:
-    from labeling.base import Shape, AnnotationMode
+    from labeling.base import AnnotationMode, Shape
 except ImportError:
     _logger.warning("labeling.base 不可用，使用桩定义")
     from enum import Enum
@@ -41,14 +41,14 @@ class SamAdapter:
     def __init__(self, model_type: str = "vit_b") -> None:
         self._model_type = model_type
         self._predictor: Any = None
-        self._cached_image_hash: Optional[int] = None
+        self._cached_image_hash: int | None = None
         # W21：缓存命中的图像对象引用——同对象走 is 快路径，省去每次
         # 点击的整图 tobytes 哈希（1600x1600 图 ~7.7MB/次）
-        self._cached_image_ref: Optional[np.ndarray] = None
+        self._cached_image_ref: np.ndarray | None = None
 
     def load(self, checkpoint: str, device: str = "cuda") -> None:
         """加载 SAM 权重。"""
-        from segment_anything import sam_model_registry, SamPredictor
+        from segment_anything import SamPredictor, sam_model_registry
 
         sam = sam_model_registry[self._model_type](checkpoint=checkpoint)
         sam.to(device=device)
@@ -79,9 +79,9 @@ class SamAdapter:
     def predict_point(
         self,
         image: np.ndarray,
-        point: Tuple[float, float],
+        point: tuple[float, float],
         label: int = 1,
-    ) -> List[Tuple[float, float]]:
+    ) -> list[tuple[float, float]]:
         """
         点击预测：单个前景点 → mask → 多边形顶点。
 
@@ -115,8 +115,8 @@ class SamAdapter:
     def predict_box(
         self,
         image: np.ndarray,
-        box: Tuple[float, float, float, float],
-    ) -> List[Tuple[float, float]]:
+        box: tuple[float, float, float, float],
+    ) -> list[tuple[float, float]]:
         """
         框选预测：bbox → mask → 多边形顶点。
         """
@@ -143,10 +143,10 @@ class SamAdapter:
     def predict_point_in_box(
         self,
         image: np.ndarray,
-        point: Tuple[float, float],
-        box: Tuple[float, float, float, float],
+        point: tuple[float, float],
+        box: tuple[float, float, float, float],
         label: int = 1,
-    ) -> List[Tuple[float, float]]:
+    ) -> list[tuple[float, float]]:
         """区域分割（W43 · SKolpha 取证 §5）：点+box 组合 prompt → 掩码∩矩形 → 多边形。
 
         矩形作为 box prompt 引导 SAM 语义（原品 ai_predict(point, boxs, image)
@@ -181,11 +181,11 @@ class SamAdapter:
     def predict_points(
         self,
         image: np.ndarray,
-        points: List[Tuple[float, float]],
-        labels: List[int],
-        box: Optional[Tuple[float, float, float, float]] = None,
+        points: list[tuple[float, float]],
+        labels: list[int],
+        box: tuple[float, float, float, float] | None = None,
         mask_input: Any = None,
-    ) -> Tuple[List[Tuple[float, float]], Any]:
+    ) -> tuple[list[tuple[float, float]], Any]:
         """多点提示 + 迭代 mask_input（W44·B 笔刷精修；官方 logits 回传语义）。
 
         Returns:
@@ -224,8 +224,8 @@ class SamAdapter:
         过滤 + 掩码→ε 折点多边形；面积降序 + max_masks 截断（超限
         logger.warning 留痕——状态栏提示需信号管道，v1 以日志代）。
         """
-        from segment_anything import SamAutomaticMaskGenerator
         import cv2
+        from segment_anything import SamAutomaticMaskGenerator
 
         gen = SamAutomaticMaskGenerator(
             self._predictor.model,
@@ -244,7 +244,7 @@ class SamAdapter:
                     len(anns), max_masks,
                 )
                 anns = anns[:max_masks]
-            shapes: List[Shape] = []
+            shapes: list[Shape] = []
             for ann in anns:
                 contours, _ = cv2.findContours(
                     ann["segmentation"].astype(np.uint8),
@@ -268,8 +268,8 @@ class SamAdapter:
     def to_shapes(
         self,
         image: np.ndarray,
-        points: List[Tuple[Tuple[float, float], int]],
-    ) -> List[Shape]:
+        points: list[tuple[tuple[float, float], int]],
+    ) -> list[Shape]:
         """
         批量点击预测 → Shape 列表。
 
@@ -280,7 +280,7 @@ class SamAdapter:
         Returns:
             Shape 列表（多边形模式）。
         """
-        shapes: List[Shape] = []
+        shapes: list[Shape] = []
         for (pt, lbl) in points:
             poly = self.predict_point(image, pt, lbl)
             if len(poly) >= 3:

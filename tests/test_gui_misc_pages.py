@@ -18,7 +18,7 @@ pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np  # noqa: E402
-from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton, QWidget  # noqa: E402
+from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -197,8 +197,9 @@ def test_home_refresh_history_three_states(qapp, monkeypatch):
 
 @pytest.mark.unit
 def test_home_recent_click_navigates(qapp):
-    from gui.pages.home.page import HomePage
     from PySide6.QtWidgets import QListWidgetItem
+
+    from gui.pages.home.page import HomePage
 
     page = HomePage()
     nav = []

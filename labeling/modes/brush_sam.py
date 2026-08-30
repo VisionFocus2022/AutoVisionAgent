@@ -8,13 +8,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from labeling.base import (
-    AnnotationMode,
     DEFAULT_COLOR,
-    Point,
     RGBA,
+    AnnotationMode,
+    Point,
     Shape,
 )
 from labeling.modes._base import AbstractLabeler
@@ -41,7 +41,7 @@ class BrushSamLabeler(AbstractLabeler):
         super().__init__(label, color, min_points=3)
         self._adapter = sam_adapter
         self._image = image
-        self._pending: Optional[Shape] = None
+        self._pending: Shape | None = None
         self._stroke: list = []          # 当前笔划采样点
         self._fg_points: list = []       # 跨笔划累积前景提示
         self._logits: Any = None         # 上轮 logits（迭代输入）
@@ -63,7 +63,7 @@ class BrushSamLabeler(AbstractLabeler):
         if self._stroke and _dist(self._stroke[-1], pt) >= _SAMPLE_MIN_PX:
             self._stroke.append(pt)
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         if not self._stroke:
             self._active = False
             return None
@@ -94,10 +94,10 @@ class BrushSamLabeler(AbstractLabeler):
             self._logits = logits
         return None
 
-    def preview(self) -> Optional[Shape]:
+    def preview(self) -> Shape | None:
         return self._pending
 
-    def commit(self) -> Optional[Shape]:
+    def commit(self) -> Shape | None:
         """提交当前多边形（保留累积点与 logits，可继续细化）。"""
         shape = self._pending
         self._pending = None

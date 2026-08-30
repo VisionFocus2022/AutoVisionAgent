@@ -9,14 +9,14 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Callable, Optional
+from collections.abc import Callable
 
 from project.paths import resolve_base_root
 
 logger = logging.getLogger(__name__)
 
 
-def superres_save_dir(project_dir: Optional[str]) -> str:
+def superres_save_dir(project_dir: str | None) -> str:
     """视频超分输出目录：{root}/results/superres_{ts}（共享约定）。"""
     ts = int(time.time())
     root = project_dir or resolve_base_root()
@@ -29,7 +29,7 @@ def super_video(
     engine,
     *,
     cancel=None,
-    progress_cb: Optional[Callable[[int], None]] = None,
+    progress_cb: Callable[[int], None] | None = None,
 ) -> dict:
     """逐帧超分视频。
 

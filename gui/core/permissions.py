@@ -18,26 +18,24 @@ action_allowed 动作清单**有意不冻结**（W26 计划批判修正）：W30
 """
 from __future__ import annotations
 
-from typing import Dict, FrozenSet, Tuple
-
 # ---- 角色稳定枚举（W18 语义延续；login 页 re-export 兼容） ----
 ROLE_ADMIN = "admin"
 ROLE_ENGINEER = "engineer"
 ROLE_OPERATOR = "operator"
 
-ROLES: Tuple[str, str, str] = (ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR)
+ROLES: tuple[str, str, str] = (ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR)
 
 # 登录页恒允许（认证入口；登出/回登录不受门控）
 LOGIN_PAGE = "login"
 
 # 全部受门控页面（与 gui.main build_window 注册的 11 页一致）
-ALL_PAGES: FrozenSet[str] = frozenset({
+ALL_PAGES: frozenset[str] = frozenset({
     "home", "label", "data_manage", "train", "predict",
     "eval", "deploy", "flaw_gen", "project", "settings",
 }) | {LOGIN_PAGE}
 
 # ---- 页面矩阵（W29 最小面；operator=现场操作页最小特权） ----
-_PAGE_MATRIX: Dict[str, FrozenSet[str]] = {
+_PAGE_MATRIX: dict[str, frozenset[str]] = {
     ROLE_ADMIN: ALL_PAGES,
     # 工程师：全部业务页；settings（系统级配置）归管理员
     ROLE_ENGINEER: ALL_PAGES - {"settings"},
@@ -49,7 +47,7 @@ _PAGE_MATRIX: Dict[str, FrozenSet[str]] = {
 
 # ---- 动作矩阵（W29 空集起步；各波冻结动作集后逐波登记） ----
 # W30：批量预标注（标注页 operator 可见，动作不收紧——三角色全允许）
-_ACTION_MATRIX: Dict[str, FrozenSet[str]] = {
+_ACTION_MATRIX: dict[str, frozenset[str]] = {
     "label.batch_prelabel": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
     # W33：批量推理（operator 推理页可见，动作不收紧）
     "predict.batch_infer": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
@@ -60,7 +58,7 @@ _ACTION_MATRIX: Dict[str, FrozenSet[str]] = {
 }
 
 
-def _normalize_role(role: "str | None") -> str:
+def _normalize_role(role: str | None) -> str:
     """未知/异常/未登录角色归一为 operator（W45·P3-6）。
 
     与 W39「未登录=operator 最小集」同精神：最小特权、不放大、不锁死；
@@ -94,7 +92,7 @@ def action_allowed(role: str, action: str) -> bool:
     return allowed is not None and _normalize_role(role) in allowed
 
 
-def check_action(action: str) -> "str | None":
+def check_action(action: str) -> str | None:
     """动作门控统一入口（W35 · v5 P2-N1 收口；W39 反转未登录语义）。
 
     - 未登录（session 无角色）→ 按 **operator 动作集**判定（W39：原

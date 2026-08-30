@@ -20,6 +20,9 @@ Qt import）之前被加载，集中兜底：
 from __future__ import annotations
 
 import os
+import threading
+
+import pytest
 
 
 def _has_interactive_desktop() -> bool:
@@ -82,10 +85,6 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 # ============================== W39·v6 P3-16：FakeThread 单源收敛 ============================== #
 # 原 21 个测试文件逐字复制此类与夹具（gui/core/jobs.py:20 记载接缝约束）；
 # 本处为唯一定义，各文件本地副本已删，夹具经 pytest 自动发现生效。
-
-import threading
-
-import pytest
 
 
 class FakeThread:

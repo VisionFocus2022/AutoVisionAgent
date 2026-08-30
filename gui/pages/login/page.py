@@ -4,16 +4,15 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import secrets
 import time
-from typing import Dict, Optional, Tuple
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QFormLayout,
     QFrame,
@@ -26,11 +25,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from gui.core.i18n import tr
 from core.auth import hash_password as _hash_password
 from core.auth import verify_and_migrate as _verify_and_migrate
 from core.auth import verify_password as _verify_password
 from core.constants import CONFIG_DIR as _CONFIG_DIR
+from gui.core.i18n import tr
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +43,12 @@ _INITIAL_CREDENTIALS_FILENAME = "initial_credentials.txt"
 
 # ---- W18 / P2-8: 角色稳定枚举（W29 起真源=gui.core.permissions，此处 re-export 兼容） ----
 # 持久层（users.json）与 login_success 信号只落枚举值，与界面语言解耦。
-from gui.core.permissions import (  # noqa: F401（re-export 兼容既有 import 路径）
+from gui.core.permissions import (  # noqa: F401, E402  # re-export 兼容既有 import 路径（置于 W18 注释区后）
     ROLE_ADMIN,
     ROLE_ENGINEER,
     ROLE_OPERATOR,
+)
+from gui.core.permissions import (  # noqa: E402  # 同上：W18 re-export 区
     ROLES as _ROLE_ORDER,
 )
 
@@ -73,7 +74,7 @@ def _migrate_role(value: object) -> str:
     return _LEGACY_ROLE_MAP.get(value, ROLE_OPERATOR)
 
 
-def sweep_residual_initial_credentials(config_dir: Optional[str] = None) -> str:
+def sweep_residual_initial_credentials(config_dir: str | None = None) -> str:
     """W24（v4 P3-7）：启动时补删残留首启凭据文件。
 
     缺口：改密成功即删 initial_credentials.txt
@@ -94,7 +95,7 @@ def sweep_residual_initial_credentials(config_dir: Optional[str] = None) -> str:
     if not os.path.exists(cred_path):
         return "absent"
     try:
-        with open(os.path.join(cfg, "users.json"), "r", encoding="utf-8") as f:
+        with open(os.path.join(cfg, "users.json"), encoding="utf-8") as f:
             db = json.load(f)
     except (OSError, json.JSONDecodeError):
         logger.exception("补扫初始凭据：users.json 不可读，保守保留 %s", cred_path)
@@ -132,11 +133,11 @@ class _ChangePasswordDialog(QDialog):
 
     _MIN_NEW_PASSWORD_LEN = 8
 
-    def __init__(self, record: dict, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, record: dict, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle(tr("首次登录——请修改密码"))
         self._record = record
-        self.new_hash_record: Optional[Tuple[str, str, int]] = None
+        self.new_hash_record: tuple[str, str, int] | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -194,7 +195,7 @@ class LoginPage(QWidget):
     login_success = Signal(str, str)  # (user, role)——role 为稳定枚举值（W18/P2-8）
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._ensure_default_admin()
@@ -213,7 +214,7 @@ class LoginPage(QWidget):
             os.makedirs(config_dir, exist_ok=True)
             db_path = os.path.join(config_dir, "users.json")
             if os.path.exists(db_path):
-                with open(db_path, "r", encoding="utf-8") as f:
+                with open(db_path, encoding="utf-8") as f:
                     db = json.load(f)
             else:
                 db = {}
@@ -233,10 +234,8 @@ class LoginPage(QWidget):
                     json.dump(db, f, ensure_ascii=False, indent=2)
                 # chmod(0o600) 为 POSIX 语义；Windows/NTFS 下仅映射只读位，
                 # 不构成访问控制——凭据保护实际依赖文件系统 ACL/目录权限。
-                try:
+                with contextlib.suppress(OSError):
                     os.chmod(db_path, 0o600)
-                except OSError:
-                    pass
                 # W19（v3 第三波 FR-5.1）：初始密码改落一次性文件，
                 # 日志只记提示不含明文（W14-C3 的日志通道明文就此关闭）
                 LoginPage._write_initial_credentials(config_dir, default_pwd)
@@ -260,10 +259,8 @@ class LoginPage(QWidget):
         )
         with open(cred_path, "w", encoding="utf-8") as f:
             f.write(content)
-        try:
+        with contextlib.suppress(OSError):
             os.chmod(cred_path, 0o600)
-        except OSError:
-            pass
         logger.info(
             "初始密码已写入 configs/%s，首次登录后请修改并删除该文件",
             _INITIAL_CREDENTIALS_FILENAME,
@@ -440,7 +437,7 @@ class LoginPage(QWidget):
 
     def _run_change_password_dialog(
         self, record: dict
-    ) -> Optional[Tuple[str, str, int]]:
+    ) -> tuple[str, str, int] | None:
         """弹出改密对话框（阻塞），返回新哈希三元组；取消/失败为 None。"""
         dlg = _ChangePasswordDialog(record, parent=self)
         dlg.exec()
@@ -461,7 +458,7 @@ class LoginPage(QWidget):
             config_dir = str(_CONFIG_DIR)
             db_path = os.path.join(config_dir, "users.json")
             if os.path.exists(db_path):
-                with open(db_path, "r", encoding="utf-8") as f:
+                with open(db_path, encoding="utf-8") as f:
                     return json.load(f)
         except (OSError, json.JSONDecodeError):
             logger.exception("加载用户数据库失败")
@@ -477,10 +474,8 @@ class LoginPage(QWidget):
                 json.dump(db, f, ensure_ascii=False, indent=2)
             # chmod(0o600) 为 POSIX 语义；Windows/NTFS 下仅映射只读位，
             # 不构成访问控制——凭据保护实际依赖文件系统 ACL/目录权限。
-            try:
+            with contextlib.suppress(OSError):
                 os.chmod(db_path, 0o600)
-            except OSError:
-                pass
         except (OSError, TypeError):
             logger.exception("保存用户数据库失败")
 

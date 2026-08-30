@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional, Union
 
 from PySide6.QtCore import Slot
 
@@ -27,9 +26,9 @@ from gui.widgets.file_dialog import pick_open_file
 
 
 def resolve_sam3_model_dir(
-    env_value: Optional[str],
-    picked_path: Union[str, Path, None],
-) -> Optional[str]:
+    env_value: str | None,
+    picked_path: str | Path | None,
+) -> str | None:
     """SAM3 模型目录解析（纯函数，W46）。
 
     - AVA_SAM3_DIR 指向有效目录 → 该目录（测试/幂等装配优先通道）；

@@ -5,14 +5,12 @@ on_press / on_move / on_release / preview / commit。
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
 from labeling.base import (
     DEFAULT_COLOR,
+    RGBA,
     AnnotationMode,
     ILabeler,
     Point,
-    RGBA,
     Shape,
 )
 
@@ -40,18 +38,18 @@ class AbstractLabeler(ILabeler):
         self.label: str = label
         self._color: RGBA = color
         self._min_points: int = min_points
-        self._points: List[Point] = []
-        self._cursor: Optional[Point] = None
+        self._points: list[Point] = []
+        self._cursor: Point | None = None
         self._active: bool = False
 
     # ---- 公共辅助 ---- #
     @property
-    def points(self) -> Tuple[Point, ...]:
+    def points(self) -> tuple[Point, ...]:
         """当前顶点序列（只读副本；era-2 契约：commit 后为空元组）。"""
         return tuple(self._points)
 
     def _build(
-        self, points: Optional[Tuple[Point, ...]] = None
+        self, points: tuple[Point, ...] | None = None
     ) -> Shape:
         """构建 Shape 实例。"""
         pts = points if points is not None else tuple(self._points)
@@ -74,10 +72,10 @@ class AbstractLabeler(ILabeler):
     def on_move(self, pt: Point) -> None:
         self._cursor = pt
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         return None
 
-    def preview(self) -> Optional[Shape]:
+    def preview(self) -> Shape | None:
         if not self._active or not self._points:
             return None
         pts = list(self._points)
@@ -85,7 +83,7 @@ class AbstractLabeler(ILabeler):
             pts.append(self._cursor)
         return self._build(tuple(pts))
 
-    def commit(self) -> Optional[Shape]:
+    def commit(self) -> Shape | None:
         if not self._can_commit():
             return None
         shape = self._build()

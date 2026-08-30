@@ -283,8 +283,8 @@ def test_create_server_assembles_with_injected_dispatcher(shm):
 @pytest.mark.unit
 def test_list_all_tasks_advertises_only_registered(monkeypatch):
     """未注册的有监督任务不得被广告（W4-T2：静态硬编码 10 任务 → 按注册表）。"""
-    from industrial_vision_platform.vision_dispatcher import VisionModelDispatcher
     import models.supervised.registry as reg_mod
+    from industrial_vision_platform.vision_dispatcher import VisionModelDispatcher
 
     class _FakeReg:
         def list(self):

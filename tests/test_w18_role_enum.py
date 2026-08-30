@@ -113,7 +113,6 @@ def test_default_admin_registration_writes_enum_role(
 ):
     """首启默认 admin 注册写盘 role == "admin"；en_US 下同样落枚举。"""
     from gui.core.i18n import set_language
-
     from gui.pages.login import page as login_mod
 
     monkeypatch.setattr(login_mod, "_CONFIG_DIR", tmp_path)

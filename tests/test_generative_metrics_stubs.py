@@ -193,7 +193,7 @@ def test_perceptual_loss_fake_lpips_module(monkeypatch):
     for a, b in seen_tensors:
         assert a.shape == (1, 3, 6, 8) and b.shape == (1, 3, 6, 8)  # NCHW
         assert a.dtype == torch.float32
-        assert -1.0 <= float(a.min()) and float(a.max()) <= 1.0     # [-1,1]
+        assert float(a.min()) >= -1.0 and float(a.max()) <= 1.0     # [-1,1]
     assert loss == pytest.approx(0.25)
 
 

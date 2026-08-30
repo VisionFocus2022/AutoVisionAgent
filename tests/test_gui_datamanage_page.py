@@ -31,7 +31,8 @@ class FakeThread:
         self._t, self._a, self._k = target, args, kwargs or {}
 
     def start(self):
-        if self._t: self._t(*self._a, **self._k)
+        if self._t:
+            self._t(*self._a, **self._k)
 
 
 @pytest.fixture
@@ -365,7 +366,6 @@ def test_import_images_requires_dir_then_copies(
 def test_split_dataset_gates_and_confirm(
     dm_page, fake_threads, monkeypatch, qapp
 ):
-    from gui.pages.data_manage import page as dm_mod
     from PySide6.QtWidgets import QMessageBox
 
     # 闸门 2：比例之和 ≠ 1.0
@@ -445,14 +445,16 @@ def test_tool_replace_and_delete_labels(dm_page, fake_threads,
     qapp.processEvents()
     assert any(t == "替换完成" for t, _ in dm_page._msgs)
     ann_json = os.path.join(dm_page._annotations_dir, "a.json")
-    doc = json.loads(open(ann_json, encoding="utf-8").read())
+    with open(ann_json, encoding="utf-8") as f:
+        doc = json.loads(f.read())
     assert doc["shapes"][0]["label"] == "defect"
 
     scripted_input.texts = ["defect"]
     dm_page._tool_delete_labels()
     qapp.processEvents()
     assert any(t == "删除完成" for t, _ in dm_page._msgs)
-    doc = json.loads(open(ann_json, encoding="utf-8").read())
+    with open(ann_json, encoding="utf-8") as f:
+        doc = json.loads(f.read())
     assert doc["shapes"] == []
 
 

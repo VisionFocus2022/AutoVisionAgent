@@ -156,7 +156,7 @@ def test_render_keypoints_drawn():
 def test_predict_show_result_smoke(tmp_path):
     from PySide6.QtWidgets import QApplication
 
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     from gui.pages.predict.page import PredictPage
 
     p = tmp_path / "img.png"

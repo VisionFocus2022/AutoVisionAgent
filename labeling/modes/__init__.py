@@ -16,12 +16,11 @@ _logger = logging.getLogger(__name__)
 
 # 尝试导入标注基础设施（可能尚未实现）
 try:
-    from labeling.base import AnnotationMode, DEFAULT_COLOR, ILabeler, RGBA
+    from labeling.base import DEFAULT_COLOR, RGBA, AnnotationMode, ILabeler
 except ImportError:
     _logger.warning("labeling.base 不可用，标注模式工厂将受限")
     # 提供最小桩定义防止崩溃
     from enum import Enum
-    from typing import Any, Tuple
     class AnnotationMode(Enum):
         POLYGON = "polygon"
         RECTANGLE = "rectangle"
@@ -29,7 +28,7 @@ except ImportError:
         KEYPOINT = "keypoint"
         AUTO = "auto"
         INTERACTIVE = "interactive"
-    RGBA = Tuple[int, int, int, int]
+    RGBA = tuple[int, int, int, int]
     DEFAULT_COLOR = (52, 152, 219, 255)
     class ILabeler:  # type: ignore[no-redef]
         pass

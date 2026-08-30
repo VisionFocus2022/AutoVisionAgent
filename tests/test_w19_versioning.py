@@ -125,9 +125,8 @@ def test_create_snapshot_uses_hardlinks(proj):
     assert os.stat(proj / "images" / "a.png").st_nlink >= 2
     assert os.stat(os.path.join(snap, "images", "a.png")).st_nlink >= 2
     # manifest.json 结构：label 元数据 + files 清单（原子写，无 .tmp 残留）
-    payload = json.loads(
-        open(os.path.join(snap, "manifest.json"), encoding="utf-8").read()
-    )
+    with open(os.path.join(snap, "manifest.json"), encoding="utf-8") as f:
+        payload = json.loads(f.read())
     assert payload["label"] == "v1"
     assert len(payload["files"]) == 3
     assert not any(

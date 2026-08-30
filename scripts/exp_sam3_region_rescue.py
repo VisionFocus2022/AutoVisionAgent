@@ -21,11 +21,14 @@ from pathlib import Path
 REPO_ROOT = Path(r"E:/学习项目/视觉大模型")
 sys.path.insert(0, str(REPO_ROOT))
 
-import cv2
-import numpy as np
+import cv2  # noqa: E402  # sys.path 注入后方可导入仓库依赖
+import numpy as np  # noqa: E402  # 同上
 
-from labeling.sam3_adapter import Sam3Adapter, _mask_to_polygon
-from core.image_io import imread_unicode
+from core.image_io import imread_unicode  # noqa: E402  # 同上
+from labeling.sam3_adapter import (  # noqa: E402  # 同上, _mask_to_polygon
+    Sam3Adapter,
+    _mask_to_polygon,
+)
 
 DATA = Path(r"E:/学习项目/极柱外观检标注图")
 MANIFEST = REPO_ROOT / "weights/sam3-pole-ft/manifest.json"

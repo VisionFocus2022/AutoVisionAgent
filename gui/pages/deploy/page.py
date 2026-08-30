@@ -7,7 +7,6 @@ from __future__ import annotations
 import functools
 import logging
 import os
-from typing import Optional
 
 from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
@@ -27,7 +26,7 @@ from PySide6.QtWidgets import (
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main, ui_on_error
-from gui.widgets.file_dialog import pick_open_file, pick_directory
+from gui.widgets.file_dialog import pick_directory, pick_open_file
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ class DeployPage(QWidget):
 
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._build_ui()
@@ -152,8 +151,8 @@ class DeployPage(QWidget):
 
         def _work(task_value):
             try:
-                from exporter.supervised_exporter import SupervisedExporter
                 from core.exceptions import ModelExportError
+                from exporter.supervised_exporter import SupervisedExporter
                 exporter = SupervisedExporter()
                 import torch
 

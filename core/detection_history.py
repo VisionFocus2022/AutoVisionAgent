@@ -27,7 +27,7 @@ from collections import deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Deque, Dict, List, Optional
+from typing import Any
 
 from core.constants import CONFIG_DIR
 
@@ -58,7 +58,7 @@ class DetectionRecord:
     inference_time: float = 0.0  # 推理耗时（秒）
     user: str = "system"         # 操作用户
     device: str = ""             # 推理设备
-    extra: Dict[str, Any] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 class DetectionHistory:
@@ -69,10 +69,10 @@ class DetectionHistory:
     - 支持按任务类型/时间范围查询。
     """
 
-    _instance: Optional["DetectionHistory"] = None
+    _instance: DetectionHistory | None = None
     _instance_lock = threading.Lock()
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "DetectionHistory":
+    def __new__(cls, *args: Any, **kwargs: Any) -> DetectionHistory:
         if cls._instance is None:
             with cls._instance_lock:
                 if cls._instance is None:
@@ -81,7 +81,7 @@ class DetectionHistory:
 
     def __init__(
         self,
-        history_dir: Optional[Path] = None,
+        history_dir: Path | None = None,
         max_records: int = _DEFAULT_MAX_RECORDS,
     ) -> None:
         if hasattr(self, "_initialized"):
@@ -90,7 +90,7 @@ class DetectionHistory:
         self._history_dir = Path(history_dir) if history_dir else _resolve_history_dir()
         self._max_records = max_records
         self._lock = threading.Lock()
-        self._records: Deque[DetectionRecord] = deque(maxlen=max_records)
+        self._records: deque[DetectionRecord] = deque(maxlen=max_records)
 
     def add_record(
         self,
@@ -142,10 +142,10 @@ class DetectionHistory:
 
     def query(
         self,
-        task: Optional[str] = None,
-        user: Optional[str] = None,
+        task: str | None = None,
+        user: str | None = None,
         limit: int = 100,
-    ) -> List[DetectionRecord]:
+    ) -> list[DetectionRecord]:
         """查询内存中的检测历史记录。
 
         Args:
@@ -172,10 +172,10 @@ class DetectionHistory:
 
     def query_from_file(
         self,
-        date_str: Optional[str] = None,
-        task: Optional[str] = None,
+        date_str: str | None = None,
+        task: str | None = None,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """从持久化文件查询历史记录。
 
         Args:
@@ -193,9 +193,9 @@ class DetectionHistory:
         if not log_file.exists():
             return []
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         try:
-            with open(log_file, "r", encoding="utf-8") as f:
+            with open(log_file, encoding="utf-8") as f:
                 for line in f:
                     try:
                         entry = json.loads(line.strip())
@@ -209,7 +209,7 @@ class DetectionHistory:
 
         return results[-limit:]
 
-    def stats(self) -> Dict[str, Any]:
+    def stats(self) -> dict[str, Any]:
         """返回内存中记录的统计摘要。"""
         with self._lock:
             records = list(self._records)
@@ -217,7 +217,7 @@ class DetectionHistory:
         if not records:
             return {"total": 0, "by_task": {}, "avg_score": 0.0}
 
-        by_task: Dict[str, int] = {}
+        by_task: dict[str, int] = {}
         total_score = 0.0
         total_count = 0
         for r in records:
@@ -239,7 +239,7 @@ class DetectionHistory:
 
 
 def get_history(
-    history_dir: Optional[Path] = None,
+    history_dir: Path | None = None,
     max_records: int = _DEFAULT_MAX_RECORDS,
 ) -> DetectionHistory:
     """获取全局检测历史单例。"""

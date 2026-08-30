@@ -5,13 +5,11 @@
 """
 from __future__ import annotations
 
-from typing import Dict
-
 # 当前语言：ch_CN（中文，源串直出）/ en_US
 _LANG = "ch_CN"
 
 # en_US 翻译字典（中文 → English）。缺失键回退到源串（中文）。
-_EN_US: Dict[str, str] = {
+_EN_US: dict[str, str] = {
     # ---- 通用 ----
     "AutoVisionAgent": "AutoVisionAgent",
     "SKolpha 复刻平台": "AutoVisionAgent",

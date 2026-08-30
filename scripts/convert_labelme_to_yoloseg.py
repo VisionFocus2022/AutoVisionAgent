@@ -16,7 +16,6 @@ import json
 import shutil
 import sys
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = REPO_ROOT / "weights" / "sam3-pole-ft" / "manifest.json"
@@ -29,27 +28,27 @@ CLASS_ID = 0  # 单类 defect（四缺陷标签合单类）
 # ---------------------------- 纯函数（单测面） ---------------------------- #
 
 
-def polygon_to_yolo_line(points: List[List[float]], img_w: int, img_h: int) -> Optional[str]:
+def polygon_to_yolo_line(points: list[list[float]], img_w: int, img_h: int) -> str | None:
     """LabelMe 多边形点 → YOLO-seg 归一化行 `0 x1 y1 x2 y2 ...`。
 
     坐标越界裁剪到 [0,1]；<3 点返回 None（YOLO 拒收）。
     """
     if len(points) < 3:
         return None
-    vals: List[float] = []
+    vals: list[float] = []
     for x, y in points:
         vals.append(min(max(x / img_w, 0.0), 1.0))
         vals.append(min(max(y / img_h, 0.0), 1.0))
     return str(CLASS_ID) + " " + " ".join(f"{v:.6f}" for v in vals)
 
 
-def labelme_to_lines(json_path: Path, img_w: int, img_h: int) -> List[str]:
+def labelme_to_lines(json_path: Path, img_w: int, img_h: int) -> list[str]:
     """LabelMe JSON → YOLO-seg 标签行列表（缺陷多边形，单类）。"""
     try:
         doc = json.loads(Path(json_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
-    lines: List[str] = []
+    lines: list[str] = []
     for s in doc.get("shapes", []):
         if s.get("label") not in DEFECT_LABELS or s.get("shape_type") != "polygon":
             continue
@@ -59,7 +58,7 @@ def labelme_to_lines(json_path: Path, img_w: int, img_h: int) -> List[str]:
     return lines
 
 
-def read_image_size(bmp_path: Path) -> Optional[Tuple[int, int]]:
+def read_image_size(bmp_path: Path) -> tuple[int, int] | None:
     """BMP 尺寸（免整图解码：BFM 头 DIB 段宽高）。"""
     try:
         with open(bmp_path, "rb") as f:
@@ -151,7 +150,7 @@ def convert(data_dir: Path, out_dir: Path, manifest: Path) -> dict:
     return stats
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="LabelMe → YOLO-seg 转换（W50）")
     parser.add_argument("--data", type=Path,
                         default=Path(r"E:/学习项目/极柱外观检标注图"))

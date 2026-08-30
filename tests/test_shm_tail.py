@@ -222,7 +222,7 @@ def test_cleanup_release_failure_warns_and_continues(
 ):
     """某区域 release 抛错 → 告警但继续清其余区域，不炸不中断（:351-352）。"""
     mgr = SharedMemoryManager(base_dir=str(shm_dir))
-    h1 = mgr.write_bytes(b"one")
+    mgr.write_bytes(b"one")
     mgr.write_bytes(b"two")
 
     def _bad_release(_p):

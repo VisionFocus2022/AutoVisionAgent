@@ -9,10 +9,8 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 from core.interfaces_supervised import TaskType
-
 
 # 项目子目录名称
 SUBDIRS = ("images", "annotations", "models", "configs", "results")
@@ -90,12 +88,12 @@ class ProjectLayout:
         ]
 
     @staticmethod
-    def for_id(pid: ProjectId, base_root: str) -> "ProjectLayout":
+    def for_id(pid: ProjectId, base_root: str) -> ProjectLayout:
         """工厂方法。"""
         return ProjectLayout(pid, base_root)
 
 
-def parse_project_dirname(dirname: str) -> Optional[ProjectId]:
+def parse_project_dirname(dirname: str) -> ProjectId | None:
     """解析项目目录名为 ProjectId。
 
     目录名格式：{task}_{seq}_{name}

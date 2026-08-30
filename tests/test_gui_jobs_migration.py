@@ -98,9 +98,9 @@ def _det_result(n_boxes=1, score=0.9):
 @pytest.mark.unit
 def test_three_pages_no_bare_threading_thread():
     """P2-1 迁移守卫：label×3/predict×2/deploy×1 裸线程全部改经 run_job。"""
+    from gui.pages.deploy import page as dep_mod
     from gui.pages.label import page as label_mod
     from gui.pages.predict import page as pred_mod
-    from gui.pages.deploy import page as dep_mod
 
     for mod in (label_mod, pred_mod, dep_mod):
         src = Path(mod.__file__).read_text(encoding="utf-8")

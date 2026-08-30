@@ -14,15 +14,13 @@ from __future__ import annotations
 import argparse
 import os
 import re
-import sys
 from pathlib import Path
-from typing import Set
 
 
-def extract_tr_strings(root: Path) -> Set[str]:
+def extract_tr_strings(root: Path) -> set[str]:
     """扫描源码，提取所有 tr("...") 中的字符串。"""
     pattern = re.compile(r'tr\(\s*["\']([^"\']+)["\']\s*\)')
-    strings: Set[str] = set()
+    strings: set[str] = set()
 
     skip_dirs = {".venv", "__pycache__", ".git", "dist", "build", ".pytest_cache"}
     skip_exts = {".pyc", ".pyo"}
@@ -44,7 +42,7 @@ def extract_tr_strings(root: Path) -> Set[str]:
     return strings
 
 
-def check_translations(source_strings: Set[str], i18n_path: Path) -> None:
+def check_translations(source_strings: set[str], i18n_path: Path) -> None:
     """检查哪些字符串在 _EN_US 字典中缺失。"""
     try:
         content = i18n_path.read_text(encoding="utf-8")

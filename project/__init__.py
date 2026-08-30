@@ -4,10 +4,10 @@
 """
 from __future__ import annotations
 
-from project.models import ProjectId, ProjectLayout, parse_project_dirname
-from project.counter import TaskCounter
-from project.store import FileSystemProjectStore
 from project import recent
+from project.counter import TaskCounter
+from project.models import ProjectId, ProjectLayout, parse_project_dirname
+from project.store import FileSystemProjectStore
 
 __all__ = [
     "ProjectId",

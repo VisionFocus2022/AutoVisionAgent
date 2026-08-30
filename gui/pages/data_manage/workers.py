@@ -9,7 +9,6 @@ import json
 import os
 import random
 import shutil
-from typing import Dict, List, Tuple
 
 from core.constants import IMG_EXTS
 
@@ -34,7 +33,7 @@ def split_dataset(
     r_val: float,
     r_test: float,
     mode: str,
-) -> Tuple[int, int, int]:
+) -> tuple[int, int, int]:
     """按比例把 image_dir 顶层图像划分到 train/val/test 子目录。
 
     mode: copy / move / symlink（失败回退复制）/ list（仅写文件列表）。
@@ -81,7 +80,7 @@ def split_dataset(
 
 def collect_display_images(
     image_dir: str,
-) -> Tuple[List[str], Dict[str, str], int]:
+) -> tuple[list[str], dict[str, str], int]:
     """收集数据管理页展示用图像（W20-2：顶层=活动数据集语义）。
 
     返回 ``(paths, display_names, hidden_count)``：
@@ -92,7 +91,7 @@ def collect_display_images(
     - 顶层无图而直接子目录有图（移动模式划分后/外部预划分数据集）：
       按相对路径 ``子目录/文件名`` 分组展示，避免空屏且同名可区分。
     """
-    top: List[str] = [
+    top: list[str] = [
         os.path.join(image_dir, f)
         for f in os.listdir(image_dir)
         if f.lower().endswith(IMG_EXTS)
@@ -108,8 +107,8 @@ def collect_display_images(
                     if f.lower().endswith(IMG_EXTS)
                 )
         return top, {p: os.path.basename(p) for p in top}, hidden
-    grouped: List[str] = []
-    names: Dict[str, str] = {}
+    grouped: list[str] = []
+    names: dict[str, str] = {}
     for sub in sorted(os.listdir(image_dir)):
         sub_path = os.path.join(image_dir, sub)
         if not os.path.isdir(sub_path):
@@ -129,14 +128,14 @@ def replace_labels(ann_dir: str, old: str, new: str) -> int:
     return batch_replace_label(ann_dir, old, new)
 
 
-def delete_labels(ann_dir: str, labels: List[str]) -> int:
+def delete_labels(ann_dir: str, labels: list[str]) -> int:
     """批量删除指定标签的标注，返回修改文件数。"""
     from labeling.batch_tools import batch_delete_labels
 
     return batch_delete_labels(ann_dir, labels)
 
 
-def label_statistics(ann_dir: str) -> Dict[str, int]:
+def label_statistics(ann_dir: str) -> dict[str, int]:
     """标注数据统计（各类别数量分布）。"""
     from labeling.batch_tools import label_data_statistics
 
@@ -154,7 +153,7 @@ def flip_annotations(ann_dir: str, mode: str) -> int:
         path = os.path.join(ann_dir, f)
         w = h = 0
         try:
-            with open(path, "r", encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 doc = json.load(fh)
             w = doc.get("imageWidth", 0)
             h = doc.get("imageHeight", 0)

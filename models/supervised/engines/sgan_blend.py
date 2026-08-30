@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import os
 import random
-from typing import Any, List, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -32,8 +32,8 @@ class SganBlendEngine(AbstractTaskEngine):
 
     def __init__(self) -> None:
         super().__init__(TaskType.SGAN)
-        self._flaw_database: Optional[str] = None
-        self._flaw_files: List[str] = []
+        self._flaw_database: str | None = None
+        self._flaw_files: list[str] = []
 
     def load(
         self,
@@ -83,7 +83,7 @@ class SganBlendEngine(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         """合成缺陷：OK 模板 + 随机缺陷 → seamlessClone → 合成图 + mask。"""
         if self._model is None:

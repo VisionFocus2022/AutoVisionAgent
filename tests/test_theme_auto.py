@@ -27,7 +27,6 @@ def qapp():
 
 def _patch_scheme(monkeypatch, scheme):
     """把 QGuiApplication.styleHints().colorScheme() 替换为固定值。"""
-    from PySide6.QtGui import QGuiApplication
 
     class _Hints:
         def colorScheme(self):

@@ -5,7 +5,7 @@ ThemeManager 负责在 QApplication 上应用/切换主题。
 """
 from __future__ import annotations
 
-from typing import Dict, Literal
+from typing import Literal
 
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
@@ -60,7 +60,7 @@ _DAYTIME_VARS = {
 }
 
 
-def _qss_base(v: Dict[str, str]) -> str:
+def _qss_base(v: dict[str, str]) -> str:
     """QSS 区块：QWidget 默认样式 + 主容器 + 标题栏 + 窗口控制按钮。"""
     return f"""
     QWidget {{
@@ -83,7 +83,7 @@ def _qss_base(v: Dict[str, str]) -> str:
     QPushButton#btn_min:hover, QPushButton#btn_max:hover {{ background-color: {v['BG_RAISED']}; }}"""
 
 
-def _qss_nav(v: Dict[str, str]) -> str:
+def _qss_nav(v: dict[str, str]) -> str:
     """QSS 区块：侧边导航容器 + 导航按钮（hover/选中态）。"""
     return f"""
     /* 侧边导航 */
@@ -102,7 +102,7 @@ def _qss_nav(v: Dict[str, str]) -> str:
     }}"""
 
 
-def _qss_pages(v: Dict[str, str]) -> str:
+def _qss_pages(v: dict[str, str]) -> str:
     """QSS 区块：页面栈与正文标题/提示。"""
     return f"""
     /* 页面栈与正文 */
@@ -112,7 +112,7 @@ def _qss_pages(v: Dict[str, str]) -> str:
     QLabel#pageHint {{ color: {v['TEXT_DIM']}; font-size: 12px; }}"""
 
 
-def _qss_buttons(v: Dict[str, str]) -> str:
+def _qss_buttons(v: dict[str, str]) -> str:
     """QSS 区块：通用按钮 + accent 角色按钮。"""
     return f"""
     /* 通用按钮 */
@@ -130,7 +130,7 @@ def _qss_buttons(v: Dict[str, str]) -> str:
     QPushButton[role="accent"]:pressed {{ background-color: #5b21b6; }}"""
 
 
-def _qss_inputs(v: Dict[str, str]) -> str:
+def _qss_inputs(v: dict[str, str]) -> str:
     """QSS 区块：输入控件 + 列表。"""
     return f"""
     /* 输入控件 */
@@ -154,7 +154,7 @@ def _qss_inputs(v: Dict[str, str]) -> str:
     QListWidget::item:selected {{ background-color: {v['ACCENT']}; color: #ffffff; }}"""
 
 
-def _qss_toolbar(v: Dict[str, str]) -> str:
+def _qss_toolbar(v: dict[str, str]) -> str:
     """QSS 区块：工具栏/工具按钮 + 画布。"""
     return f"""
     /* 工具栏与工具按钮 */
@@ -171,7 +171,7 @@ def _qss_toolbar(v: Dict[str, str]) -> str:
     QGraphicsView {{ background-color: {v['BG_DEEP']}; border: 1px solid {v['BORDER']}; border-radius: 6px; }}"""
 
 
-def _qss_groups(v: Dict[str, str]) -> str:
+def _qss_groups(v: dict[str, str]) -> str:
     """QSS 区块：分组框 + 标签页。"""
     return f"""
     /* 分组与标签页 */
@@ -188,7 +188,7 @@ def _qss_groups(v: Dict[str, str]) -> str:
     QTabBar::tab:selected {{ background: {v['BG_RAISED']}; color: {v['ACCENT2']}; }}"""
 
 
-def _qss_statusbar(v: Dict[str, str]) -> str:
+def _qss_statusbar(v: dict[str, str]) -> str:
     """QSS 区块：底部状态栏（末块，保留结尾换行与缩进）。"""
     return f"""
     /* 状态栏 */

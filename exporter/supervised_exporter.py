@@ -9,10 +9,9 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
 
 from core.exceptions import ModelExportError
-from core.interfaces_supervised import ISupervisedTaskEngine, TaskType
+from core.interfaces_supervised import ISupervisedTaskEngine
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +35,7 @@ class SupervisedExporter:
         model,
         task_value: str,
         output_path: str,
-        input_shape: Optional[tuple] = None,
+        input_shape: tuple | None = None,
         precision: str = "fp32",
     ) -> str:
         """
@@ -121,7 +120,7 @@ class SupervisedExporter:
         precision: str = "fp16",
         max_batch_size: int = 8,
         workspace_size_mb: int = 4096,
-        input_shape: Optional[tuple] = None,
+        input_shape: tuple | None = None,
     ) -> str:
         """
         ONNX → TensorRT engine 转换。
@@ -212,11 +211,11 @@ class SupervisedExporter:
             logger.debug("onnxsim 未安装，跳过简化")
 
     def _try_quantize(self, path: Path, precision: str,
-                      input_shape: Optional[tuple] = None) -> None:
+                      input_shape: tuple | None = None) -> None:
         try:
             if precision == "fp16":
-                from onnxconverter_common import float16
                 import onnx
+                from onnxconverter_common import float16
 
                 model = onnx.load(str(path))
                 model_fp16 = float16.convert_float_to_float16(model)
@@ -226,8 +225,10 @@ class SupervisedExporter:
                 # 优先使用静态量化（精度更高），回退到动态量化
                 try:
                     from onnxruntime.quantization import (
-                        quantize_static, CalibrationDataReader, QuantType,
+                        CalibrationDataReader,
                         CalibrationMethod,
+                        QuantType,
+                        quantize_static,
                     )
                     int8_path = path.with_suffix(".int8.onnx")
                     # 静态量化需要校准数据，此处使用随机数据作为占位
@@ -257,7 +258,7 @@ class SupervisedExporter:
                     logger.info("INT8 静态量化成功")
                 except Exception:
                     # 回退到动态量化（仅权重量化）
-                    from onnxruntime.quantization import quantize_dynamic, QuantType
+                    from onnxruntime.quantization import QuantType, quantize_dynamic
                     int8_path = path.with_suffix(".int8.onnx")
                     quantize_dynamic(str(path), str(int8_path),
                                      weight_type=QuantType.QUInt8)
@@ -271,7 +272,7 @@ def export_supervised_engine(
     output_dir: str,
     formats: tuple = ("onnx",),
     precision: str = "fp32",
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """
     便捷函数：导出有监督引擎到多格式。
 
@@ -286,7 +287,7 @@ def export_supervised_engine(
     """
     exporter = SupervisedExporter()
     task = engine.task.value if hasattr(engine, "task") else "unknown"
-    results: Dict[str, str] = {}
+    results: dict[str, str] = {}
 
     if "onnx" in formats:
         onnx_path = Path(output_dir) / f"{task}_model.onnx"

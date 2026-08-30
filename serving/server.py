@@ -18,13 +18,12 @@ import argparse
 import logging
 import logging.handlers
 import os
-import sys
+from collections.abc import Iterator
 from concurrent import futures
-from typing import Any, Iterator, Optional
+from typing import Any
 
 import grpc
 
-from core.interfaces_supervised import TaskType
 from serving.proto import autovisionagent_pb2 as pb
 from serving.proto import autovisionagent_pb2_grpc as pb_grpc
 from serving.serialization import (
@@ -51,7 +50,7 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
     def __init__(
         self,
         dispatcher: Any,
-        shm: Optional[SharedMemoryManager] = None,
+        shm: SharedMemoryManager | None = None,
     ) -> None:
         self._dispatcher = dispatcher
         self._shm = shm or SharedMemoryManager()
@@ -315,7 +314,7 @@ def create_server(
     port: int = 50051,
     max_workers: int = 8,
     dispatcher: Any = None,
-    shm: Optional[SharedMemoryManager] = None,
+    shm: SharedMemoryManager | None = None,
 ) -> grpc.Server:
     """构造并返回 gRPC server（未启动）。
 
@@ -352,7 +351,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 50051,
     max_workers: int = 8,
-    log_dir: Optional[str] = None,
+    log_dir: str | None = None,
 ) -> None:
     """阻塞运行 gRPC server。
 

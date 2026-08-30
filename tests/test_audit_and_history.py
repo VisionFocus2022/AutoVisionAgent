@@ -5,8 +5,6 @@ DetectionHistory 环形缓冲 + 持久化 + 统计。
 """
 import json
 import os
-import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -24,7 +22,7 @@ class TestAuditLogger:
 
     def test_log_and_flush(self, tmp_path):
         """记录日志 + 刷盘到文件。"""
-        from core.audit_logger import AuditLogger, get_audit_logger
+        from core.audit_logger import AuditLogger
         # 单例模式下 __init__ 不重置 log_dir，需手动设置
         logger = AuditLogger(log_dir=tmp_path)
         logger._log_dir = tmp_path
@@ -35,7 +33,7 @@ class TestAuditLogger:
         # 验证文件已写入
         files = list(tmp_path.glob("audit_*.jsonl"))
         assert len(files) == 1
-        with open(files[0], "r", encoding="utf-8") as f:
+        with open(files[0], encoding="utf-8") as f:
             entry = json.loads(f.readline())
         assert entry["action"] == "test_action"
         assert entry["user"] == "tester"
@@ -140,7 +138,7 @@ class TestDetectionHistory:
         history.add_record(task="det", image_path="/a.jpg", result_count=2)
         files = list(tmp_path.glob("history_*.jsonl"))
         assert len(files) == 1
-        with open(files[0], "r", encoding="utf-8") as f:
+        with open(files[0], encoding="utf-8") as f:
             entry = json.loads(f.readline())
         assert entry["task"] == "det"
         assert entry["image_path"] == "/a.jpg"
@@ -263,8 +261,8 @@ def test_single_done_audit_records_logged_in_user(predict_qapp, monkeypatch):
     RED：predict _single_done 此前调 log_detection_complete 不传 user，
     审计记录恒为默认 "system"，无法归属到登录用户。
     """
-    from gui.pages.predict.page import PredictPage
     from core.session import reset_current_user, set_current_user
+    from gui.pages.predict.page import PredictPage
 
     class _FakeResult:
         boxes = None

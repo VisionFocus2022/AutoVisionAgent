@@ -10,11 +10,11 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
+from core.interfaces_supervised import DetectionResult, TaskType  # noqa: E402
 from serving.mask_codec import decode_mask_rle, encode_mask_rle  # noqa: E402
 from serving.proto import autovisionagent_pb2 as pb  # noqa: E402
 from serving.serialization import detection_result_to_proto  # noqa: E402
 from serving.shared_memory import SharedMemoryManager  # noqa: E402
-from core.interfaces_supervised import DetectionResult, TaskType  # noqa: E402
 
 
 def _sparse(h=1080, w=1920, n_defects=3, seed=7):
@@ -78,7 +78,7 @@ def test_compression_ratio_sparse_industrial():
     )
 
     # 对标基准：sv CompactMask（公开 offsets 字节数同量级）
-    sv = pytest.importorskip("supervision")
+    pytest.importorskip("supervision")
     from supervision.detection.compact_mask import CompactMask
 
     ys, xs = np.where(m[0])

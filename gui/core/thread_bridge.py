@@ -24,9 +24,11 @@ W14-C2 修复（架构审查 P2-16）：
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from PySide6.QtCore import QMetaObject, Qt as _Qt, Q_ARG, QObject
+from PySide6.QtCore import Q_ARG, QMetaObject, QObject
+from PySide6.QtCore import Qt as _Qt
 
 logger = logging.getLogger(__name__)
 

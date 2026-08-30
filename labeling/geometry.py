@@ -5,14 +5,13 @@
 from __future__ import annotations
 
 import math
-from typing import List, Tuple
 
 from labeling.base import Point
 
 
 def simplify_polyline(
-    points: List[Point], epsilon: float = 2.0
-) -> List[Point]:
+    points: list[Point], epsilon: float = 2.0
+) -> list[Point]:
     """Douglas-Peucker 多边形/折线简化。
 
     Args:
@@ -39,7 +38,7 @@ def simplify_polyline(
             - line_end[1] * line_start[0]
         ) / norm
 
-    def _rdp(pts: List[Point]) -> List[Point]:
+    def _rdp(pts: list[Point]) -> list[Point]:
         if len(pts) < 3:
             return pts
         # 找距离最远的点
@@ -61,7 +60,7 @@ def simplify_polyline(
     return _rdp(list(points))
 
 
-def polygon_area(points: List[Point]) -> float:
+def polygon_area(points: list[Point]) -> float:
     """Shoelace 公式计算多边形面积。
 
     Args:
@@ -83,7 +82,7 @@ def polygon_area(points: List[Point]) -> float:
 
 def normalize_rectangle(
     pt1: Point, pt2: Point
-) -> Tuple[Point, Point]:
+) -> tuple[Point, Point]:
     """将两个任意角点归一化为 (左上, 右下)。
 
     Args:
@@ -99,7 +98,7 @@ def normalize_rectangle(
 
 
 def point_in_polygon(
-    pt: Point, polygon: List[Point]
+    pt: Point, polygon: list[Point]
 ) -> bool:
     """射线法判断点是否在多边形内部。
 
@@ -128,8 +127,8 @@ def point_in_polygon(
 
 
 def bbox_of_points(
-    points: List[Point],
-) -> Tuple[float, float, float, float]:
+    points: list[Point],
+) -> tuple[float, float, float, float]:
     """计算点集的外接矩形。
 
     Returns:
@@ -142,13 +141,13 @@ def bbox_of_points(
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def rectangle_size(pt1: Point, pt2: Point) -> Tuple[float, float]:
+def rectangle_size(pt1: Point, pt2: Point) -> tuple[float, float]:
     """矩形 (宽, 高)。（W1: 自 era-2 树移植，恢复 test_labeling 契约）"""
     (tx, ty), (bx, by) = normalize_rectangle(pt1, pt2)
     return (bx - tx, by - ty)
 
 
-def polygon_centroid(points: List[Point]) -> Point:
+def polygon_centroid(points: list[Point]) -> Point:
     """多边形质心 (x, y)；退化情况（点数<3 或面积≈0）回退为顶点均值。"""
     n = len(points)
     if n == 0:
@@ -168,7 +167,7 @@ def polygon_centroid(points: List[Point]) -> Point:
     return (cx / (3.0 * area2), cy / (3.0 * area2))
 
 
-def is_closed(points: List[Point]) -> bool:
+def is_closed(points: list[Point]) -> bool:
     """首尾点是否重合（视为已闭合）。"""
     if len(points) < 2:
         return False
@@ -176,7 +175,7 @@ def is_closed(points: List[Point]) -> bool:
     return math.hypot(x1 - x2, y1 - y2) < 1e-9
 
 
-def close_polygon(points: List[Point]) -> Tuple[Point, ...]:
+def close_polygon(points: list[Point]) -> tuple[Point, ...]:
     """返回首尾闭合的点序列（已闭合则原样返回）。"""
     pts = tuple(points)
     if len(pts) >= 3 and not is_closed(pts):

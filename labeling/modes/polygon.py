@@ -4,9 +4,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
+from labeling.base import DEFAULT_COLOR, RGBA, AnnotationMode, Point, Shape
 from labeling.geometry import close_polygon
 from labeling.modes._base import AbstractLabeler
 
@@ -44,7 +42,7 @@ class PolygonLabeler(AbstractLabeler):
             return  # 不添加新点，等待 commit
         self._points.append(pt)
 
-    def commit(self) -> Optional[Shape]:
+    def commit(self) -> Shape | None:
         if not self._can_commit():
             return None
         # era-2 语义：提交时自动闭合（首尾相接），状态随之清空

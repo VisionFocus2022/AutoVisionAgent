@@ -1,4 +1,4 @@
-"""中文路径读图统一测试（W1-T3，P2-5）。
+r"""中文路径读图统一测试（W1-T3，P2-5）。
 
 本项目根目录即中文路径（E:\学习项目\视觉大模型），Windows 下裸 cv2.imread
 对非系统码页路径返回 None。core.image_io.imread_unicode 用 np.fromfile +

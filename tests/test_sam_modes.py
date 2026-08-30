@@ -9,14 +9,12 @@
 """
 from __future__ import annotations
 
-from typing import List, Tuple
+import pytest
 
 from labeling.base import AnnotationMode, Shape
 from labeling.modes import make_labeler
 from labeling.modes.auto import AutoLabeler
 from labeling.modes.interactive import InteractiveLabeler
-
-import pytest
 
 pytestmark = pytest.mark.unit
 
@@ -60,24 +58,24 @@ class TestFactoryRegistration:
 class FakeSamAdapter:
     """轻量 SamAdapter 替身（不依赖 segment-anything）。"""
 
-    def __init__(self, polygon: List[Tuple[float, float]]) -> None:
+    def __init__(self, polygon: list[tuple[float, float]]) -> None:
         self._polygon = polygon
         self.call_count = 0
 
     def predict_point(
         self,
         image: object,
-        point: Tuple[float, float],
+        point: tuple[float, float],
         label: int = 1,
-    ) -> List[Tuple[float, float]]:
+    ) -> list[tuple[float, float]]:
         self.call_count += 1
         return list(self._polygon)
 
     def predict_box(
         self,
         image: object,
-        box: Tuple[float, float, float, float],
-    ) -> List[Tuple[float, float]]:
+        box: tuple[float, float, float, float],
+    ) -> list[tuple[float, float]]:
         return list(self._polygon)
 
 
@@ -190,7 +188,7 @@ class TestAutoLabeler:
     """AutoLabeler：批量推理 → commit 逐个返回。"""
 
     @staticmethod
-    def _fake_detector(image: object) -> List[Shape]:
+    def _fake_detector(image: object) -> list[Shape]:
         """模拟检测器：返回 3 个矩形。"""
         return [
             Shape(
@@ -242,7 +240,7 @@ class TestAutoLabeler:
         assert labeler.run() == 0
 
     def test_detector_exception_swallowed(self) -> None:
-        def bad_detector(img: object) -> List[Shape]:
+        def bad_detector(img: object) -> list[Shape]:
             raise RuntimeError("model not loaded")
 
         labeler = AutoLabeler("x", detector=bad_detector, image="img")

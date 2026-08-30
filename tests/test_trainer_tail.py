@@ -35,7 +35,8 @@ class _Strategy:
 
     def save(self, path):
         self.saved.append(str(path))
-        open(path, "wb").write(b"w")
+        with open(path, "wb") as f:
+            f.write(b"w")
 
     def get_optimizer(self):
         return self._optimizer

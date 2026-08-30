@@ -43,7 +43,8 @@ class FakeThread:
         self._t, self._a, self._k = target, args, kwargs or {}
 
     def start(self):
-        if self._t: self._t(*self._a, **self._k)
+        if self._t:
+            self._t(*self._a, **self._k)
 
 
 @pytest.fixture
@@ -176,8 +177,8 @@ def test_eval_start_and_complete_logged(
     qapp, fake_threads, monkeypatch, tmp_path, caplog
 ):
     """P2-19 RED：评估开始/完成各一条 INFO（引擎回退 GT 自比较路径）。"""
-    from gui.pages.eval_.page import EvalPage
     import models.supervised.registry as reg_mod
+    from gui.pages.eval_.page import EvalPage
 
     gt = tmp_path / "gt"
     gt.mkdir()
@@ -207,9 +208,9 @@ def test_flawgen_start_and_complete_logged(
     qapp, fake_threads, monkeypatch, tmp_path, caplog
 ):
     """P2-19 RED：缺陷生成开始/完成各一条 INFO（SGAN 引擎注入路径）。"""
+    import models.supervised.registry as reg_mod
     from core.interfaces_supervised import DetectionResult, TaskType
     from gui.pages.flaw_gen.page import FlawGenPage
-    import models.supervised.registry as reg_mod
 
     ok_dir = tmp_path / "ok"
     flaw_dir = tmp_path / "flaws"

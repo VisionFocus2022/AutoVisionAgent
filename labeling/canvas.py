@@ -5,9 +5,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
 
-from PySide6.QtCore import QPointF, Qt, Signal, QRectF
+from PySide6.QtCore import QPointF, QRectF, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -15,9 +14,9 @@ from PySide6.QtGui import (
     QPixmap,
     QPolygonF,
 )
-from PySide6.QtWidgets import QGraphicsScene, QGraphicsPixmapItem
+from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene
 
-from labeling.base import AnnotationMode, DEFAULT_COLOR, Shape
+from labeling.base import DEFAULT_COLOR, AnnotationMode, Shape
 
 _logger = logging.getLogger(__name__)
 
@@ -35,21 +34,21 @@ class AnnotationCanvas(QGraphicsScene):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._shapes: List[Shape] = []
-        self._undo_stack: List[List[Shape]] = []
-        self._redo_stack: List[List[Shape]] = []
-        self._pixmap_item: Optional[QGraphicsPixmapItem] = None
+        self._shapes: list[Shape] = []
+        self._undo_stack: list[list[Shape]] = []
+        self._redo_stack: list[list[Shape]] = []
+        self._pixmap_item: QGraphicsPixmapItem | None = None
         self._show_shapes: bool = True
-        self._image_pixmap: Optional[QPixmap] = None
+        self._image_pixmap: QPixmap | None = None
 
     # ============================== 图像管理 ============================== #
     @property
-    def shapes(self) -> List[Shape]:
+    def shapes(self) -> list[Shape]:
         """当前标注列表（只读视图）。"""
         return list(self._shapes)
 
     @property
-    def image_size(self) -> Tuple[int, int]:
+    def image_size(self) -> tuple[int, int]:
         """返回 (width, height)，无图像时返回 (0, 0)。"""
         if self._image_pixmap and not self._image_pixmap.isNull():
             return (self._image_pixmap.width(), self._image_pixmap.height())
@@ -113,7 +112,7 @@ class AnnotationCanvas(QGraphicsScene):
         self,
         mode=AnnotationMode.POLYGON,
         label: str = "",
-        points: Optional[list] = None,
+        points: list | None = None,
         color=DEFAULT_COLOR,
     ) -> None:
         """添加标注形状。

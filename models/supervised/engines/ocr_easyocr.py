@@ -14,7 +14,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -57,7 +57,7 @@ class OcrEasyocrEngine(AbstractTaskEngine):
                 model_storage_directory=weights_path or None,
                 download_enabled=not offline,
             )
-        except Exception as exc:  # noqa: BLE001——Reader 初始化任何失败都诚实上抛
+        except Exception as exc:  # noqa: BLE001  # Reader 初始化任何失败都诚实上抛
             raise SupervisedEngineError(
                 f"easyocr 权重不可用: {exc}——离线平台请先运行 "
                 "scripts/fetch_ocr_weights.py 下载 craft_mlt_25k/zh_sim 权重"
@@ -71,7 +71,7 @@ class OcrEasyocrEngine(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         """识别图中文本行（threshold 为逐行置信度阈值）。"""
         if self._model is None:

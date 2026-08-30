@@ -13,19 +13,18 @@
 """
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 import json
+import logging
 import os
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from labeling.io_labelme import load_labelme
 
+logger = logging.getLogger(__name__)
 
-def atomic_write_json(path: str, doc: Dict[str, Any]) -> None:
+
+def atomic_write_json(path: str, doc: dict[str, Any]) -> None:
     """原子写 JSON：先写同目录临时文件，再 os.replace 替换目标。
 
     P2-2：直写是 truncate-then-write，写盘中途失败/进程退出会把目标
@@ -60,9 +59,9 @@ def cut_labelme_json(
     tile_w: int,
     tile_h: int,
     out_dir: str,
-    image_width: Optional[int] = None,
-    image_height: Optional[int] = None,
-) -> List[str]:
+    image_width: int | None = None,
+    image_height: int | None = None,
+) -> list[str]:
     """将大图的标注 JSON 按瓦片切割为多个小标注 JSON。
 
     对每个 (tile_w, tile_h) 瓦片，平移 shapes 的坐标到瓦片局部坐标系，
@@ -85,7 +84,7 @@ def cut_labelme_json(
 
     base_name = os.path.splitext(os.path.basename(src_json))[0]
     os.makedirs(out_dir, exist_ok=True)
-    results: List[str] = []
+    results: list[str] = []
 
     for ty in range(0, h, tile_h):
         for tx in range(0, w, tile_w):
@@ -174,7 +173,7 @@ def batch_replace_label(
     return count
 
 
-def label_data_statistics(json_dir: str) -> Dict[str, int]:
+def label_data_statistics(json_dir: str) -> dict[str, int]:
     """统计标注数据中各类别的数量分布。
 
     Args:
@@ -183,7 +182,7 @@ def label_data_statistics(json_dir: str) -> Dict[str, int]:
     Returns:
         {label_name: count} 字典，按数量降序。
     """
-    stats: Dict[str, int] = {}
+    stats: dict[str, int] = {}
     for f in os.listdir(json_dir):
         if not f.endswith(".json"):
             continue
@@ -202,7 +201,7 @@ def label_data_statistics(json_dir: str) -> Dict[str, int]:
 
 def batch_delete_labels(
     json_dir: str,
-    labels_to_delete: List[str],
+    labels_to_delete: list[str],
 ) -> int:
     """批量删除指定标签名的标注。
 

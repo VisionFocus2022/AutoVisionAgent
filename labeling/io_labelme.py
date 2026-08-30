@@ -11,8 +11,9 @@ shape_type=="polygon" 的 points）。本模块：
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any
 
 from core.exceptions import AnnotationIOError, InvalidShapeError
 from labeling.base import (
@@ -25,7 +26,7 @@ from labeling.base import (
 LABELME_VERSION = "5.4.3"
 
 # Shape.mode → LabelMe shape_type
-_MODE_TO_SHAPE_TYPE: Dict[AnnotationMode, str] = {
+_MODE_TO_SHAPE_TYPE: dict[AnnotationMode, str] = {
     AnnotationMode.POLYGON: "polygon",
     AnnotationMode.BRUSH: "polygon",   # 画笔落盘为多边形（与既有 loader 兼容）
     AnnotationMode.RECTANGLE: "rectangle",
@@ -33,14 +34,14 @@ _MODE_TO_SHAPE_TYPE: Dict[AnnotationMode, str] = {
 }
 
 # LabelMe shape_type → Shape.mode（无 "mode" 自定义键时的推断回退）
-_SHAPE_TYPE_TO_MODE: Dict[str, AnnotationMode] = {
+_SHAPE_TYPE_TO_MODE: dict[str, AnnotationMode] = {
     "polygon": AnnotationMode.POLYGON,
     "rectangle": AnnotationMode.RECTANGLE,
     "point": AnnotationMode.KEYPOINT,
 }
 
 
-def shape_to_labelme(shape: Shape) -> Dict[str, Any]:
+def shape_to_labelme(shape: Shape) -> dict[str, Any]:
     """单个 Shape → LabelMe shape 字典。"""
     if not shape.points:
         raise InvalidShapeError("形状无点", mode=shape.mode.value)
@@ -50,10 +51,7 @@ def shape_to_labelme(shape: Shape) -> Dict[str, Any]:
             f"模式 {shape.mode.value} 暂不支持 LabelMe 导出", mode=shape.mode.value
         )
     # 矩形只需两个对角点；多边形/画笔/关键点按原样
-    if shape.mode is AnnotationMode.RECTANGLE:
-        pts = tuple(shape.points[:2])
-    else:
-        pts = shape.points
+    pts = tuple(shape.points[:2]) if shape.mode is AnnotationMode.RECTANGLE else shape.points
     return {
         "label": shape.label,
         "points": [[float(x), float(y)] for x, y in pts],
@@ -65,7 +63,7 @@ def shape_to_labelme(shape: Shape) -> Dict[str, Any]:
     }
 
 
-def shape_from_labelme(data: Dict[str, Any]) -> Shape:
+def shape_from_labelme(data: dict[str, Any]) -> Shape:
     """LabelMe shape 字典 → Shape。优先用 "mode" 自定义键，否则按 shape_type 推断。"""
     raw_mode = data.get("mode")
     if raw_mode and raw_mode in {m.value for m in AnnotationMode}:
@@ -93,9 +91,9 @@ def shape_from_labelme(data: Dict[str, Any]) -> Shape:
     )
 
 
-def labelme_to_shapes(doc: Dict[str, Any]) -> List[Shape]:
+def labelme_to_shapes(doc: dict[str, Any]) -> list[Shape]:
     """完整 LabelMe 文档字典 → Shape 列表。（W1: 自 era-2 树移植）"""
-    out: List[Shape] = []
+    out: list[Shape] = []
     for item in doc.get("shapes") or []:
         if not isinstance(item, dict):
             continue
@@ -108,11 +106,11 @@ def shapes_to_labelme(
     image_path: str,
     image_height: int,
     image_width: int,
-    image_data: Optional[str] = None,
-    channels: Optional[int] = None,
-    image_path_list: Optional[List[str]] = None,
+    image_data: str | None = None,
+    channels: int | None = None,
+    image_path_list: list[str] | None = None,
     mark: str = "",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """多个 Shape + 图像元信息 → 完整 LabelMe 文档字典。
 
     工业扩展字段（可选，向后兼容）：
@@ -139,26 +137,15 @@ def shapes_to_labelme(
     return doc
 
 
-def labelme_to_shapes(doc: Dict[str, Any]) -> List[Shape]:
-    """完整 LabelMe 文档字典 → Shape 列表。"""
-    shapes_raw = doc.get("shapes") or []
-    out: List[Shape] = []
-    for item in shapes_raw:
-        if not isinstance(item, dict):
-            continue
-        out.append(shape_from_labelme(item))
-    return out
-
-
 def save_labelme(
-    path: Union[str, Path],
+    path: str | Path,
     shapes: Sequence[Shape],
     image_path: str,
     image_height: int,
     image_width: int,
-    image_data: Optional[str] = None,
-    channels: Optional[int] = None,
-    image_path_list: Optional[List[str]] = None,
+    image_data: str | None = None,
+    channels: int | None = None,
+    image_path_list: list[str] | None = None,
     mark: str = "",
 ) -> None:
     """把标注写入 LabelMe JSON 文件。
@@ -185,7 +172,7 @@ def save_labelme(
         ) from exc
 
 
-def load_labelme(path: Union[str, Path]) -> Dict[str, Any]:
+def load_labelme(path: str | Path) -> dict[str, Any]:
     """读取 LabelMe JSON 文件为原始字典。
 
     Raises:
@@ -204,7 +191,7 @@ def load_labelme(path: Union[str, Path]) -> Dict[str, Any]:
         ) from exc
 
 
-def load_labelme_shapes(path: Union[str, Path]) -> List[Shape]:
+def load_labelme_shapes(path: str | Path) -> list[Shape]:
     """读取 LabelMe JSON 文件并返回 Shape 列表。"""
     return labelme_to_shapes(load_labelme(path))
 

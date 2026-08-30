@@ -131,7 +131,7 @@ def test_resume_from_sidecar_meta(tmp_path):
 
     strat = FakeStrategy(losses=[0.5, 0.4, 0.3])
     trainer = GenericTrainer(TaskType.CLS, strat)
-    art = trainer.fit(_cfg(tmp_path, epochs=6, resume_from=str(ckpt)))
+    trainer.fit(_cfg(tmp_path, epochs=6, resume_from=str(ckpt)))
 
     assert strat.epochs_run[0] == 5  # 从 epoch 5 续训
     assert strat.epochs_run == [5, 6]

@@ -8,9 +8,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Callable, List, Optional, Tuple
-
-import numpy as np
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +25,14 @@ class VisionDataset:
         image_dir: str,
         annotation_dir: str = "",
         img_exts: tuple = (".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"),
-        transform: Optional[Callable] = None,
+        transform: Callable | None = None,
         max_items: int = 0,
     ) -> None:
         self._image_dir = image_dir
         self._annotation_dir = annotation_dir or image_dir
         self._img_exts = img_exts
         self._transform = transform
-        self._items: List[Tuple[str, str]] = []
+        self._items: list[tuple[str, str]] = []
         self._scan(max_items)
 
     def _scan(self, max_items: int) -> None:
@@ -73,7 +72,7 @@ class VisionDataset:
         annotation = {"boxes": [], "labels": [], "shapes": []}
         if ann_path and os.path.exists(ann_path):
             try:
-                with open(ann_path, "r", encoding="utf-8") as f:
+                with open(ann_path, encoding="utf-8") as f:
                     ann = json.load(f)
                 shapes = ann.get("shapes", [])
                 for s in shapes:
@@ -112,7 +111,8 @@ def create_dataloader(
     消费 core/config.py 中 InferenceConfig 的 num_workers / batch_size。
     """
     try:
-        from torch.utils.data import DataLoader, Dataset as TorchDataset
+        from torch.utils.data import DataLoader
+        from torch.utils.data import Dataset as TorchDataset
         # 包装为 torch Dataset 兼容
         class _TorchVisionDataset(TorchDataset):
             def __len__(self):

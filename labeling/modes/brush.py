@@ -4,9 +4,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
+from labeling.base import DEFAULT_COLOR, RGBA, AnnotationMode, Point, Shape
 from labeling.geometry import simplify_polyline
 from labeling.modes._base import AbstractLabeler
 
@@ -48,7 +46,7 @@ class BrushLabeler(AbstractLabeler):
             self._points.append(pt)
         self._cursor = pt
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         if len(self._points) < 2:
             self.reset()
             return None

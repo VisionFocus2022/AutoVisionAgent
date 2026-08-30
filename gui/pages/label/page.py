@@ -6,10 +6,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, QTimer, Slot
-from PySide6.QtGui import QKeySequence, QShortcut, QPixmap, QIcon, QImage
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtGui import QIcon, QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsView,
@@ -24,21 +23,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from labeling import AnnotationMode, Shape, save_labelme
+from core.constants import IMG_EXTS as _IMG_EXTS
 from core.exceptions import AnnotationIOError, InvalidShapeError, SupervisedEngineError
-from labeling.canvas import AnnotationCanvas
-from labeling.controller import AnnotationController
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
+from gui.core.permissions import check_action  # W35：动作门控
 from gui.core.thread_bridge import invoke_main, ui_on_error
-from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
-from gui.widgets.thumbnail_loader import ThumbnailTask
+from gui.pages.label import batch_prelabel as _bp  # W30：批量预标注（模块引用保测试缝）
 from gui.pages.label.sam_session import SamSessionMixin
 from gui.pages.label.workers import det_engine_available, run_ai_prelabel
-from gui.pages.label import batch_prelabel as _bp  # W30：批量预标注（模块引用保测试缝）
-from gui.core.permissions import check_action  # W35：动作门控
-
-from core.constants import IMG_EXTS as _IMG_EXTS
+from gui.widgets.file_dialog import pick_directory, pick_open_file, pick_save_file
+from gui.widgets.thumbnail_loader import ThumbnailTask
+from labeling import AnnotationMode, save_labelme
+from labeling.canvas import AnnotationCanvas
+from labeling.controller import AnnotationController
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +78,7 @@ class _ZoomableView(QGraphicsView):
         # 默认手型平移（中键/无标注模式时使用）
         self.setDragMode(QGraphicsView.ScrollHandDrag)
         self._zoom_factor = 1.15
-        self._controller: Optional[AnnotationController] = None
+        self._controller: AnnotationController | None = None
 
     def set_controller(self, controller: AnnotationController) -> None:
         """注入标注控制器，接管鼠标事件分发。"""
@@ -156,7 +154,7 @@ class LabelPage(SamSessionMixin, QWidget):
 
     status_changed = Signal(str, str)  # (text, accent) -> 主壳状态栏
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         # 数据层
@@ -165,20 +163,20 @@ class LabelPage(SamSessionMixin, QWidget):
         self.controller = AnnotationController(
             self.canvas, mode=AnnotationMode.POLYGON, label="defect"
         )
-        self._image_path: Optional[str] = None
-        self._mode_btns: Dict[AnnotationMode, QPushButton] = {}
+        self._image_path: str | None = None
+        self._mode_btns: dict[AnnotationMode, QPushButton] = {}
 
         # 图像文件列表
-        self._image_files: List[str] = []
+        self._image_files: list[str] = []
         self._current_index: int = -1
 
         # 标注剪贴板（copy/paste）
-        self._clipboard: List = []
+        self._clipboard: list = []
 
         # R5-5: 异步缩略图加载
         self._thumb_pool = QThreadPool(self)
         self._thumb_pool.setMaxThreadCount(4)
-        self._thumb_items: Dict[str, "QListWidgetItem"] = {}
+        self._thumb_items: dict[str, QListWidgetItem] = {}
 
         # W4-T3 (P2-6): SAM 交互式标注接线状态
         self._sam_adapter = None
@@ -404,7 +402,7 @@ class LabelPage(SamSessionMixin, QWidget):
             return
 
         # 递归扫描所有图像文件
-        images: List[str] = []
+        images: list[str] = []
         for root_dir, _dirs, files in os.walk(folder):
             for f in sorted(files):
                 if f.lower().endswith(_IMG_EXTS):
@@ -685,10 +683,6 @@ class LabelPage(SamSessionMixin, QWidget):
         if not shapes:
             self.status_changed.emit(tr("就绪"), tr("标注数") + "=0")
             return
-        default_name = "annotation.json"
-        if self._image_path:
-            base = self._image_path.rsplit(".", 1)[0]
-            default_name = base + ".json"
         path = pick_save_file(
             self, "保存标注", "LabelMe (*.json)"
         )

@@ -14,6 +14,7 @@ login_success 之前弹模态改密框（三字段按 top 排序=旧/新/确认�
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -26,34 +27,36 @@ import pytest
 
 try:
     from tests.uia.uia_helpers import (
-        _iter_descendants,
         _wait_dialog,
         _wait_dialog_gone,
         click_button,
-        click_login_button_precise as _click_login_button,
-        find_edit_controls,
         find_main_window,
         read_status_text,
         set_edit_value,
-        sort_login_edits as _sort_edits,
         wait_status,
     )
-    from tests.uia.test_pole_dataset_flows import _ensure_logged_in
+    from tests.uia.uia_helpers import (
+        click_login_button_precise as _click_login_button,
+    )
+    from tests.uia.uia_helpers import (
+        sort_login_edits as _sort_edits,
+    )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (  # type: ignore[no-redef]
-        _iter_descendants,
         _wait_dialog,
         _wait_dialog_gone,
         click_button,
-        click_login_button_precise as _click_login_button,
-        find_edit_controls,
         find_main_window,
         read_status_text,
         set_edit_value,
-        sort_login_edits as _sort_edits,
         wait_status,
     )
-    from test_pole_dataset_flows import _ensure_logged_in  # type: ignore[no-redef]
+    from uia_helpers import (
+        click_login_button_precise as _click_login_button,
+    )
+    from uia_helpers import (
+        sort_login_edits as _sort_edits,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -100,22 +103,18 @@ def first_run_cfg():
     先 taskkill 再删文件——残留僵尸进程会持 QLockFile 单实例锁，使新
     实例弹"已在运行"早退、ava_app 错绑僵尸窗口（W25 R2 实测踩坑）。
     """
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run(
             ["taskkill", "/IM", "AutoVisionAgent.exe", "/F"],
             capture_output=True, timeout=10,
         )
-    except Exception:  # noqa: BLE001
-        pass
     _reset_first_run_state()
     yield
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run(
             ["taskkill", "/IM", "AutoVisionAgent.exe", "/F"],
             capture_output=True, timeout=10,
         )
-    except Exception:  # noqa: BLE001
-        pass
     _reset_first_run_state()
 
 

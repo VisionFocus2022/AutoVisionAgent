@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from typing import Optional, Tuple
 
 # PBKDF2 参数（R4-3: OWASP 2023 建议 600,000）
 _PBKDF2_ITERATIONS = 600_000
@@ -20,7 +19,7 @@ def hash_password(
     password: str,
     salt_hex: str = "",
     iterations: int = _PBKDF2_ITERATIONS,
-) -> Tuple[str, str, int]:
+) -> tuple[str, str, int]:
     """PBKDF2-HMAC-SHA256 加盐哈希。
 
     Args:
@@ -80,7 +79,7 @@ def verify_and_migrate(
     stored_hash: str,
     salt_hex: str,
     stored_iterations: int = _PBKDF2_ITERATIONS,
-) -> Tuple[bool, Optional[Tuple[str, str, int]]]:
+) -> tuple[bool, tuple[str, str, int] | None]:
     """验证密码并在需要时自动返回迁移哈希。
 
     如果密码正确但迭代次数低于当前推荐值，返回新哈希供调用方持久化。

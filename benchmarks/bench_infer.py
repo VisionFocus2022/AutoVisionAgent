@@ -17,10 +17,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import _common
 import numpy as np
 import pytest
-
-import _common
 
 # 确定性输入图（RandomState 固定；尺寸/种子对齐仓库既有引擎测试口径）
 _DET_IMG = np.random.RandomState(42).randint(0, 256, (320, 320, 3), dtype=np.uint8)
@@ -68,9 +67,10 @@ def _build_seg_engine_cpu() -> Any:
 
 def _build_cls_engine_cpu(tmp_path: Any) -> Any:
     """cls 引擎：resnet18 随机权重，经真 load()（I/O 边界注入网络对象）。"""
+    from unittest.mock import patch
+
     import torch
     from torchvision import models
-    from unittest.mock import patch
 
     from models.supervised.engines.cls_torchvision import ClsTorchvisionEngine
 

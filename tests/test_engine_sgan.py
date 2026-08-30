@@ -20,8 +20,8 @@ class TestSganBlendFunctional:
         """真 load→infer：OK 模板 + 缺陷库 → 合成图 + mask。"""
         import cv2
 
-        from models.supervised.engines.sgan_blend import SganBlendEngine
         from core.interfaces_supervised import TaskType
+        from models.supervised.engines.sgan_blend import SganBlendEngine
 
         # 准备缺陷库
         flaw_dir = tmp_path / "flaws"
@@ -84,8 +84,8 @@ class TestSganBlendFunctional:
 
     def test_no_flaw_database_raises(self):
         """无缺陷库 → raise（诚实回退，不返假数据）。"""
-        from models.supervised.engines.sgan_blend import SganBlendEngine
         from core.exceptions import SupervisedEngineError
+        from models.supervised.engines.sgan_blend import SganBlendEngine
 
         engine = SganBlendEngine()
         # load 空路径 → _flaw_files 为空 → infer raise

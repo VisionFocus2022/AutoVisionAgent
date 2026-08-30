@@ -170,7 +170,6 @@ def test_must_change_cancel_keeps_flag_and_blocks_login(
 def test_change_password_dialog_validation_paths(qapp):
     """旧密校验/新密长度/两次一致三重校验；全过 → 返回可验证的新哈希三元组。"""
     from core.auth import verify_password
-
     from gui.pages.login.page import _ChangePasswordDialog
 
     pw_hash, salt_hex, iterations = _hash(PW)

@@ -6,12 +6,10 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import List, Optional, Tuple
 
 from core.interfaces_supervised import TaskType
 from project.counter import TaskCounter
 from project.models import (
-    SUBDIRS,
     ProjectId,
     ProjectLayout,
     parse_project_dirname,
@@ -35,7 +33,7 @@ class FileSystemProjectStore:
     # ============================== 创建 ============================== #
     def create_project(
         self, name: str, task: TaskType
-    ) -> Tuple[ProjectId, ProjectLayout]:
+    ) -> tuple[ProjectId, ProjectLayout]:
         """创建新项目目录。
 
         Args:
@@ -75,9 +73,9 @@ class FileSystemProjectStore:
         return pid, layout
 
     # ============================== 列出 ============================== #
-    def list_projects(self) -> List[ProjectId]:
+    def list_projects(self) -> list[ProjectId]:
         """列出所有项目（扫描根目录下的合法项目目录）。"""
-        result: List[ProjectId] = []
+        result: list[ProjectId] = []
         try:
             entries = os.listdir(self._base_root)
         except OSError:
@@ -102,7 +100,7 @@ class FileSystemProjectStore:
         """获取项目的目录布局。"""
         return ProjectLayout(pid, self._base_root)
 
-    def load_meta(self, pid: ProjectId) -> Optional[dict]:
+    def load_meta(self, pid: ProjectId) -> dict | None:
         """加载项目元数据 JSON。"""
         meta_path = os.path.join(
             pid.to_path(self._base_root), "project_meta.json"
@@ -111,7 +109,7 @@ class FileSystemProjectStore:
             return None
         try:
             import json
-            with open(meta_path, "r", encoding="utf-8") as f:
+            with open(meta_path, encoding="utf-8") as f:
                 return json.load(f)
         except (json.JSONDecodeError, OSError):
             return None

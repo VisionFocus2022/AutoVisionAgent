@@ -42,7 +42,8 @@ class FakeThread:
         self._t, self._a, self._k = target, args, kwargs or {}
 
     def start(self):
-        if self._t: self._t(*self._a, **self._k)
+        if self._t:
+            self._t(*self._a, **self._k)
 
 
 @pytest.fixture
@@ -182,7 +183,6 @@ def test_prev_next_boundaries(label_page, monkeypatch, folder3):
 # ============================== 模式与标签 ============================== #
 @pytest.mark.unit
 def test_apply_mode_buttons_dragmode_and_sam_warning(label_page, monkeypatch):
-    from gui.pages.label import page as label_mod
 
     label_page._apply_mode(AnnotationMode.RECTANGLE)
     assert label_page.controller._mode is AnnotationMode.RECTANGLE
@@ -431,8 +431,8 @@ def test_run_ai_prelabel_no_det_engine_returns_empty_without_dispatcher(
 ):
     """W18：无 DET 引擎时诚实返回空列表，绝不触碰 dispatcher（GUI 为
     registry 直连正式形态，v3 P2-7）。"""
-    from gui.pages.label.page import run_ai_prelabel
     import models.supervised.registry as reg_mod
+    from gui.pages.label.page import run_ai_prelabel
 
     class _NoReg:
         def has(self, t):
@@ -458,9 +458,9 @@ def test_run_ai_prelabel_det_engine_bad_image_returns_empty(
     tmp_path, monkeypatch
 ):
     """W18：DET 引擎在位但坏图读不出 → 诚实返回空（无零样本回退可走）。"""
+    import models.supervised.registry as reg_mod
     from core.interfaces_supervised import DetectionResult, TaskType
     from gui.pages.label.page import run_ai_prelabel
-    import models.supervised.registry as reg_mod
 
     class _Engine:
         def infer(self, im):
@@ -482,9 +482,9 @@ def test_run_ai_prelabel_det_engine_bad_image_returns_empty(
 
 @pytest.mark.unit
 def test_run_ai_prelabel_det_engine_path(tmp_path, monkeypatch):
+    import models.supervised.registry as reg_mod
     from core.interfaces_supervised import DetectionResult, TaskType
     from gui.pages.label.page import run_ai_prelabel
-    import models.supervised.registry as reg_mod
 
     img = tmp_path / "img.png"
     _png(img)
@@ -547,9 +547,9 @@ def test_run_ai_prelabel_multiclass_labels_per_box(tmp_path, monkeypatch):
     """W39（v6 P2-7）：多类 DET 结果逐框取标签——原实现全框共用
     labels[0]，与批量预标注（batch_prelabel 逐框 labels[i]）语义分叉，
     两条 AI 预标注路径对同一结果必须产出一致标签。"""
+    import models.supervised.registry as reg_mod
     from core.interfaces_supervised import DetectionResult, TaskType
     from gui.pages.label.page import run_ai_prelabel
-    import models.supervised.registry as reg_mod
 
     class _Engine:
         def infer(self, im):

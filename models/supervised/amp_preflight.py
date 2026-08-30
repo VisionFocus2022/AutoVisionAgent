@@ -7,14 +7,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Tuple
 
 from models.supervised.device import resolve_device
 
 logger = logging.getLogger(__name__)
 
 
-def amp_preflight(device: str) -> Tuple[bool, str]:
+def amp_preflight(device: str) -> tuple[bool, str]:
     """AMP 可用性探针。
 
     Returns:
@@ -38,7 +37,7 @@ def amp_preflight(device: str) -> Tuple[bool, str]:
         if not bool(torch.isfinite(a.grad).all().item()):
             return False, "fp16 反向梯度出现非有限值"
         return True, "ok"
-    except Exception as exc:  # noqa: BLE001——探针任何异常都回退 FP32
+    except Exception as exc:  # noqa: BLE001  # 探针任何异常都回退 FP32
         logger.warning("AMP 预检探针失败: %s", exc)
         return False, f"fp16 autocast 探针失败: {exc}"
 

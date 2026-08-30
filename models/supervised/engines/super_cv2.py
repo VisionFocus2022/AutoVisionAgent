@@ -10,7 +10,7 @@ W2 适配：_to_numpy 走 imread_unicode（本树根路径含中文）。
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -102,7 +102,7 @@ class SuperCv2Engine(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         """超分推理：LR 图像 → dnn_superres → HR 图像。"""
         if self._model is None:

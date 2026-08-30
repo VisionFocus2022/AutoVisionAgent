@@ -31,7 +31,6 @@ import os
 import re
 import shutil
 from datetime import datetime
-from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ def _manifest_path(snapshot_dir: str) -> str:
     return os.path.join(snapshot_dir, MANIFEST_NAME)
 
 
-def build_manifest(root: str) -> Dict[str, Dict[str, object]]:
+def build_manifest(root: str) -> dict[str, dict[str, object]]:
     """遍历项目树构建哈希清单。
 
     Args:
@@ -78,7 +77,7 @@ def build_manifest(root: str) -> Dict[str, Dict[str, object]]:
         ``{相对路径 posix: {"sha256": hex, "size": bytes}}``；
         ``.snapshots`` 目录被跳过（快照自身不入清单）。
     """
-    manifest: Dict[str, Dict[str, object]] = {}
+    manifest: dict[str, dict[str, object]] = {}
     for dirpath, dirnames, filenames in os.walk(root):
         # W19 FR-4.1：跳过 .snapshots（任意深度），快照不进清单
         dirnames[:] = [d for d in dirnames if d != SNAPSHOT_DIRNAME]
@@ -96,7 +95,7 @@ def build_manifest(root: str) -> Dict[str, Dict[str, object]]:
     return manifest
 
 
-def load_manifest(snapshot_dir: str) -> Dict[str, Dict[str, object]]:
+def load_manifest(snapshot_dir: str) -> dict[str, dict[str, object]]:
     """读取快照 manifest.json 的 files 清单。
 
     Args:
@@ -112,7 +111,7 @@ def load_manifest(snapshot_dir: str) -> Dict[str, Dict[str, object]]:
     if not os.path.isfile(path):
         raise ValueError(f"快照缺少 {MANIFEST_NAME}: {snapshot_dir}")
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             payload = json.load(f)
         files = payload["files"]
     except (OSError, json.JSONDecodeError, KeyError) as exc:
@@ -189,8 +188,8 @@ def create_snapshot(project_root: str, label: str) -> str:
 
 
 def diff_manifests(
-    old: Dict[str, Dict[str, object]], new: Dict[str, Dict[str, object]]
-) -> Dict[str, List[str]]:
+    old: dict[str, dict[str, object]], new: dict[str, dict[str, object]]
+) -> dict[str, list[str]]:
     """对比两份清单，按三类归并（纯函数，不触碰文件系统）。
 
     Args:
@@ -211,7 +210,7 @@ def diff_manifests(
     return {"added": added, "removed": removed, "changed": changed}
 
 
-def verify_snapshot(snapshot_dir: str) -> List[str]:
+def verify_snapshot(snapshot_dir: str) -> list[str]:
     """校验快照完整性：重哈希对照 manifest，返回问题列表。
 
     检测两类问题（含硬链共享块被源文件就地改写的场景）：
@@ -228,7 +227,7 @@ def verify_snapshot(snapshot_dir: str) -> List[str]:
         ValueError: manifest.json 缺失或损坏（非法快照）。
     """
     manifest = load_manifest(snapshot_dir)
-    problems: List[str] = []
+    problems: list[str] = []
     for rel, entry in sorted(manifest.items()):
         path = os.path.join(snapshot_dir, *rel.split("/"))
         if not os.path.isfile(path):
@@ -239,7 +238,7 @@ def verify_snapshot(snapshot_dir: str) -> List[str]:
     return problems
 
 
-def restore_snapshot(project_root: str, snapshot_dir: str) -> Dict[str, int]:
+def restore_snapshot(project_root: str, snapshot_dir: str) -> dict[str, int]:
     """非破坏性恢复：把项目树回滚到快照状态，保留快照后新增文件。
 
     语义（docstring 即契约，PRD FR-4.1）：
@@ -287,7 +286,7 @@ def restore_snapshot(project_root: str, snapshot_dir: str) -> Dict[str, int]:
     return {"restored": restored, "kept_new": kept_new}
 
 
-def list_snapshots(project_root: str) -> List[Tuple[str, str, int]]:
+def list_snapshots(project_root: str) -> list[tuple[str, str, int]]:
     """列出项目全部合法快照，按时间（目录名时间戳）升序。
 
     Args:
@@ -300,7 +299,7 @@ def list_snapshots(project_root: str) -> List[Tuple[str, str, int]]:
     snap_root = os.path.join(project_root, SNAPSHOT_DIRNAME)
     if not os.path.isdir(snap_root):
         return []
-    out: List[Tuple[str, str, int]] = []
+    out: list[tuple[str, str, int]] = []
     for name in os.listdir(snap_root):
         full = os.path.join(snap_root, name)
         match = _SNAPSHOT_NAME_RE.match(name)

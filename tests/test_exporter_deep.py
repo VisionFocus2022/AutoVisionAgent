@@ -61,7 +61,7 @@ class _BoomNet:
     """forward 抛错的真 torch 模块（触发导出失败包装路径）。"""
 
     def __new__(cls):
-        torch = pytest.importorskip("torch")
+        pytest.importorskip("torch")
         import torch.nn as nn
 
         class _Net(nn.Module):
@@ -85,7 +85,7 @@ class _StubEngine:
         self._model = model
 
 
-def _make_engine(task_value: str, model) -> "_StubEngine":
+def _make_engine(task_value: str, model) -> _StubEngine:
     from core.interfaces_supervised import TaskType
     return _StubEngine(TaskType(task_value), model)
 

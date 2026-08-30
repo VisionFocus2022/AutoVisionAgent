@@ -6,15 +6,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple
-
 
 # ---- 类型别名 ---- #
 
-Point = Tuple[float, float]
-RGBA = Tuple[int, int, int, int]
+Point = tuple[float, float]
+RGBA = tuple[int, int, int, int]
 
 DEFAULT_COLOR: RGBA = (52, 152, 219, 255)
 
@@ -51,11 +49,11 @@ class Shape:
     """
 
     mode: AnnotationMode = AnnotationMode.POLYGON
-    points: Tuple[Point, ...] = ()
+    points: tuple[Point, ...] = ()
     label: str = ""
     color: RGBA = DEFAULT_COLOR
-    group_id: Optional[int] = None
-    flags: Tuple[Tuple[str, bool], ...] = ()
+    group_id: int | None = None
+    flags: tuple[tuple[str, bool], ...] = ()
 
 
 class ILabeler(ABC):
@@ -76,15 +74,15 @@ class ILabeler(ABC):
         """鼠标移动。"""
 
     @abstractmethod
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         """鼠标释放，返回完成的 Shape 或 None。"""
 
     @abstractmethod
-    def preview(self) -> Optional[Shape]:
+    def preview(self) -> Shape | None:
         """返回当前进行中的预览 Shape（供画布实时绘制）。"""
 
     @abstractmethod
-    def commit(self) -> Optional[Shape]:
+    def commit(self) -> Shape | None:
         """确认提交当前形状（回车/双击触发）。"""
 
     @abstractmethod

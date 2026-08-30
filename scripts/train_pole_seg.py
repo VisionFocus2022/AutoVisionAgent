@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PRETRAINED = REPO_ROOT / "yolov8n-seg.pt"
@@ -19,7 +18,7 @@ DATA_YAML = REPO_ROOT / "dataset_yoloseg" / "data.yaml"
 OUT_DIR = REPO_ROOT / "weights" / "pole-seg"
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="极柱专用 YOLO-seg 训练（W50/W51）")
     parser.add_argument("--model", default="yolov8n-seg.pt",
                         help="预训练权重（yolov8s-seg.pt 等自动下载）")
@@ -44,7 +43,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     OUT_DIR = args.out  # W51 事故修正：参数化时本行被 no-op replace 吞掉，
     # 致 s@1600 产物覆盖 n 模型目录（n best.pt 丢失，数字已留档）
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    results = model.train(
+    model.train(
         data=str(DATA_YAML),
         epochs=args.epochs,
         imgsz=args.imgsz,

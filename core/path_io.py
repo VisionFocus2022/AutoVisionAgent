@@ -25,16 +25,17 @@
 """
 from __future__ import annotations
 
+import contextlib
 import os
 import tempfile
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator, Tuple
 
 __all__ = ["ascii_path_copy"]
 
 
 @contextmanager
-def ascii_path_copy(path: "str | os.PathLike[str]") -> Generator[Tuple[str, bool], None, None]:
+def ascii_path_copy(path: str | os.PathLike[str]) -> Generator[tuple[str, bool], None, None]:
     """把任意路径临时转成纯 ASCII 路径，便于喂给窄字符 C 库。
 
     快路径：``path`` 可 ASCII 编码 → 直接 yield ``(str(path), False)``，不拷贝、不分配。
@@ -68,8 +69,6 @@ def ascii_path_copy(path: "str | os.PathLike[str]") -> Generator[Tuple[str, bool
                 fdst.write(chunk)
         yield (tmp_path, True)
     finally:
-        try:
+        # 临时文件删除失败不掩盖业务异常：忽略
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            # 临时文件删除失败不掩盖业务异常：忽略
-            pass

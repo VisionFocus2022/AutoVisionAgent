@@ -19,27 +19,27 @@ import time
 import pytest
 
 try:
-    from tests.uia.uia_helpers import (
-        login_admin,
-        click_button,
-        click_nav,
-        enter_path_in_open_dialog,
-        find_control_by_name,
-        wait_any_status,
-        wait_status,
-    )
     from tests.uia.test_pole_dataset_flows import _ensure_logged_in
-except ImportError:  # pragma: no cover - 顶层模式兜底
-    from uia_helpers import (
-        login_admin,  # type: ignore[no-redef]
+    from tests.uia.uia_helpers import (
         click_button,
         click_nav,
         enter_path_in_open_dialog,
         find_control_by_name,
+        login_admin,
         wait_any_status,
         wait_status,
     )
+except ImportError:  # pragma: no cover - 顶层模式兜底
     from test_pole_dataset_flows import _ensure_logged_in  # type: ignore[no-redef]
+    from uia_helpers import (
+        click_button,
+        click_nav,
+        enter_path_in_open_dialog,
+        find_control_by_name,
+        login_admin,  # type: ignore[no-redef]
+        wait_any_status,
+        wait_status,
+    )
 
 logger = logging.getLogger(__name__)
 

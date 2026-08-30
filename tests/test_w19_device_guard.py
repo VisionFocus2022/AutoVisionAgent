@@ -21,7 +21,6 @@ import logging
 import os
 import sys
 import types
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -41,7 +40,6 @@ from models.supervised.engines.pseg_yolo import PsegYoloEngine  # noqa: E402
 from models.supervised.engines.seg_yolo import SegYoloEngine  # noqa: E402
 from models.supervised.engines.sseg_smp import SsegSmpEngine  # noqa: E402
 
-
 # ============================== 替身 ============================== #
 
 
@@ -51,10 +49,10 @@ class _FakeTorchModel:
     def __init__(self) -> None:
         self.moved_to: Any = None
 
-    def eval(self) -> "_FakeTorchModel":
+    def eval(self) -> _FakeTorchModel:
         return self
 
-    def to(self, device: Any) -> "_FakeTorchModel":
+    def to(self, device: Any) -> _FakeTorchModel:
         self.moved_to = device
         return self
 

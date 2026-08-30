@@ -6,8 +6,6 @@
 """
 from __future__ import annotations
 
-from typing import List, Tuple
-
 from PySide6.QtCore import Qt
 
 from core.interfaces_supervised import TaskType
@@ -47,7 +45,7 @@ def populate_task_combo(
     unavailable_suffix: str = "（未装引擎）",
     unavailable_tooltip: str = "该任务引擎未安装",
     exclude: tuple = (),
-) -> List[Tuple[TaskType, bool]]:
+) -> list[tuple[TaskType, bool]]:
     """按 TaskType 全量填充任务下拉框。
 
     Args:
@@ -66,7 +64,7 @@ def populate_task_combo(
     if only_available and not available:
         only_available = False
 
-    items: List[Tuple[TaskType, bool]] = []
+    items: list[tuple[TaskType, bool]] = []
     combo.clear()
     for task in TaskType:
         if task in exclude:  # W32：推理-only 任务（如 OCR）训练页不列

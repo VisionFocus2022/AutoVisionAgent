@@ -9,7 +9,7 @@ Option A 轻量库：弃 mmseg/mmengine，改用 segmentation_models_pytorch（A
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -47,7 +47,7 @@ class SsegSmpEngine(AbstractTaskEngine):
             )
         try:
             import segmentation_models_pytorch as smp
-            import torch
+            import torch  # noqa: F401  # 可用性探针：torch 缺失时此处 ImportError 走下方诚实报错
         except ImportError as exc:
             raise SupervisedEngineError(
                 f"segmentation_models_pytorch 未安装，无法加载语义分割模型: {exc}",
@@ -96,13 +96,12 @@ class SsegSmpEngine(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         """推理：图像 → 预处理 → 模型 → argmax → [H,W] 语义图。"""
         if self._model is None:
             raise SupervisedEngineError("引擎未加载权重", task=self.task.value)
 
-        import numpy as np
         import torch
 
         arr = self._to_numpy(image)  # HxWx3 uint8

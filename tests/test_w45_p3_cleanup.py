@@ -36,8 +36,10 @@ class TestUnknownRoleFallback:
     def test_unknown_role_registered_engineer_only_still_denied(self):
         """回退 operator 而非放大：若某动作仅 engineer/admin 允许，未知角色拒绝。"""
         from gui.core.permissions import (
-            ROLE_ADMIN, ROLE_ENGINEER,
-            _ACTION_MATRIX, action_allowed,
+            _ACTION_MATRIX,
+            ROLE_ADMIN,
+            ROLE_ENGINEER,
+            action_allowed,
         )
         # 构造仅 admin 的登记项验证回退不放大（用矩阵内真实键临时改造）
         key = next(iter(_ACTION_MATRIX))
@@ -87,7 +89,8 @@ def _repo_import_violations():
             p = os.path.join(root, f)
             rel = os.path.relpath(p, _REPO_ROOT)
             try:
-                src = open(p, encoding="utf-8").read()
+                with open(p, encoding="utf-8") as f:
+                    src = f.read()
             except (OSError, UnicodeDecodeError):
                 continue
             for pkg in _FORBIDDEN:
@@ -164,10 +167,11 @@ class TestMaskCodecRelocation:
 
     def test_workers_no_serving_reference(self):
         """gui/pages/predict/workers.py 不得再引用 serving（跨层消除）。"""
-        src = open(
+        with open(
             os.path.join(_REPO_ROOT, "gui", "pages", "predict", "workers.py"),
             encoding="utf-8",
-        ).read()
+        ) as f:
+            src = f.read()
         assert not re.search(r"\bserving\b", src), (
             "workers.py 残留 serving 引用（W45·P3-15 应改 import core.mask_codec）"
         )

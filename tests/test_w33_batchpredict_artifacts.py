@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import base64
 import json
-import threading
-from pathlib import Path
 
 import pytest
 
@@ -124,7 +122,7 @@ def test_batch_writes_masks_rle_for_seg(qapp, fake_threads, tmp_path, monkeypatc
     # RLE 可恢复性：解码回 mask 形状一致
     import numpy as _np
 
-    from serving.mask_codec import decode_mask_rle, encode_mask_rle
+    from serving.mask_codec import decode_mask_rle
 
     blob = _np.load(mask_files[0], allow_pickle=True)
     keys = sorted(blob.files)

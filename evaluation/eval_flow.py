@@ -11,9 +11,9 @@ import json
 import logging
 import math
 import os
-from typing import Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
 
-Rows = List[Tuple[str, str, str]]
+Rows = list[tuple[str, str, str]]
 Translate = Callable[[str], str]
 
 GEN_IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".tif")
@@ -23,7 +23,7 @@ def _identity(s: str) -> str:
     return s
 
 
-def scan_images(root: str, exts=GEN_IMG_EXTS) -> List[str]:
+def scan_images(root: str, exts=GEN_IMG_EXTS) -> list[str]:
     """递归收集 root 下指定后缀（大小写不敏感）的图像路径。"""
     return [
         os.path.join(r, f)
@@ -33,7 +33,7 @@ def scan_images(root: str, exts=GEN_IMG_EXTS) -> List[str]:
     ]
 
 
-def scan_labelme_jsons(gt_dir: str) -> List[str]:
+def scan_labelme_jsons(gt_dir: str) -> list[str]:
     """收集 gt_dir 顶层 LabelMe JSON 标注路径（非目录返回空）。"""
     if not os.path.isdir(gt_dir):
         return []
@@ -44,11 +44,11 @@ def scan_labelme_jsons(gt_dir: str) -> List[str]:
 
 
 def read_annotation(path: str) -> dict:
-    with open(path, "r", encoding="utf-8") as fh:
+    with open(path, encoding="utf-8") as fh:
         return json.load(fh)
 
 
-def extract_gt(ann: dict) -> Tuple[List[list], List[int]]:
+def extract_gt(ann: dict) -> tuple[list[list], list[int]]:
     """从 LabelMe 标注提取矩形框与全零标签（单点矩形补齐为点框）。"""
     shapes = ann.get("shapes", [])
     boxes = [
@@ -64,15 +64,15 @@ def load_eval_engine(
     model: str,
     task_key: str,
     translate: Translate = _identity,
-    on_warn: Optional[Callable[[str], None]] = None,
-    logger: Optional[logging.Logger] = None,
-) -> Optional[object]:
+    on_warn: Callable[[str], None] | None = None,
+    logger: logging.Logger | None = None,
+) -> object | None:
     """按任务类型加载监督式推理引擎；失败回退 None 并回调 on_warn。"""
     logger = logger or logging.getLogger(__name__)
     engine = None
     try:
-        from models.supervised.registry import get_engine
         from core.interfaces_supervised import TaskType
+        from models.supervised.registry import get_engine
         task_to_enum = {
             "det": TaskType.DET,
             "seg": TaskType.SEG,
@@ -92,18 +92,18 @@ def load_eval_engine(
     return engine
 
 
-def _fallback_pred(boxes: List[list], labels: List[int]) -> dict:
+def _fallback_pred(boxes: list[list], labels: list[int]) -> dict:
     """引擎缺失/失败/无图时回退：GT 当预测（标注为低置信度）。"""
     return {"boxes": boxes, "scores": [0.5] * len(boxes), "labels": labels}
 
 
 def build_prediction(
-    engine: Optional[object],
+    engine: object | None,
     ann: dict,
     gt_dir: str,
-    boxes: List[list],
-    labels: List[int],
-    logger: Optional[logging.Logger] = None,
+    boxes: list[list],
+    labels: list[int],
+    logger: logging.Logger | None = None,
 ) -> dict:
     """对单张标注用引擎真实推理生成预测 dict；失败/无图回退 GT。"""
     logger = logger or logging.getLogger(__name__)
@@ -146,7 +146,7 @@ def build_prediction(
 
 
 def report_progress(
-    on_progress: Optional[Callable[[int], None]], idx: int, total: int
+    on_progress: Callable[[int], None] | None, idx: int, total: int
 ) -> None:
     """R5-8: 每 5 个文件或首尾上报进度百分比。"""
     if on_progress is not None and (idx % 5 == 0 or idx == total - 1):
@@ -154,7 +154,7 @@ def report_progress(
 
 
 def format_metric_rows(
-    results: Dict[str, float], translate: Translate = _identity
+    results: dict[str, float], translate: Translate = _identity
 ) -> Rows:
     """把指标 dict 汇总为结果表行；R5-8: NaN/Inf 校验为 N/A。"""
     rows: Rows = []
@@ -171,10 +171,10 @@ def run_supervised_eval(
     model: str,
     gt_dir: str,
     task_key: str,
-    on_progress: Optional[Callable[[int], None]] = None,
+    on_progress: Callable[[int], None] | None = None,
     translate: Translate = _identity,
-    on_warn: Optional[Callable[[str], None]] = None,
-    logger: Optional[logging.Logger] = None,
+    on_warn: Callable[[str], None] | None = None,
+    logger: logging.Logger | None = None,
 ) -> Rows:
     """监督式评估主流程：扫 JSON → 取引擎 → 逐张推理 → 算指标 → 汇总。"""
     from evaluation.metrics_supervised import evaluate_supervised
@@ -227,10 +227,10 @@ def run_eval_task(
     model: str,
     gt_dir: str,
     task_key: str,
-    on_progress: Optional[Callable[[int], None]] = None,
+    on_progress: Callable[[int], None] | None = None,
     translate: Translate = _identity,
-    on_warn: Optional[Callable[[str], None]] = None,
-    logger: Optional[logging.Logger] = None,
+    on_warn: Callable[[str], None] | None = None,
+    logger: logging.Logger | None = None,
     max_images: int = 20,
 ) -> Rows:
     """评估任务入口：按 task_key 分发生成式（fid/lpips）或监督式主流程。

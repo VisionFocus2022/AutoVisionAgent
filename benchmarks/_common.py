@@ -16,9 +16,10 @@ import os
 import platform
 import tempfile
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RAW_JSON = REPO_ROOT / ".benchmarks" / "wave19-raw.json"

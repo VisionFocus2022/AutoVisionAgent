@@ -6,7 +6,6 @@ W28 预标注诚实化修复（预检语义/异常捕获/零检出反馈）落�
 from __future__ import annotations
 
 import logging
-from typing import List
 
 from labeling import AnnotationMode, Shape
 
@@ -27,8 +26,8 @@ def det_engine_available() -> bool:
     两者共享 registry 实例缓存是有意耦合，勿拆。
     """
     try:
-        from models.supervised.registry import get_default_registry
         from core.interfaces_supervised import TaskType
+        from models.supervised.registry import get_default_registry
         reg = get_default_registry()
         if not reg.has(TaskType.DET):
             return False
@@ -39,7 +38,7 @@ def det_engine_available() -> bool:
         return False
 
 
-def run_ai_prelabel(image_path: str) -> List:
+def run_ai_prelabel(image_path: str) -> list:
     """AI 预标注纯工作函数（W3-T3 自 _ai_prelabel 抽出，无 Qt 依赖）。
 
     registry 直连为 GUI 正式形态（v3 P2-7）：仅用已注册的 DET 引擎推理。
@@ -50,8 +49,8 @@ def run_ai_prelabel(image_path: str) -> List:
     """
     try:
         # registry 直连为 GUI 正式形态（v3 P2-7）
-        from models.supervised.registry import get_default_registry
         from core.interfaces_supervised import TaskType
+        from models.supervised.registry import get_default_registry
         reg = get_default_registry()
         if not reg.has(TaskType.DET):
             logger.warning("AI 预标注跳过：无已注册 DET 引擎（零样本未实装）")

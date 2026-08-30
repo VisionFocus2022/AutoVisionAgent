@@ -5,17 +5,17 @@ M2 完整版：11 页全部实装（era-2 新增 flaw_gen 缺陷生成页，W14 
 
 页面清单唯一真源：gui/main.py 必须经本注册表导入（tests/test_gui.py 守卫）。
 """
-from gui.pages.label.page import LabelPage
 from gui.pages.data_manage import DataManagePage
-from gui.pages.train import TrainPage
+from gui.pages.deploy import DeployPage
+from gui.pages.eval_ import EvalPage
+from gui.pages.flaw_gen import FlawGenPage
+from gui.pages.home import HomePage
+from gui.pages.label.page import LabelPage
+from gui.pages.login import LoginPage
 from gui.pages.predict import PredictPage
 from gui.pages.project import ProjectPage
-from gui.pages.login import LoginPage
-from gui.pages.home import HomePage
-from gui.pages.eval_ import EvalPage
-from gui.pages.deploy import DeployPage
-from gui.pages.flaw_gen import FlawGenPage
 from gui.pages.settings import SettingsPage
+from gui.pages.train import TrainPage
 
 __all__ = [
     "LabelPage",

@@ -12,12 +12,15 @@ fixtures：
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+import pytest
 
 # 确保仓库根目录在 sys.path 中，便于 `from tests.uia...` 导入
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -29,8 +32,6 @@ if str(_REPO_ROOT) not in sys.path:
 _TESTS_UIA_DIR = Path(__file__).resolve().parent
 if str(_TESTS_UIA_DIR) not in sys.path:
     sys.path.insert(0, str(_TESTS_UIA_DIR))
-
-import pytest
 
 
 def _has_desktop_session() -> bool:
@@ -49,7 +50,6 @@ if not _has_desktop_session():
     pytest.skip("UIA 测试需要交互桌面会话（无头环境自动跳过）",
                 allow_module_level=True)
 
-import uiautomation as ua
 
 try:
     from tests.uia.uia_helpers import find_main_window
@@ -147,10 +147,8 @@ def ava_app():
             LICENSE_KEY,
             DEFAULT_EXE.parent / "_internal" / "configs" / "license.key",
         ]:
-            try:
+            with contextlib.suppress(OSError):
                 p.unlink()
-            except OSError:
-                pass
 
 
 def _launch_app(source: str) -> subprocess.Popen:
@@ -220,13 +218,11 @@ def _ensure_license_key() -> bool:
 
 def _kill_residual(name: str) -> None:
     """杀掉残留同名进程（Windows）。"""
-    try:
+    with contextlib.suppress(Exception):
         subprocess.run(
             ["taskkill", "/IM", f"{name}.exe", "/F"],
             capture_output=True, timeout=10,
         )
-    except Exception:  # noqa: BLE001
-        pass
 
 
 # ================================ 测试数据 ================================ #

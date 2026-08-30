@@ -16,9 +16,9 @@ from PySide6.QtCore import Slot
 
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
+from gui.core.permissions import check_action  # W35：动作门控
 from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file
-from gui.core.permissions import check_action  # W35：动作门控
 
 
 class VideoSuperActionsMixin:

@@ -10,23 +10,24 @@ from __future__ import annotations
 import logging
 import os
 import re
-from typing import Dict, List, Optional
 
-from PySide6.QtCore import Qt, Signal, QSize, QThreadPool, Slot
-from PySide6.QtGui import QPixmap, QIcon, QImage
+from PySide6.QtCore import QSize, Qt, QThreadPool, Signal, Slot
+from PySide6.QtGui import QIcon, QImage, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QDoubleSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
+# 支持的图像扩展名
+from core.constants import IMG_EXTS as _IMG_EXTS
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.permissions import check_action  # W39：动作门控（v6 P2-6 漏网收口）
@@ -34,9 +35,6 @@ from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.pages.data_manage.version_compare import version_diff_text  # W39·v6 P3：规模守卫抽取
 from gui.widgets.file_dialog import pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
-
-# 支持的图像扩展名
-from core.constants import IMG_EXTS as _IMG_EXTS
 
 logger = logging.getLogger(__name__)
 
@@ -82,18 +80,18 @@ class DataManagePage(QWidget):
 
     status_changed = Signal(str, str)  # (text, accent) → 主壳状态栏
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
 
         # 数据
-        self._project_dir: Optional[str] = None
-        self._image_dir: Optional[str] = None
-        self._images: List[str] = []
-        self._annotations_dir: Optional[str] = None
+        self._project_dir: str | None = None
+        self._image_dir: str | None = None
+        self._images: list[str] = []
+        self._annotations_dir: str | None = None
         self._thumb_pool = QThreadPool(self)
         self._thumb_pool.setMaxThreadCount(4)
-        self._thumb_items: Dict[str, "QListWidgetItem"] = {}  # R5-5: path → item
+        self._thumb_items: dict[str, QListWidgetItem] = {}  # R5-5: path → item
         # W19（v3 第三波 FR-4.2）：最近一次版本对比对话框（非模态，供测试直读）
         self._diff_dialog = None
 
@@ -102,7 +100,7 @@ class DataManagePage(QWidget):
 
         # W3-T3: 重活操作 → 触发按钮（worker 执行期间禁用）
         # W17：补注册 stats——此前统计失败路径查不到按钮，btn_stat 不复位
-        self._op_buttons: Dict[str, QPushButton] = {
+        self._op_buttons: dict[str, QPushButton] = {
             "import": self.btn_import,
             "split": self.btn_split,
             "stats": self.btn_stat,
@@ -528,7 +526,7 @@ class DataManagePage(QWidget):
             item.setIcon(QIcon(QPixmap.fromImage(image)))
 
     def _update_stats(
-        self, total: int, annotated: int, classes: Dict[str, int]
+        self, total: int, annotated: int, classes: dict[str, int]
     ) -> None:
         """更新统计面板。"""
         self.lbl_total.setText(f"{tr('图像总数')}: {total}")
@@ -541,7 +539,7 @@ class DataManagePage(QWidget):
             self.lbl_classes.setText(tr("无数据"))
 
     # ============================== 标注批量工具 ============================== #
-    def _get_ann_dir(self) -> Optional[str]:
+    def _get_ann_dir(self) -> str | None:
         """获取标注目录（优先 annotations/，否则用图像目录）。"""
         d = self._annotations_dir or self._image_dir
         if not d or not os.path.isdir(d):

@@ -141,8 +141,8 @@ class TestPredictPoints:
         kw = adapter._predictor.predict.call_args.kwargs
         assert kw["point_coords"].shape == (2, 2)
         assert kw["point_labels"].tolist() == [1, 1]
-        assert kw["mask_input"] is "PREV", "上轮 logits 须透传（迭代精修）"
-        assert logits is "LOGITS_X", "本轮 logits 须回传"
+        assert kw["mask_input"] == "PREV", "上轮 logits 须透传（迭代精修）"
+        assert logits == "LOGITS_X", "本轮 logits 须回传"
         assert len(poly) >= 3
 
     def test_no_mask_input_when_none(self):
@@ -184,7 +184,7 @@ class TestBrushSamLabeler:
         assert len(fake.calls) == 1
         pts1, labels1, _, mask_in1 = fake.calls[0]
         assert len(pts1) >= 2, "拖划采样应≥2 点"
-        assert labels1 and all(l == 1 for l in labels1)
+        assert labels1 and all(v == 1 for v in labels1)
         assert mask_in1 is None, "首笔无迭代输入"
         # 笔划2：携笔划1 logits + 累积点
         lab.on_press((30, 30))
@@ -212,8 +212,8 @@ class TestBrushSamLabeler:
         assert mask_in is None
 
     def test_mode_registered_and_button(self, qapp):
-        from labeling.modes import make_labeler
         from gui.pages.label.page import LabelPage
+        from labeling.modes import make_labeler
 
         assert AnnotationMode.SAM_BRUSH.value == "sam_brush"
         assert make_labeler(AnnotationMode.SAM_BRUSH, "d") is not None

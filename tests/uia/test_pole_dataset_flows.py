@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -30,7 +31,6 @@ import pytest
 
 try:
     from tests.uia.uia_helpers import (
-        login_admin,
         app_log_path,
         click_button,
         click_nav,
@@ -43,14 +43,14 @@ try:
         find_combo_controls,
         find_control_by_name,
         find_edit_controls,
+        login_admin,
+        read_status_text,
         set_edit_value,
         wait_any_status,
         wait_status,
-        read_status_text,
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (
-        login_admin,  # type: ignore[no-def]
         app_log_path,
         click_button,
         click_nav,
@@ -63,10 +63,11 @@ except ImportError:  # pragma: no cover - 顶层模式兜底
         find_combo_controls,
         find_control_by_name,
         find_edit_controls,
+        login_admin,  # type: ignore[no-def]
+        read_status_text,
         set_edit_value,
         wait_any_status,
         wait_status,
-        read_status_text,
     )
 
 logger = logging.getLogger(__name__)
@@ -93,10 +94,8 @@ def _ensure_logged_in(win) -> None:
         try:
             win.SetActive()
         except Exception:  # noqa: BLE001
-            try:
+            with contextlib.suppress(Exception):
                 win.SetFocus()
-            except Exception:  # noqa: BLE001
-                pass
         dismiss_stale_dialogs()
         btn = find_control_by_name(win, "离线模式", _BUTTON_TYPES, timeout=8.0)
         if btn is None:

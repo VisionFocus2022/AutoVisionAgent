@@ -41,15 +41,15 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
 
 # W19（v3 第三波 FR-3.2）：CUDA DLL 前缀白名单（allowlist 模式）。
 # 大小写不敏感；精确 startswith 语义（子串不算，torch_cpu/c10/shm/fbgemm 等
 # 纯 CPU 栈与 vcruntime/libiomp 运行库均不命中）。c10_cuda/caffe2_nvrtc/
 # nvToolsExt 为主审蒸馏冒烟实证的残余 CUDA 链（依赖被裁的 torch_cuda/nvrtc）。
-CUDA_DLL_PREFIXES: Tuple[str, ...] = (
+CUDA_DLL_PREFIXES: tuple[str, ...] = (
     "torch_cuda",
     "c10_cuda",
     "caffe2_nvrtc",
@@ -67,7 +67,7 @@ CUDA_DLL_PREFIXES: Tuple[str, ...] = (
 )
 
 # CPU 轮子替换的包清单（顺序即处理顺序）
-_CPU_WHEEL_PACKAGES: Tuple[str, ...] = ("torch", "torchvision")
+_CPU_WHEEL_PACKAGES: tuple[str, ...] = ("torch", "torchvision")
 _CPU_WHEEL_INDEX = "https://download.pytorch.org/whl/cpu"
 
 DEFAULT_SOURCE = "dist/AutoVisionAgent"
@@ -101,7 +101,7 @@ def _fail(code: int, message: str) -> None:
     sys.exit(code)
 
 
-def _prune_cuda_dlls(dst: Path) -> Dict[str, int]:
+def _prune_cuda_dlls(dst: Path) -> dict[str, int]:
     """仅删除 ``dst/_internal/torch/lib`` 内命中白名单的文件。
 
     Args:
@@ -113,7 +113,7 @@ def _prune_cuda_dlls(dst: Path) -> Dict[str, int]:
     lib_dir = dst / "_internal" / "torch" / "lib"
     if not lib_dir.is_dir():
         return {}
-    pruned: Dict[str, int] = {}
+    pruned: dict[str, int] = {}
     for entry in sorted(lib_dir.iterdir()):
         if entry.is_file() and entry.name.lower().startswith(CUDA_DLL_PREFIXES):
             pruned[entry.name] = entry.stat().st_size
@@ -121,7 +121,7 @@ def _prune_cuda_dlls(dst: Path) -> Dict[str, int]:
     return pruned
 
 
-def _prune_optional_packages(dst: Path, packages: tuple) -> Dict[str, int]:
+def _prune_optional_packages(dst: Path, packages: tuple) -> dict[str, int]:
     """删除 ``dst/_internal`` 下可选包目录（W32：lite 明确排除 easyocr——
     推理-only 可选件不占 2GiB 预算；lite 内引擎照常注册、load 诚实报
     安装指引）。
@@ -129,7 +129,7 @@ def _prune_optional_packages(dst: Path, packages: tuple) -> Dict[str, int]:
     Returns:
         ``{被删目录名: 字节数}``（供 LITE_MARKER.json 留档）。
     """
-    pruned: Dict[str, int] = {}
+    pruned: dict[str, int] = {}
     internal = dst / "_internal"
     for name in packages:
         pkg_dir = internal / name
@@ -145,7 +145,7 @@ def _prune_optional_packages(dst: Path, packages: tuple) -> Dict[str, int]:
     return pruned
 
 
-def _pkg_version(pkg_dir: Path) -> Optional[str]:
+def _pkg_version(pkg_dir: Path) -> str | None:
     """从包目录探读 ``__version__``（version.py 优先，回退 __init__.py）。
 
     Returns:
@@ -163,7 +163,7 @@ def _pkg_version(pkg_dir: Path) -> Optional[str]:
     return None
 
 
-def _find_wheel(wheels_dir: Path, pkg: str, base_version: str) -> Optional[Path]:
+def _find_wheel(wheels_dir: Path, pkg: str, base_version: str) -> Path | None:
     """在轮子目录找 ``{pkg}-{base_version}+cpu-*.whl``（版本严格对应）。"""
     if not wheels_dir.is_dir():
         return None
@@ -197,7 +197,7 @@ def _download_wheel(wheels_dir: Path, pkg: str, base_version: str) -> Path:
 
 def _replace_with_cpu_wheels(
     dst: Path, wheels_dir: Path, allow_download: bool
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """用 CPU 轮子整目录替换 ``_internal/{torch,torchvision}``。
 
     版本严格对应：源包版本剥离本地 tag（2.5.1+cu121 → 2.5.1）后必须与
@@ -208,7 +208,7 @@ def _replace_with_cpu_wheels(
         ``{包名: 轮子文件名}``（供 LITE_MARKER.json 留档）。
     """
     internal = dst / "_internal"
-    replaced: Dict[str, str] = {}
+    replaced: dict[str, str] = {}
     for pkg in _CPU_WHEEL_PACKAGES:
         pkg_dir = internal / pkg
         version = _pkg_version(pkg_dir)
@@ -271,8 +271,8 @@ def _product_bytes(root: Path) -> int:
 def _write_marker(
     dst: Path,
     src: Path,
-    pruned: Dict[str, int],
-    replaced: Dict[str, str],
+    pruned: dict[str, int],
+    replaced: dict[str, str],
     total_bytes: int,
     max_bytes: int,
 ) -> None:
@@ -300,7 +300,7 @@ def derive_lite(
     src: str | Path,
     dst: str | Path,
     max_bytes: int = 2 * 1024**3,
-    cpu_wheels_dir: Optional[str | Path] = None,
+    cpu_wheels_dir: str | Path | None = None,
     allow_download: bool = True,
 ) -> Path:
     """完整 dist → CPU-lite dist 派生（W19 FR-3.2 方案 v2）。
@@ -341,7 +341,7 @@ def derive_lite(
         # v5 P2-N2：余量 2.4MB 时 ~15MB 残留不可接受）
         ("easyocr", "bidi", "pyclipper", "shapely", "Shapely.libs"),
     ))
-    replaced: Dict[str, str] = {}
+    replaced: dict[str, str] = {}
     if cpu_wheels_dir is not None:
         replaced = _replace_with_cpu_wheels(
             dst_path, Path(cpu_wheels_dir), allow_download
@@ -364,7 +364,7 @@ def derive_lite(
     return dst_path
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     """argparse 入口（默认参数对应发版主审 FR-3.5 的真派生命令）。"""
     parser = argparse.ArgumentParser(
         description="AutoVisionAgent CPU-lite 发行版派生（W19 v3 第三波 FR-3.2）",

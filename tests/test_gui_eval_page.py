@@ -97,7 +97,7 @@ def test_pick_model_and_gt_fill_edits(eval_page, monkeypatch, tmp_path):
 # ============================== 槽与混淆矩阵 ============================== #
 @pytest.mark.unit
 def test_set_results_slot_builds_confusion_from_tp_fp_fn(qapp):
-    from gui.pages.eval_.page import ConfusionMatrixWidget, EvalPage
+    from gui.pages.eval_.page import EvalPage
 
     page = EvalPage()
     page._eval_progress.setVisible(True)

@@ -35,7 +35,7 @@ _RECOG = {
 
 def _download(url: str, dest: Path) -> None:
     print(f"下载 {url} → {dest}")
-    urllib.request.urlretrieve(url, dest)  # noqa: S310（官方发布直链）
+    urllib.request.urlretrieve(url, dest)  # noqa: S310  # 官方发布直链
 
 
 def _sha256(path: Path) -> str:
@@ -62,7 +62,7 @@ def main() -> int:
     for lang in args.lang:
         name = _RECOG.get(lang)
         if name is None:
-            print(f"不支持的语种: {lang}（可选: {'/'.join(_RECOG)}）}", file=sys.stderr)
+            print(f"不支持的语种: {lang}（可选: {'/'.join(_RECOG)}）", file=sys.stderr)
             return 2
         files.append((name, _BASE + name))
 

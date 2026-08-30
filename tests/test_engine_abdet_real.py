@@ -154,7 +154,6 @@ def test_infer_body_parses_dict_output_defective():
     mock engine._model（I/O 边界）为返回 anomalib 风格 dict 的 fake，
     覆盖 torch.no_grad / anomaly_map 解析 / pred_score.detach.cpu.mean / with_extra。
     """
-    import torch
 
     eng = AbdetAnomalibEngine()
     eng._model = _FakePatchcore(score_value=0.9, map_hw=(64, 64))

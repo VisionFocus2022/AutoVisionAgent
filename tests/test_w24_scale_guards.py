@@ -59,8 +59,7 @@ def _iter_production_py_files():
     for pkg in _cov_packages():
         d = REPO_ROOT / pkg
         assert d.is_dir(), f"--cov 源目录不存在: {pkg}"
-        for p in sorted(d.rglob("*.py")):
-            yield p
+        yield from sorted(d.rglob("*.py"))
 
 
 def _iter_functions(path: Path):

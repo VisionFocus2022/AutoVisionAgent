@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Dict, Optional
 
-from core.interfaces_supervised import TaskType
 from project.paths import resolve_base_root
 
 _COUNTER_FILENAME = "task_counter.json"
@@ -29,7 +27,7 @@ class TaskCounter:
         # W28：默认根走 resolve_base_root 单源（workspace 可配；原为内联
         # expanduser 硬编码——设置页 workspace 键曾持久化但零消费）
         self._base_root = base_root or resolve_base_root()
-        self._counts: Dict[str, int] = {}
+        self._counts: dict[str, int] = {}
         self._load()
 
     # ============================== 持久化 ============================== #
@@ -44,7 +42,7 @@ class TaskCounter:
             self._counts = {}
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, dict):
                     self._counts = {
@@ -80,11 +78,11 @@ class TaskCounter:
         self._save()
         return new_id
 
-    def snapshot(self) -> Dict[str, int]:
+    def snapshot(self) -> dict[str, int]:
         """返回当前所有计数器的快照（不修改）。"""
         return dict(self._counts)
 
-    def snapshot_by_name(self) -> Dict[str, int]:
+    def snapshot_by_name(self) -> dict[str, int]:
         """别名：snapshot()。"""
         return self.snapshot()
 
@@ -97,7 +95,7 @@ class TaskCounter:
         self._counts[task] = max(0, int(value))
         self._save()
 
-    def reset(self, task: Optional[str] = None) -> None:
+    def reset(self, task: str | None = None) -> None:
         """重置计数器。
 
         Args:

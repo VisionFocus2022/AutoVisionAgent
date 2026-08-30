@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from gui.core.jobs import run_job
@@ -34,9 +35,9 @@ def run_batch(
     images: list,
     save_dir: str,
     threshold: float,
-    labels_filter: Optional[set],
+    labels_filter: set | None,
     save_overlay: bool,
-    overlay_renderer: Optional[Callable] = None,
+    overlay_renderer: Callable | None = None,
 ) -> None:
     """启动批量推理 job（行为语义与 W28/W33 版 _batch_infer._work 一致）。"""
     total = len(images)
@@ -69,7 +70,7 @@ def run_batch(
             try:
                 if hasattr(engine, "infer_batch"):
                     results = engine.infer_batch(batch_paths, threshold=threshold)
-                    for img_path, result in zip(batch_paths, results):
+                    for img_path, result in zip(batch_paths, results, strict=True):
                         _process(img_path, result)
                 else:
                     from core.image_io import imread_unicode

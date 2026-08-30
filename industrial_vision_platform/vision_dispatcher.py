@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import threading
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from core.interfaces_supervised import (
     DetectionResult,
@@ -51,7 +51,7 @@ class VisionModelDispatcher:
     def __init__(self, max_loaded: int = 2) -> None:
         self._zero_shot_detector: Any = None
         # R5-10: LRU 显存管理 — 超过 max_loaded 时驱逐最久未用的引擎
-        self._engines: "OrderedDict[TaskType, ISupervisedTaskEngine]" = OrderedDict()
+        self._engines: OrderedDict[TaskType, ISupervisedTaskEngine] = OrderedDict()
         self._max_loaded = max_loaded
         self._engine_registry_ready = False
         # W1: gRPC ThreadPool 多工作线程并发调用，_engines 复合操作需互斥
@@ -74,7 +74,7 @@ class VisionModelDispatcher:
     def infer_zero_shot(
         self,
         image: Any,
-        prompts: Optional[List[str]] = None,
+        prompts: list[str] | None = None,
         threshold: float = 0.3,
     ) -> DetectionResult:
         """零样本推理。"""
@@ -128,7 +128,7 @@ class VisionModelDispatcher:
         task: TaskType,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[List[str]] = None,
+        labels: list[str] | None = None,
     ) -> DetectionResult:
         """有监督推理。"""
         # W1: check+touch+get 为复合临界区（防止并发驱逐穿插导致 KeyError）；
@@ -193,7 +193,7 @@ class VisionModelDispatcher:
     # ---- 状态查询 ----
 
     @property
-    def loaded_tasks(self) -> List[str]:
+    def loaded_tasks(self) -> list[str]:
         """已加载的有监督任务列表。"""
         with self._lock:
             return [t.value for t in self._engines]
@@ -203,7 +203,7 @@ class VisionModelDispatcher:
         """零样本检测器是否就绪。"""
         return self._zero_shot_detector is not None
 
-    def get_task_info(self, task: str) -> Dict[str, Any]:
+    def get_task_info(self, task: str) -> dict[str, Any]:
         """获取任务信息。"""
         if task == "zero_shot":
             return {
@@ -231,7 +231,7 @@ class VisionModelDispatcher:
         }
 
     @staticmethod
-    def list_all_tasks() -> List[Dict[str, Any]]:
+    def list_all_tasks() -> list[dict[str, Any]]:
         """列出**实际已注册**的有监督任务（W4-T2 诚实宣称 + W14 P2-8 零样本摘除）。
 
         注册表为空时先触发一次惰性注册（缺依赖的引擎记 warning 跳过），
@@ -239,7 +239,7 @@ class VisionModelDispatcher:
         注入点（无内置实现、无调用方），不再对外广告，避免 ListTasks
         向 gRPC/C# 客户端宣称不可用能力（P2-8）。
         """
-        tasks: List[Dict[str, Any]] = []
+        tasks: list[dict[str, Any]] = []
         try:
             from models.supervised.registry import get_default_registry
             reg = get_default_registry()
@@ -258,7 +258,7 @@ class VisionModelDispatcher:
 
 
 # 单例
-_dispatcher: Optional[VisionModelDispatcher] = None
+_dispatcher: VisionModelDispatcher | None = None
 
 
 def get_dispatcher() -> VisionModelDispatcher:

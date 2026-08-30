@@ -133,7 +133,7 @@ def test_yolo_roundtrip_via_supervision(fixture_dir, tmp_path):
     """狗粮闭环：导出产物由 sv.DetectionDataset.from_yolo 回读。"""
     img_dir, ann_dir = fixture_dir
     out = tmp_path / "yolo"
-    summary = labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out))
+    labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out))
 
     ds = sv.DetectionDataset.from_yolo(
         images_directory_path=str(out / "images"),

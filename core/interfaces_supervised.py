@@ -5,11 +5,12 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     import numpy as np
@@ -47,14 +48,14 @@ class DetectionResult:
 
     task: TaskType
     score: float = 0.0
-    scores: Tuple[float, ...] = ()       # 逐检测置信度
-    labels: Tuple[str, ...] = ()
-    boxes: Optional["np.ndarray"] = None       # (N, 4) array 或 None
-    masks: Optional["np.ndarray"] = None       # (N, H, W) array 或 None
-    keypoints: Optional["np.ndarray"] = None   # (N, K, 2) array 或 None
-    extra: Dict[str, Any] = field(default_factory=dict)
+    scores: tuple[float, ...] = ()       # 逐检测置信度
+    labels: tuple[str, ...] = ()
+    boxes: np.ndarray | None = None       # (N, 4) array 或 None
+    masks: np.ndarray | None = None       # (N, H, W) array 或 None
+    keypoints: np.ndarray | None = None   # (N, K, 2) array 或 None
+    extra: dict[str, Any] = field(default_factory=dict)
 
-    def with_extra(self, key: str, value: Any) -> "DetectionResult":
+    def with_extra(self, key: str, value: Any) -> DetectionResult:
         """返回添加了 extra 键值对的副本（保持 frozen 不可变语义）。"""
         new_extra = {**self.extra, key: value}
         return replace(self, extra=new_extra)
@@ -93,10 +94,10 @@ class TrainArtifact:
 
     task: TaskType
     weights_path: str = ""
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
     epochs_completed: int = 0
     best_metric: float = 0.0
-    config: Optional[TrainConfig] = None
+    config: TrainConfig | None = None
 
 
 class ISupervisedTaskEngine(ABC):
@@ -114,13 +115,13 @@ class ISupervisedTaskEngine(ABC):
     @abstractmethod
     def infer(
         self,
-        image: Union[str, "np.ndarray"],
+        image: str | np.ndarray,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         """推理单张图像。"""
 
-    def info(self) -> Dict[str, Any]:
+    def info(self) -> dict[str, Any]:
         """引擎元信息。"""
         _loaded = getattr(self, "_model", None) is not None
         _weights = getattr(self, "_weights_path", "")
@@ -214,7 +215,7 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
         # 白名单外的任何 (module, name) 一律 UnpicklingError——严禁
         # startswith('torch')+getattr 通配（GLOBAL 'torch' 'save' 经 REDUCE
         # 即任意落盘）与 super().find_class 无限制导入兜底。
-        _safe_globals: Dict[Tuple[str, str], Any] = {
+        _safe_globals: dict[tuple[str, str], Any] = {
             ("collections", "OrderedDict"): OrderedDict,
             ("torch._utils", "_rebuild_tensor_v2"): (
                 torch._utils._rebuild_tensor_v2
@@ -234,7 +235,7 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
         # （如 'torch FloatStorage'），按类对象身份命中；本版 torch
         # 不存在的类型自动跳过。UntypedStorage 按 torch 语义视作 uint8
         # （参考 torch/serialization.py 加载侧 persistent_load）。
-        _storage_dtypes: Dict[type, Any] = {}
+        _storage_dtypes: dict[type, Any] = {}
         # 访问 torch 浮点存储类型会触发 TypedStorage 弃用 UserWarning，
         # 属预期形态探测，静默之。
         with warnings.catch_warnings():
@@ -395,7 +396,7 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
         self,
         images: list,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> list:
         """批量推理：默认串行调用 infer()，子类可覆写为高效批量实现。"""
         return [
@@ -410,10 +411,8 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
         子类若有额外资源（如 ONNX Runtime session），应在覆写中一并释放。
         """
         if self._model is not None:
-            try:
+            with contextlib.suppress(RuntimeError, AttributeError):
                 self._model.cpu()
-            except (RuntimeError, AttributeError):
-                pass
             del self._model
             self._model = None
         self._weights_path = ""
@@ -454,14 +453,14 @@ class ITrainStrategy(ABC):
     task: TaskType
 
     @abstractmethod
-    def train_epoch(self, epoch: int, cfg: TrainConfig) -> Dict[str, Any]:
+    def train_epoch(self, epoch: int, cfg: TrainConfig) -> dict[str, Any]:
         """执行一轮训练，返回 metrics 字典。"""
 
     @abstractmethod
     def save(self, path: str) -> None:
         """保存训练权重到指定路径。"""
 
-    def get_optimizer(self) -> Optional[Any]:
+    def get_optimizer(self) -> Any | None:
         """R4-9: 返回策略的优化器（如有），供 GenericTrainer 构建 LR 调度器。
 
         默认返回 None（策略未暴露优化器时不使用调度器）。

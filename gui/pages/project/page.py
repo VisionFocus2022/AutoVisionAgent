@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import os
-from typing import List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -30,7 +29,6 @@ from project.models import ProjectId, ProjectLayout, parse_project_dirname
 from project.paths import resolve_base_root
 from project.store import FileSystemProjectStore
 
-
 # 可用任务类型
 _TASKS = [
     (TaskType.DET, "检测 (det)"),
@@ -49,12 +47,12 @@ class ProjectPage(QWidget):
     status_changed = Signal(str, str)
     project_opened = Signal(str)  # 项目路径 → 外部切换页面
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._base_root: str = resolve_base_root()  # W28：单源（workspace 可配）
         self._counter = TaskCounter()
-        self._store: Optional[FileSystemProjectStore] = None
+        self._store: FileSystemProjectStore | None = None
         self._build_ui()
         self._wire()
         self._init_store()

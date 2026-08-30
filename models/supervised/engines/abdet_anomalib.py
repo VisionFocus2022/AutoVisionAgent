@@ -13,7 +13,7 @@ score 为 None（模型未给出）时落 0.0。
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -54,7 +54,7 @@ class AbdetAnomalibEngine(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         """
         执行异常评分。
@@ -84,13 +84,12 @@ class AbdetAnomalibEngine(AbstractTaskEngine):
         )
 
     @staticmethod
-    def _to_tensor(image: Any, device: str = "cpu") -> "Any":
+    def _to_tensor(image: Any, device: str = "cpu") -> Any:
         """将图像转为 [B,3,H,W] 归一化张量（anomalib 约定 [0,1]）。"""
         import numpy as np
         import torch
 
         if isinstance(image, str):
-            from core.image_io import imread_unicode
             from PIL import Image
 
             arr = np.asarray(Image.open(image).convert("RGB"))

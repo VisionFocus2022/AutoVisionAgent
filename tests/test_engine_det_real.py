@@ -26,7 +26,6 @@ from core.exceptions import SupervisedEngineError  # noqa: E402
 from core.interfaces_supervised import DetectionResult, TaskType  # noqa: E402
 from models.supervised.engines.det_yolo import DetYoloEngine  # noqa: E402
 
-
 # 确定性随机图（RandomState(42)），320x320 足够大让随机权重 YOLO 产生若干预测框
 _IMG = np.random.RandomState(42).randint(0, 256, (320, 320, 3), dtype=np.uint8)
 
@@ -44,7 +43,6 @@ def test_load_success_sets_attributes(monkeypatch, tmp_path):
     fake_pt.write_bytes(b"not-a-real-checkpoint")
 
     # I/O 边界 mock：替换 ultralytics.YOLO 构造器为返回 sentinel 的 fake
-    sentinel = object()
     import ultralytics
 
     class _FakeYOLO:
@@ -155,7 +153,6 @@ def test_engine_self_registered_as_det():
     """
     # 触发模块导入（若尚未导入），@register_engine 装饰器会注册到全局表
     import models.supervised.engines.det_yolo  # noqa: F401
-
     from models.supervised import get_default_registry, get_engine
 
     reg = get_default_registry()

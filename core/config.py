@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +36,7 @@ class InferenceConfig:
     enable_cache: bool = True
     enable_profiling: bool = False
     cache_size: int = 1000
-    tensorrt_engine_path: Optional[str] = None
+    tensorrt_engine_path: str | None = None
     tiling: TilingConfig = field(default_factory=TilingConfig)
 
 
@@ -75,7 +74,7 @@ class BaseConfig:
 
 
 # 全局配置单例（模块级懒初始化，进程内共享；测试可经 _config 重置）
-_config: Optional[BaseConfig] = None
+_config: BaseConfig | None = None
 
 
 def get_config() -> BaseConfig:

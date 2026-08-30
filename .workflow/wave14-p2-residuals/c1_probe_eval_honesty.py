@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """C1 adversarial probe: does the empty state actually RENDER the hint text
 via paintEvent (visible state), and is the normal/TN-only path unchanged?"""
 import os
@@ -12,8 +11,8 @@ from PySide6.QtWidgets import QApplication
 
 app = QApplication.instance() or QApplication([])
 
-import gui.pages.eval_.page as ep
-from gui.pages.eval_.page import ConfusionMatrixWidget, EvalPage
+import gui.pages.eval_.page as ep  # noqa: E402  # QApplication 须先创建（离屏），再导入页面模块
+from gui.pages.eval_.page import ConfusionMatrixWidget, EvalPage  # noqa: E402  # 同上
 
 orig_tr = ep.tr
 
@@ -98,7 +97,8 @@ assert page._table.rowCount() == 3
 print("P5 table rows:", page._table.rowCount())
 
 # ---- Probe 6: i18n fallback — missing key returns source string ----
-from gui.core.i18n import tr as real_tr
+from gui.core.i18n import tr as real_tr  # noqa: E402  # Probe 6 就地导入
+
 print("P6 tr('无混淆矩阵数据') ->", repr(real_tr("无混淆矩阵数据")))
 
 print("ALL PROBES PASSED")

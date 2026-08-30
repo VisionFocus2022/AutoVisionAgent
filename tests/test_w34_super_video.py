@@ -118,9 +118,8 @@ def test_super_video_bad_input_raises(tmp_path):
 @pytest.mark.unit
 def test_video_super_wired(qapp, fake_threads, monkeypatch, tmp_path):
     """推理页视频超分按钮在场：SUPER 引擎 + 选视频 → 产物 mp4 + 状态反馈。"""
-    from gui.pages.predict import page as pred_mod
-    from gui.pages.predict.page import PredictPage
     from core.interfaces_supervised import TaskType
+    from gui.pages.predict.page import PredictPage
 
     src = tmp_path / "in.mp4"
     _make_video(src, n=4)
@@ -157,7 +156,6 @@ def test_video_super_wired(qapp, fake_threads, monkeypatch, tmp_path):
 def test_video_super_requires_super_task(qapp, monkeypatch, tmp_path):
     """非 SUPER 任务 → 诚实提示不派发。"""
     from gui.pages.predict.page import PredictPage
-    from core.interfaces_supervised import TaskType
 
     page = PredictPage()
     page._engine = _X2Engine()

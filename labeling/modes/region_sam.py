@@ -9,13 +9,13 @@ SAM 未加载（adapter None）时单击无操作（诚实降级，同交互式�
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, Tuple
+from typing import Any
 
 from labeling.base import (
-    AnnotationMode,
     DEFAULT_COLOR,
-    Point,
     RGBA,
+    AnnotationMode,
+    Point,
     Shape,
 )
 from labeling.geometry import normalize_rectangle
@@ -27,7 +27,7 @@ _logger = logging.getLogger(__name__)
 _DRAG_MIN_PX = 5.0
 
 # 区域矩形：归一化后的 (x1, y1, x2, y2)
-Box = Tuple[float, float, float, float]
+Box = tuple[float, float, float, float]
 
 
 class RegionSamLabeler(AbstractLabeler):
@@ -53,9 +53,9 @@ class RegionSamLabeler(AbstractLabeler):
         super().__init__(label, color, min_points=3)
         self._adapter = sam_adapter
         self._image = image
-        self._pending: Optional[Shape] = None
-        self._box: Optional[Box] = None
-        self._press_start: Optional[Point] = None
+        self._pending: Shape | None = None
+        self._box: Box | None = None
+        self._press_start: Point | None = None
 
     # ---- 外部注入 ---- #
     def set_adapter(self, adapter: Any) -> None:
@@ -65,7 +65,7 @@ class RegionSamLabeler(AbstractLabeler):
         self._image = image
 
     @property
-    def region(self) -> Optional[Box]:
+    def region(self) -> Box | None:
         """当前区域矩形（未定为 None）。"""
         return self._box
 
@@ -77,7 +77,7 @@ class RegionSamLabeler(AbstractLabeler):
     def on_move(self, pt: Point) -> None:
         self._cursor = pt
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         start = self._press_start
         self._press_start = None
         self._active = False
@@ -114,11 +114,11 @@ class RegionSamLabeler(AbstractLabeler):
             )
         return None
 
-    def preview(self) -> Optional[Shape]:
+    def preview(self) -> Shape | None:
         """pending 优先；拖拽/已定区域回矩形预览。"""
         if self._pending is not None:
             return self._pending
-        rect: Optional[Tuple[Point, Point]] = None
+        rect: tuple[Point, Point] | None = None
         if self._press_start is not None:
             end = self._cursor if self._cursor is not None else self._press_start
             rect = normalize_rectangle(self._press_start, end)
@@ -133,7 +133,7 @@ class RegionSamLabeler(AbstractLabeler):
             color=self._color,
         )
 
-    def commit(self) -> Optional[Shape]:
+    def commit(self) -> Shape | None:
         """确认当前分割多边形（双击/回车触发）。"""
         shape = self._pending
         self._pending = None

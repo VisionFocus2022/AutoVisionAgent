@@ -13,23 +13,8 @@ from pathlib import Path
 import pytest
 
 try:
-    from tests.uia.uia_helpers import (
-        UIA_ADMIN_PWD,
-        click_button,
-        click_login_button_precise,
-        click_nav,
-        find_control_by_name,
-        find_edit_controls,
-        login_admin,
-        set_edit_value,
-        sort_login_edits,
-        wait_any_status,
-        wait_status,
-    )
     from tests.uia.log_evidence import LogAnchor, wait_audit_line
-except ImportError:  # pragma: no cover — 顶层模式兜底
-    from uia_helpers import (  # type: ignore[no-def]
-        UIA_ADMIN_PWD,
+    from tests.uia.uia_helpers import (
         click_button,
         click_login_button_precise,
         click_nav,
@@ -41,7 +26,20 @@ except ImportError:  # pragma: no cover — 顶层模式兜底
         wait_any_status,
         wait_status,
     )
+except ImportError:  # pragma: no cover — 顶层模式兜底
     from log_evidence import LogAnchor, wait_audit_line  # type: ignore[no-def]
+    from uia_helpers import (  # type: ignore[no-def]
+        click_button,
+        click_login_button_precise,
+        click_nav,
+        find_control_by_name,
+        find_edit_controls,
+        login_admin,
+        set_edit_value,
+        sort_login_edits,
+        wait_any_status,
+        wait_status,
+    )
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 # 导航按钮 setCheckable(True) → UIA 暴露为 CheckBoxControl（click_nav/docstring

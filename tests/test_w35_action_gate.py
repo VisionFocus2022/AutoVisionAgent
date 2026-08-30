@@ -71,7 +71,7 @@ def test_check_action_unlogged_follows_operator_matrix(monkeypatch):
 @pytest.mark.unit
 def test_check_action_denies_unregistered_with_audit(monkeypatch):
     """未登记动作拒绝：返回文案 + access_denied 审计（拒绝路径留痕）。"""
-    from core import session, audit_logger
+    from core import audit_logger, session
     from gui.core.permissions import check_action
 
     denied_log = []
@@ -156,10 +156,9 @@ def test_predict_batch_infer_denied(qapp, monkeypatch):
 @pytest.mark.unit
 def test_video_super_denied(qapp, monkeypatch):
     """视频超分：动作拒绝 → 早退（不触视频文件对话框）。"""
-    from gui.pages.predict import page as pred_mod
-    from gui.pages.predict.page import PredictPage
-    from gui.pages.predict import video_super_actions as vsa
     from core.interfaces_supervised import TaskType
+    from gui.pages.predict import video_super_actions as vsa
+    from gui.pages.predict.page import PredictPage
 
     monkeypatch.setattr(
         vsa, "check_action",

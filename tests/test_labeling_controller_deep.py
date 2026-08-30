@@ -196,7 +196,7 @@ def test_on_mouse_press_right_button_triggers_commit(qapp):
     sh = canvas.shapes[0]
     assert sh.label == "poly"
     assert sh.points[0] == sh.points[-1]  # 闭合
-    assert (10.0, 10.0) == sh.points[0]  # 首点来自真实坐标转换
+    assert sh.points[0] == (10.0, 10.0)  # 首点来自真实坐标转换
 
 
 # ============================== 便捷 API 早退 ============================== #

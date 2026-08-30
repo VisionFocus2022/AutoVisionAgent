@@ -38,6 +38,7 @@ gRPC 消息仅携带 ``SharedMemoryHandle``（路径/偏移/长度/dtype/shape�
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import mmap
 import os
@@ -46,18 +47,21 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # numpy 仅注解层使用，运行时按需函数内导入（保持启动轻量）
+    import numpy
 
 logger = logging.getLogger(__name__)
 
 # numpy dtype ↔ 字符串契约（与 .NET 侧 SharedMemoryReader 对齐）
-_DTYPE_MAP: Dict[str, str] = {
+_DTYPE_MAP: dict[str, str] = {
     "uint8": "|u1",
     "float32": "<f4",
     "float64": "<f8",
     "bool": "|b1",
 }
-_NAME_TO_NP: Dict[str, str] = {v: k for k, v in _DTYPE_MAP.items()}
+_NAME_TO_NP: dict[str, str] = {v: k for k, v in _DTYPE_MAP.items()}
 
 # ---- 生命周期守护常量（W11 v2 P1-1）----
 # 启动清扫的陈旧判定阈值：ava_*.bin 的 mtime 年龄超过该值即视为上次进程
@@ -85,7 +89,7 @@ class SharedMemoryHandle:
     offset: int
     length: int
     dtype: str
-    shape: Tuple[int, ...]
+    shape: tuple[int, ...]
     encoding: str = "raw"
 
     def to_proto(self):
@@ -101,7 +105,7 @@ class SharedMemoryHandle:
         )
 
     @classmethod
-    def from_proto(cls, msg) -> "SharedMemoryHandle":
+    def from_proto(cls, msg) -> SharedMemoryHandle:
         return cls(
             file_path=msg.file_path,
             offset=int(msg.offset),
@@ -127,9 +131,9 @@ class SharedMemoryManager:
 
     def __init__(
         self,
-        base_dir: Optional[str] = None,
-        max_regions: Optional[int] = None,
-        region_ttl_seconds: Optional[float] = None,
+        base_dir: str | None = None,
+        max_regions: int | None = None,
+        region_ttl_seconds: float | None = None,
     ) -> None:
         # 默认放到系统临时目录下的 autovisionagent_shm 子目录，便于统一清理
         if base_dir is None:
@@ -146,10 +150,10 @@ class SharedMemoryManager:
         self._lock = threading.Lock()
         # file_path -> (fd, mmap_obj, created_at_monotonic)：
         # 仅记录本进程创建的区域，用于回收与 TTL 计龄（W17 起三元组）
-        self._regions: Dict[str, Tuple[int, mmap.mmap, float]] = {}
+        self._regions: dict[str, tuple[int, mmap.mmap, float]] = {}
         # W19（v3 第三波 FR-2 方向 A）：区域租约登记表
         # file_path -> (lease_id, expires_at_monotonic)；lease_id 进程内自增。
-        self._leases: Dict[str, Tuple[int, float]] = {}
+        self._leases: dict[str, tuple[int, float]] = {}
         self._next_lease_id = 0
 
         import atexit
@@ -264,7 +268,7 @@ class SharedMemoryManager:
 
     # ---------- 写出 ----------
 
-    def write_array(self, array, dtype: Optional[str] = None) -> SharedMemoryHandle:
+    def write_array(self, array, dtype: str | None = None) -> SharedMemoryHandle:
         """将 numpy 数组以连续字节写入新建的共享内存文件。
 
         Args:
@@ -287,7 +291,7 @@ class SharedMemoryManager:
         raw = arr.tobytes(order="C")
         return self._write_raw(raw, dt_name, tuple(int(s) for s in arr.shape))
 
-    def write_bytes(self, data: bytes, dtype: str = "uint8", shape: Tuple[int, ...] = ()) -> SharedMemoryHandle:
+    def write_bytes(self, data: bytes, dtype: str = "uint8", shape: tuple[int, ...] = ()) -> SharedMemoryHandle:
         """写入裸字节并给定 dtype/shape（用于非 numpy 来源）。
 
         W17：``dtype="bool_rle"`` 合法——data 须为 mask_codec 已编码的
@@ -317,7 +321,7 @@ class SharedMemoryManager:
         payload = encode_mask_rle(arr)
         return self._write_raw(payload, "bool_rle", tuple(int(s) for s in arr.shape))
 
-    def _write_raw(self, raw: bytes, dtype: str, shape: Tuple[int, ...]) -> SharedMemoryHandle:
+    def _write_raw(self, raw: bytes, dtype: str, shape: tuple[int, ...]) -> SharedMemoryHandle:
         # W17：先惰性回收超 TTL 区域（腾出登记槽位），再创建新区域
         self._reap_expired()
 
@@ -337,10 +341,8 @@ class SharedMemoryManager:
             mm = mmap.mmap(fd, length, access=mmap.ACCESS_READ)
         except Exception:
             os.close(fd)
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(path)
-            except OSError:
-                pass
             raise
 
         with self._lock:
@@ -364,7 +366,7 @@ class SharedMemoryManager:
 
     # ---------- 读入 ----------
 
-    def read_array(self, handle) -> "numpy.ndarray":
+    def read_array(self, handle) -> numpy.ndarray:
         """按句柄读取并重建为 numpy 数组。
 
         适用于任意句柄（本进程或对端进程创建）。dtype=="bool_rle" 时
@@ -429,18 +431,12 @@ class SharedMemoryManager:
     @staticmethod
     def _discard_mapping(fd: int, mm: mmap.mmap, path: str) -> None:
         """尽力关闭映射/描述符并删除文件（release 与上限拒绝路径共用）。"""
-        try:
+        with contextlib.suppress(BufferError, OSError):
             mm.close()
-        except (BufferError, OSError):
-            pass
-        try:
+        with contextlib.suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(path)
-        except OSError:
-            pass
 
     def release(self, file_path: str) -> bool:
         """释放指定区域（关闭映射并删除文件）。
@@ -477,7 +473,7 @@ class SharedMemoryManager:
 
 # ------------------------------ 模块级辅助 ------------------------------ #
 
-def _resolve_max_regions(explicit: Optional[int]) -> int:
+def _resolve_max_regions(explicit: int | None) -> int:
     """解析区域登记上限：构造参数 > 环境变量 AVA_SHM_MAX_REGIONS > 默认 64。"""
     if explicit is not None:
         if explicit < 1:
@@ -495,7 +491,7 @@ def _resolve_max_regions(explicit: Optional[int]) -> int:
     return _DEFAULT_MAX_REGIONS
 
 
-def _resolve_region_ttl(explicit: Optional[float]) -> float:
+def _resolve_region_ttl(explicit: float | None) -> float:
     """解析区域 TTL 秒（W17）：构造参数 > AVA_SHM_REGION_TTL_SECONDS > 默认 300。
 
     <= 0 表示关闭惰性回收（合法档位，非错误）。

@@ -10,11 +10,11 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import time
 from pathlib import Path
-from typing import Callable, Optional
 
 import uiautomation as ua
 
@@ -63,7 +63,7 @@ def find_main_window(timeout: float = 30.0) -> ua.WindowControl:
     PySide6 无边框窗口仍会被 UIA 识别为 WindowControl，Name = 窗口标题。
     """
     deadline = time.time() + timeout
-    last_err: Optional[Exception] = None
+    last_err: Exception | None = None
     while time.time() < deadline:
         try:
             win = ua.WindowControl(
@@ -109,7 +109,7 @@ def find_control_by_name(
     control_type=None,
     timeout: float = 10.0,
     depth: int = 8,
-) -> Optional[object]:
+) -> object | None:
     """在 root 子树中查找 Name 包含 name_contains 的控件。
 
     Args:
@@ -120,7 +120,7 @@ def find_control_by_name(
         depth: 遍历最大深度。
     """
     # 归一化类型过滤为前缀列表（如 ["Button","CheckBox"]）
-    type_prefixes: Optional[list[str]] = None
+    type_prefixes: list[str] | None = None
     if control_type:
         raw = [control_type] if isinstance(control_type, str) else list(control_type)
         type_prefixes = [t.replace("Control", "") for t in raw]
@@ -165,10 +165,8 @@ def click_button(root, text_contains: str, timeout: float = 10.0) -> bool:
     if btn is None:
         logger.warning("未找到按钮: '%s'", text_contains)
         return False
-    try:
+    with contextlib.suppress(Exception):
         btn.SetFocus()
-    except Exception:  # noqa: BLE001
-        pass
     btn.Click()
     logger.info("已点击按钮: '%s'", text_contains)
     return True
@@ -223,7 +221,7 @@ def read_status_text(win) -> str:
     # 取最靠近底部的行（状态栏在窗口最下方）
     max_bottom = max(b for b, _, _ in candidates)
     # 容差 8px 视为同一行（避免抗锯齿/亚像素差异）
-    same_row = [(l, n) for b, l, n in candidates if b >= max_bottom - 8]
+    same_row = [(left, n) for b, left, n in candidates if b >= max_bottom - 8]
     # 按 left 升序排序拼接（statusText 在左，statusAccent 在右）
     same_row.sort(key=lambda x: x[0])
     return " ".join(n for _, n in same_row)
@@ -234,7 +232,7 @@ def wait_status(
     expected_contains: str,
     timeout: float = 60.0,
     poll_interval: float = 0.5,
-) -> Optional[str]:
+) -> str | None:
     """轮询状态栏，直到文本包含 expected_contains 或超时。
 
     返回命中时的状态文本；超时返回 None。
@@ -257,7 +255,7 @@ def wait_any_status(
     expected_list: list[str],
     timeout: float = 60.0,
     poll_interval: float = 0.5,
-) -> Optional[str]:
+) -> str | None:
     """轮询状态栏，命中列表中任一文本即返回。"""
     lowers = [s.lower() for s in expected_list]
     deadline = time.time() + timeout
@@ -276,7 +274,7 @@ def wait_any_status(
 
 # ============================ 文件对话框操作 ============================ #
 
-def _wait_dialog(title_contains: str, timeout: float = 22.0) -> Optional[object]:
+def _wait_dialog(title_contains: str, timeout: float = 22.0) -> object | None:
     """等待标题包含 title_contains 的对话框窗口出现。
 
     多策略查找：
@@ -320,7 +318,7 @@ def _wait_dialog(title_contains: str, timeout: float = 22.0) -> Optional[object]
 
 def confirm_dialog_if_present(
     title_contains: str,
-    yes_texts: Optional[list[str]] = None,
+    yes_texts: list[str] | None = None,
     timeout: float = 3.0,
 ) -> bool:
     """若存在标题包含 title_contains 的 QMessageBox/对话框，点击"是/Yes"。
@@ -335,10 +333,8 @@ def confirm_dialog_if_present(
     dlg = _wait_dialog(title_contains, timeout=timeout)
     if dlg is None:
         return False
-    try:
+    with contextlib.suppress(Exception):
         dlg.SetFocus()
-    except Exception:  # noqa: BLE001
-        pass
     time.sleep(0.3)
 
     # 在对话框子树中找"是/Yes"按钮
@@ -406,7 +402,6 @@ def dismiss_stale_dialogs(timeout: float = 1.5) -> int:
 
 def _wait_dialog_gone(title_contains: str, timeout: float = 6.0) -> bool:
     """等待标题匹配的对话框关闭（确认点击可能异步生效）。"""
-    title_lower = title_contains.lower()
     deadline = time.time() + timeout
     while time.time() < deadline:
         dlg = ua.WindowControl(searchDepth=1, SubName=title_contains)
@@ -440,10 +435,8 @@ def enter_path_in_open_dialog(
     if dlg is None:
         logger.error("未等到对话框: '%s'", dialog_title)
         return False
-    try:
+    with contextlib.suppress(Exception):
         dlg.SetFocus()
-    except Exception:  # noqa: BLE001
-        pass
     time.sleep(0.4)
 
     # 反斜杠转正斜杠，避免 SendKeys 把 \ 当转义符吃掉
@@ -460,10 +453,8 @@ def enter_path_in_open_dialog(
                 continue
             ename = (edit.Name or "")
             auto_id = ""
-            try:
+            with contextlib.suppress(Exception):
                 auto_id = edit.AutomationId or ""
-            except Exception:  # noqa: BLE001
-                pass
             # 命中条件：名称含"文件夹"/"文件名"，或 AutoId 为 1152（Win10 文件夹框）
             match = (
                 "文件夹" in ename
@@ -627,10 +618,8 @@ def draw_rectangle_on_canvas(
     # 先点击画布中心，确保 QGraphicsView 获得焦点
     cx = (rect.left + rect.right) // 2
     cy = (rect.top + rect.bottom) // 2
-    try:
+    with contextlib.suppress(Exception):
         ua.Click(cx, cy, waitTime=0.3)
-    except Exception:  # noqa: BLE001
-        pass
 
     logger.info("画矩形: (%d,%d) -> (%d,%d)", x1, y1, x2, y2)
     try:
@@ -744,10 +733,8 @@ def draw_polygon_on_canvas(
 
     # 先点击画布中心聚焦（QGraphicsView 需焦点接收鼠标事件）
     cx, cy = (rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2
-    try:
+    with contextlib.suppress(Exception):
         ua.Click(cx, cy, waitTime=0.3)
-    except Exception:  # noqa: BLE001
-        pass
 
     for rx, ry in points_rel:
         x = int(rect.left + (rect.right - rect.left) * rx)
@@ -857,10 +844,8 @@ def click_login_button_precise(win) -> bool:
             if type(c).__name__ != "ButtonControl":
                 continue
             if (c.Name or "").strip() == "登录":
-                try:
+                with contextlib.suppress(Exception):
                     c.SetFocus()
-                except Exception:  # noqa: BLE001
-                    pass
                 c.Click()
                 logger.info("已精确点击'登录'按钮")
                 return True

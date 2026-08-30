@@ -37,7 +37,8 @@ class FakeThread:
         self._t, self._a, self._k = target, args, kwargs or {}
 
     def start(self):
-        if self._t: self._t(*self._a, **self._k)
+        if self._t:
+            self._t(*self._a, **self._k)
 
 
 @pytest.fixture
@@ -517,8 +518,6 @@ def test_single_result_preview_fits_viewport(qapp, tmp_path):
 
     # 真实约束复现：固定尺寸窗口容器（裸 page.resize 会随 pixmap 撑大失真）
     from PySide6.QtWidgets import QMainWindow
-
-    from gui.pages.predict.page import PredictPage
 
     page = PredictPage()
     win = QMainWindow()

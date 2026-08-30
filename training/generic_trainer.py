@@ -5,11 +5,13 @@ GenericTrainer 包装训练策略（ITrainStrategy），在 fit() 中驱动训�
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import time
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from core.interfaces_supervised import ITrainStrategy, TrainArtifact, TrainConfig
 
@@ -38,7 +40,7 @@ class GenericTrainer:
         self._best_metric: float = float("inf")
         self._best_epoch: int = 0
 
-    def _build_scheduler(self, cfg: TrainConfig) -> Optional[Any]:
+    def _build_scheduler(self, cfg: TrainConfig) -> Any | None:
         """R4-9: 根据 cfg.lr_scheduler 构建学习率调度器。
 
         支持 cosine / step / plateau / none。
@@ -55,8 +57,8 @@ class GenericTrainer:
         try:
             from torch.optim.lr_scheduler import (
                 CosineAnnealingLR,
-                StepLR,
                 ReduceLROnPlateau,
+                StepLR,
             )
 
             if cfg.lr_scheduler == "cosine":
@@ -94,8 +96,8 @@ class GenericTrainer:
     def fit(
         self,
         cfg: TrainConfig,
-        progress: Optional[Callable[[float, dict], None]] = None,
-        should_stop: Optional[Callable[[], bool]] = None,
+        progress: Callable[[float, dict], None] | None = None,
+        should_stop: Callable[[], bool] | None = None,
     ) -> TrainArtifact:
         """执行完整训练循环。
 
@@ -168,7 +170,7 @@ class GenericTrainer:
         )
         return artifact
 
-    def _train_one_epoch(self, epoch: int, cfg: TrainConfig) -> Dict[str, Any]:
+    def _train_one_epoch(self, epoch: int, cfg: TrainConfig) -> dict[str, Any]:
         """执行单个 epoch 的前向/损失/反传（strategy.train_epoch 内）并计时。
 
         Returns:
@@ -183,7 +185,7 @@ class GenericTrainer:
         return metrics
 
     def _step_scheduler(
-        self, scheduler: Optional[Any], cfg: TrainConfig, metrics: Dict[str, Any]
+        self, scheduler: Any | None, cfg: TrainConfig, metrics: dict[str, Any]
     ) -> None:
         """R4-9: 步进 LR 调度器（plateau 监控 loss；失败仅 debug 不中断）。"""
         if scheduler is None:
@@ -197,8 +199,8 @@ class GenericTrainer:
             logger.debug("LR 调度器 step 失败", exc_info=True)
 
     def _track_best_and_check_early_stop(
-        self, epoch: int, metrics: Dict[str, Any], no_improve: int, cfg: TrainConfig
-    ) -> "tuple[int, bool]":
+        self, epoch: int, metrics: dict[str, Any], no_improve: int, cfg: TrainConfig
+    ) -> tuple[int, bool]:
         """更新最佳指标并推进早停计数（loss 越小越好；无条件追踪——
         best_metric 是训练产物字段，不应依赖早停是否启用。W4-T1 RED→GREEN 修复）。
 
@@ -294,17 +296,15 @@ class GenericTrainer:
                 # 清理 sidecar 元数据
                 meta_path = old_path + ".meta.json"
                 if os.path.exists(meta_path):
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(meta_path)
-                    except OSError:
-                        pass
         except OSError:
             pass
 
     @staticmethod
     def _save_meta(ckpt_path: str, epoch: int, cfg: TrainConfig,
-                   best_metric: Optional[float] = None,
-                   best_epoch: Optional[int] = None) -> None:
+                   best_metric: float | None = None,
+                   best_epoch: int | None = None) -> None:
         """保存训练元数据 sidecar JSON（与权重文件同名 + .meta.json）。"""
         meta = {
             "epoch": epoch,
@@ -335,7 +335,7 @@ class GenericTrainer:
         meta = {}
         if os.path.exists(meta_path):
             try:
-                with open(meta_path, "r", encoding="utf-8") as f:
+                with open(meta_path, encoding="utf-8") as f:
                     meta = json.load(f)
             except (json.JSONDecodeError, OSError):
                 logger.warning("读取元数据失败: %s", meta_path, exc_info=True)

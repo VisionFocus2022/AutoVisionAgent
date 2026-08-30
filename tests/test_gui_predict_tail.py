@@ -44,7 +44,8 @@ class FakeThread:
         self._t, self._a, self._k = target, args, kwargs or {}
 
     def start(self):
-        if self._t: self._t(*self._a, **self._k)
+        if self._t:
+            self._t(*self._a, **self._k)
 
 
 @pytest.fixture
@@ -212,8 +213,8 @@ def test_load_model_device_resolution(det_page, tmp_path, monkeypatch):
     ["cuda"]→["cuda","cpu"]→[...,"cpu"]→[...,"cpu"] 与原版逐项相同。
     """
     pytest.importorskip("torch")
-    from gui.pages.predict import page as pred_mod
     import gui.core.settings_io as sio
+    from gui.pages.predict import page as pred_mod
 
     monkeypatch.setattr(sio, "CONFIG_DIR", tmp_path)
     (tmp_path / "user_settings.json").write_text(
@@ -589,8 +590,8 @@ def test_load_model_device_user_settings_absent_keeps_chain(
 ):
     """无 user_settings.json / 无 device 键 → 回退 cuda 链语义保持。"""
     pytest.importorskip("torch")
-    from gui.pages.predict import page as pred_mod
     import gui.core.settings_io as sio
+    from gui.pages.predict import page as pred_mod
 
     empty = tmp_path / "no_settings"
     empty.mkdir()
@@ -629,8 +630,8 @@ def test_load_model_device_invalid_user_setting_ignored(
 ):
     """手改出的非法 device 值按未设置处理（回退 cuda 链）。"""
     pytest.importorskip("torch")
-    from gui.pages.predict import page as pred_mod
     import gui.core.settings_io as sio
+    from gui.pages.predict import page as pred_mod
 
     monkeypatch.setattr(sio, "CONFIG_DIR", tmp_path)
     (tmp_path / "user_settings.json").write_text(

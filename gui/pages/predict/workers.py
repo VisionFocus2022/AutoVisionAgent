@@ -5,14 +5,14 @@ W28 阈值接入与 W33 批量产物扩展（masks/overlay）落点在本模块�
 """
 from __future__ import annotations
 
-import json
 import os
 import time
-from typing import List, Optional
 
 from core.constants import IMG_EXTS
 from gui.core.i18n import tr
-from labeling.batch_tools import atomic_write_json  # W39·v6 P2-8：原子写单源（本模块保留此名再导出，原弱版固定 .tmp 名已删）
+from labeling.batch_tools import (
+    atomic_write_json as atomic_write_json,  # W39·v6 P2-8：原子写单源（显式再导出，batch_runner/tests 自本模块导入）
+)
 from project.paths import resolve_base_root
 
 # R5-2: CSV/Excel 公式注入防护（CWE-1236）
@@ -26,7 +26,7 @@ def sanitize_csv_cell(value: object) -> object:
     return value
 
 
-def boxes_to_jsonable(boxes) -> Optional[list]:
+def boxes_to_jsonable(boxes) -> list | None:
     """numpy (N,4) 框数组 → 纯 Python 嵌套 list（JSON 可序列化）。
 
     真引擎 boxes 是 ndarray：不得做真值判断（歧义异常），且 list(ndarray)
@@ -39,10 +39,10 @@ def boxes_to_jsonable(boxes) -> Optional[list]:
     return [list(b) for b in boxes]
 
 
-def collect_images(directory: str) -> List[str]:
+def collect_images(directory: str) -> list[str]:
     """递归收集目录内全部图像路径（保持 os.walk 原序——与抽取前一致，
     数据管理页另有自然排序需求，此处不动序）。"""
-    images: List[str] = []
+    images: list[str] = []
     for root, _dirs, files in os.walk(directory):
         for f in files:
             if f.lower().endswith(IMG_EXTS):
@@ -50,7 +50,7 @@ def collect_images(directory: str) -> List[str]:
     return images
 
 
-def batch_save_dir(project_dir: Optional[str], scanned_dir: str) -> str:
+def batch_save_dir(project_dir: str | None, scanned_dir: str) -> str:
     """批量推理结果目录：{项目根 or workspace 根}/results/batchPredict_{ts}。
 
     W28 落盘卫生：无项目时回退 workspace 根（resolve_base_root 单源），

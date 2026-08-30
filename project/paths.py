@@ -33,7 +33,7 @@ def resolve_base_root() -> str:
             # 审计折入：与默认根对称地支持 ~/ 前缀（手改 JSON 场景；
             # 设置页浏览按钮恒给绝对路径，此处仅兜平语义不一致）
             return os.path.expanduser(workspace.strip())
-    except Exception:  # noqa: BLE001——settings 层任何故障都退默认根
+    except Exception:  # noqa: BLE001  # settings 层任何故障都退默认根
         import logging
 
         logging.getLogger(__name__).warning(

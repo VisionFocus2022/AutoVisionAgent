@@ -32,40 +32,36 @@ import re
 import time
 from pathlib import Path
 
-import pytest
-
 # 兼容 pytest 顶层模式加载（无 tests.uia 包），优先用包导入，失败则用直接导入
 try:
     from tests.uia.uia_helpers import (
-        login_admin,
+        _iter_descendants,
         app_log_path,
         click_button,
         click_nav,
-        confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
         find_control_by_name,
+        login_admin,
+        read_status_text,
         wait_any_status,
         wait_status,
-        _iter_descendants,
-        read_status_text,
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (  # type: ignore[no-redef]
-        login_admin,  # type: ignore[no-redef]
+        _iter_descendants,
         app_log_path,
         click_button,
         click_nav,
-        confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
         find_control_by_name,
+        login_admin,  # type: ignore[no-redef]
+        read_status_text,
         wait_any_status,
         wait_status,
-        _iter_descendants,
-        read_status_text,
     )
 
 logger = logging.getLogger(__name__)
@@ -171,7 +167,7 @@ def _step_annotate(win, data_dir: Path, labels_dir: Path) -> None:
     # 2c. 在画布上画一个矩形（可能需要多次尝试，确保 shape 被提交）
     shape_committed = False
     for attempt in range(3):
-        drawn = draw_rectangle_on_canvas(
+        draw_rectangle_on_canvas(
             win,
             0.30 + 0.05 * attempt,
             0.30 + 0.05 * attempt,

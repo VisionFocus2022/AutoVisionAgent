@@ -8,15 +8,15 @@
 """
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import numpy as np
 
 
 # ============================== IoU ============================== #
 def _box_iou(
-    box_a: Tuple[float, float, float, float],
-    box_b: Tuple[float, float, float, float],
+    box_a: tuple[float, float, float, float],
+    box_b: tuple[float, float, float, float],
 ) -> float:
     """计算两个 [x1, y1, x2, y2] 框的 IoU。"""
     x1 = max(box_a[0], box_b[0])
@@ -32,21 +32,21 @@ def _box_iou(
 
 # ============================== det mAP ============================== #
 def _match_class_detections(
-    preds: Sequence[Dict],
-    gts: Sequence[Dict],
+    preds: Sequence[dict],
+    gts: Sequence[dict],
     cls: int,
     iou_threshold: float,
-) -> Tuple[List[float], List[int], int]:
+) -> tuple[list[float], list[int], int]:
     """单类收集：逐图取当前类预测/标注并做 IoU 匹配。
 
     返回 ``(all_scores, all_tp, n_gt)``——该类全部预测分数（图序、
     图内按分数降序）、TP/FP 标记（1/0）与该类 GT 总数。
     """
-    all_scores: List[float] = []
-    all_tp: List[int] = []  # 1=TP, 0=FP
+    all_scores: list[float] = []
+    all_tp: list[int] = []  # 1=TP, 0=FP
     n_gt = 0
 
-    for pred, gt in zip(preds, gts):
+    for pred, gt in zip(preds, gts, strict=True):
         p_boxes = np.asarray(pred.get("boxes", []))
         p_scores = np.asarray(pred.get("scores", []))
         p_labels = np.asarray(pred.get("labels", []))
@@ -101,8 +101,8 @@ def _match_class_detections(
 
 
 def _interpolated_ap(
-    all_scores: List[float],
-    all_tp: List[int],
+    all_scores: list[float],
+    all_tp: list[int],
     n_gt: int,
 ) -> float:
     """11 点插值 AP（VOC 式 PR 曲线近似）；无 GT 或无预测时为 0。"""
@@ -127,11 +127,11 @@ def _interpolated_ap(
 
 
 def det_map(
-    preds: Sequence[Dict],
-    gts: Sequence[Dict],
+    preds: Sequence[dict],
+    gts: Sequence[dict],
     iou_threshold: float = 0.5,
-    num_classes: Optional[int] = None,
-) -> Dict[str, float]:
+    num_classes: int | None = None,
+) -> dict[str, float]:
     """
     计算检测 mAP（VOC 式，单 IoU 阈值）。
 
@@ -156,8 +156,8 @@ def det_map(
     else:
         classes = sorted(all_labels) if all_labels else [0]
 
-    aps: List[float] = []
-    result: Dict[str, float] = {}
+    aps: list[float] = []
+    result: dict[str, float] = {}
 
     for cls in classes:
         all_scores, all_tp, n_gt = _match_class_detections(
@@ -198,7 +198,7 @@ def seg_iou(
     if len(labels) == 0:
         return 0.0
 
-    ious: List[float] = []
+    ious: list[float] = []
     for lbl in labels:
         p = pred == lbl
         g = gt == lbl
@@ -244,7 +244,7 @@ def abdet_auroc(
     fpr = fp_cum / n_neg
 
     # 梯形法积分（numpy 2.0 移除了 trapz，用 trapezoid）
-    trapz_fn = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+    trapz_fn = getattr(np, "trapezoid", None) or np.trapz
     auc = trapz_fn(tpr, fpr)
     return float(auc)
 
@@ -255,7 +255,7 @@ def evaluate_supervised(
     preds: Sequence,
     gts: Sequence,
     **kwargs,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """
     按任务类型自动分发到对应评估指标。
 
@@ -271,7 +271,7 @@ def evaluate_supervised(
     if task == "det":
         return det_map(preds, gts, **kwargs)
     elif task == "seg":
-        ious = [seg_iou(p, g) for p, g in zip(preds, gts)]
+        ious = [seg_iou(p, g) for p, g in zip(preds, gts, strict=True)]
         return {"mIoU": float(np.mean(ious)) if ious else 0.0}
     elif task == "abdet":
         # preds 为 scores list, gts 为 labels list

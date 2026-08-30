@@ -134,7 +134,7 @@ def test_login_input_validation(qapp, tmp_path, monkeypatch):
 def test_login_lockout_after_five_failures_persisted(qapp, tmp_path, monkeypatch):
     page = _make_page(tmp_path, monkeypatch, qapp)
 
-    for i in range(5):
+    for _ in range(5):
         _try_login(page, password="wrong")
     assert any("锁定" in t for t, _ in page._msgs)
 
@@ -335,7 +335,6 @@ def test_default_admin_role_stable_enum_across_languages(qapp, tmp_path, monkeyp
     """W18/P2-8（取代 P2-23 的 tr 统一方案）：角色落稳定枚举 "admin"，
     与界面语言彻底解耦——en_US 首启落库值与 ch_CN 完全一致。"""
     from gui.core.i18n import set_language
-
     from gui.pages.login import page as login_mod
 
     monkeypatch.setattr(login_mod, "_CONFIG_DIR", tmp_path)

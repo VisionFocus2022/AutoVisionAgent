@@ -4,11 +4,11 @@
 """
 from __future__ import annotations
 
+import contextlib
 import csv
 import json
 import logging
 import os
-from typing import Any, List, Optional
 
 from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
@@ -21,7 +21,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -29,24 +28,21 @@ from PySide6.QtWidgets import (
 )
 
 from core.exceptions import SupervisedEngineError
-from core.interfaces_supervised import DetectionResult, TaskType
+from core.interfaces_supervised import DetectionResult
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
+from gui.core.permissions import check_action  # W35：动作门控
 from gui.core.thread_bridge import invoke_main, ui_on_error
-from gui.widgets.file_dialog import pick_open_file, pick_save_file, pick_directory
+from gui.pages.predict.video_super_actions import VideoSuperActionsMixin  # W34
 from gui.pages.predict.workers import (
-    atomic_write_json,
     batch_save_dir,
     collect_images,
-    filter_result_by_labels,
     result_to_record,
     row_display_fields,
-    save_batch_artifacts,
     sanitize_csv_cell,
 )
+from gui.widgets.file_dialog import pick_directory, pick_open_file, pick_save_file
 from inference.sv_bridge import render_result  # W33：批量叠加图（页面级绑定保测试缝）
-from gui.pages.predict.video_super_actions import VideoSuperActionsMixin  # W34
-from gui.core.permissions import check_action  # W35：动作门控
 
 logger = logging.getLogger(__name__)
 
@@ -56,17 +52,17 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
 
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
-        self._project_dir: Optional[str] = None
-        self._models_dir: Optional[str] = None
-        self._model_path: Optional[str] = None
+        self._project_dir: str | None = None
+        self._models_dir: str | None = None
+        self._model_path: str | None = None
         self._engine = None  # ISupervisedTaskEngine 实例
-        self._results: List[dict] = []  # 批量结果缓存
+        self._results: list[dict] = []  # 批量结果缓存
         self._batch_cancel = False  # 批量推理取消标志
         # W21：预览原始图（全分辨率）——按预览区自适应缩放，resize 时重适配
-        self._preview_source: Optional[QPixmap] = None
+        self._preview_source: QPixmap | None = None
 
         self._build_ui()
         self._wire()
@@ -267,10 +263,8 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
 
             # 卸载旧引擎（释放 GPU 显存）
             if self._engine is not None:
-                try:
+                with contextlib.suppress(RuntimeError, AttributeError):
                     self._engine.unload()
-                except (RuntimeError, AttributeError):
-                    pass
                 self._engine = None
                 reg.clear_cache(task=self.cmb_task.currentData())
 
@@ -368,8 +362,8 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         # R4-6: 记录审计日志 + 检测历史
         try:
             from core.audit_logger import log_detection_complete
-            from core.session import get_current_user
             from core.detection_history import get_history
+            from core.session import get_current_user
             _task = self.cmb_task.currentData() or "det"
             _count = len(result.boxes) if result.boxes is not None else 0
             log_detection_complete(
@@ -429,9 +423,6 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
 
         save_dir = batch_save_dir(self._project_dir, d)
 
-        engine = self._engine
-        total = len(images)
-        threshold = self._threshold()  # W28：批量全程共用当前阈值
         # W33：对象类型过滤（空=全部）+ 叠加图开关（UI 线程一次捕获）
         labels_filter = {
             s.strip() for s in self.edit_label_filter.text().split(",") if s.strip()
@@ -569,7 +560,7 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
             pm.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         )
 
-    def resizeEvent(self, event) -> None:  # noqa: N802（Qt 命名）
+    def resizeEvent(self, event) -> None:  # noqa: N802  # Qt 命名
         """窗口尺寸变化 → 预览图重适配（放大不留旧小图、缩小不裁切）。"""
         super().resizeEvent(event)
         self._apply_preview_pixmap()
@@ -593,9 +584,8 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
                 font = painter.font()
                 font.setPointSize(10)
                 painter.setFont(font)
-                for i, (box, lbl, sc) in enumerate(zip(
-                    result.boxes, result.labels, result.scores
-                )):
+                # 平行元组按最短截断绘制（引擎异常长度时不炸 UI 绘制路径）
+                for box, lbl, sc in zip(result.boxes, result.labels, result.scores, strict=False):
                     x1, y1, _, _ = box
                     painter.drawText(
                         int(x1), int(y1) - 6,

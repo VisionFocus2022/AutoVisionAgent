@@ -20,14 +20,12 @@ processor/*, manifest.json, history.json}——AVA_SAM3_DIR 指向即接入。
 from __future__ import annotations
 
 import argparse
-import copy
 import json
-import math
 import random
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -53,7 +51,7 @@ FOCAL_WEIGHT = 20.0  # SAM 家族掩码损失惯例 focal:dice ≈ 20:1
 # ================================ 纯函数（单测面） ================================ #
 
 
-def extract_defect_shapes(json_path: Path) -> List[np.ndarray]:
+def extract_defect_shapes(json_path: Path) -> list[np.ndarray]:
     """LabelMe JSON → 缺陷多边形点集列表（仅 YS/ZW/TJYS/HS 且 polygon 型）。
 
     每个标注形状=一个缺陷实例样本（不做跨形状连通域合并——忠实于标注员
@@ -63,7 +61,7 @@ def extract_defect_shapes(json_path: Path) -> List[np.ndarray]:
         doc = json.loads(Path(json_path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
-    out: List[np.ndarray] = []
+    out: list[np.ndarray] = []
     for s in doc.get("shapes", []):
         if s.get("label") not in DEFECT_LABELS or s.get("shape_type") != "polygon":
             continue
@@ -73,7 +71,7 @@ def extract_defect_shapes(json_path: Path) -> List[np.ndarray]:
     return out
 
 
-def bbox_of(points: np.ndarray) -> Tuple[float, float, float, float]:
+def bbox_of(points: np.ndarray) -> tuple[float, float, float, float]:
     """多边形点集 → (x1, y1, x2, y2)。"""
     x1, y1 = points.min(axis=0)
     x2, y2 = points.max(axis=0)
@@ -82,7 +80,7 @@ def bbox_of(points: np.ndarray) -> Tuple[float, float, float, float]:
 
 def split_images(
     files: Sequence[str], seed: int = 42, val_ratio: float = 0.2
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     """确定性按图切分（排序后 seed 洗牌）——输入序不改变结果。"""
     ordered = sorted(files)
     rng = random.Random(seed)
@@ -92,11 +90,11 @@ def split_images(
 
 
 def jitter_box(
-    bbox: Tuple[float, float, float, float],
-    hw: Tuple[int, int],
+    bbox: tuple[float, float, float, float],
+    hw: tuple[int, int],
     rng: np.random.Generator,
     frac: float = 0.10,
-) -> Tuple[float, float, float, float]:
+) -> tuple[float, float, float, float]:
     """盒提示抖动：各边 ±frac·边长随机外扩/内缩，中心恒含、贴边裁剪、
     最小边 8px 防退化（模拟用户点击盒的不精确性）。"""
     h, w = hw
@@ -122,7 +120,7 @@ def jitter_box(
     )
 
 
-def flip_aug(points: np.ndarray, hw: Tuple[int, int], horizontal: bool) -> np.ndarray:
+def flip_aug(points: np.ndarray, hw: tuple[int, int], horizontal: bool) -> np.ndarray:
     """水平/垂直翻转（点集坐标同步镜像）。"""
     out = points.copy()
     if horizontal:
@@ -133,7 +131,7 @@ def flip_aug(points: np.ndarray, hw: Tuple[int, int], horizontal: bool) -> np.nd
 
 
 def rasterize_polygon(
-    points: np.ndarray, out_hw: Tuple[int, int], scale_xy: Tuple[float, float]
+    points: np.ndarray, out_hw: tuple[int, int], scale_xy: tuple[float, float]
 ) -> np.ndarray:
     """多边形按 (sx, sy) 缩放后栅格化到 out_hw 二值掩码（uint8）。"""
     import cv2
@@ -147,10 +145,10 @@ def rasterize_polygon(
 
 
 def scale_box(
-    bbox: Tuple[float, float, float, float],
-    from_hw: Tuple[int, int],
-    to_hw: Tuple[int, int],
-) -> Tuple[float, float, float, float]:
+    bbox: tuple[float, float, float, float],
+    from_hw: tuple[int, int],
+    to_hw: tuple[int, int],
+) -> tuple[float, float, float, float]:
     """盒坐标按两分辨率比例缩放。"""
     x1, y1, x2, y2 = bbox
     sx = to_hw[1] / from_hw[1]
@@ -218,7 +216,7 @@ class PoleDefectDataset(torch.utils.data.Dataset):
         self._imread = imread_unicode
         self.data_dir = Path(data_dir)
         self.rng = np.random.default_rng(seed)
-        self.items: List[Tuple[str, np.ndarray]] = []
+        self.items: list[tuple[str, np.ndarray]] = []
         for name in files:
             shapes = extract_defect_shapes(self.data_dir / (Path(name).stem + ".json"))
             for pts in shapes[:6]:  # 每图上限 6 实例（防单图霸榜）
@@ -231,7 +229,7 @@ class PoleDefectDataset(torch.utils.data.Dataset):
         """三次重试 + gc（v1.0 系统内存耗尽致 cv2 alloc 7MB 失败的硬化）。"""
         import gc
 
-        for attempt in range(3):
+        for _attempt in range(3):
             try:
                 img = self._imread(path)
                 if img is not None:
@@ -242,7 +240,7 @@ class PoleDefectDataset(torch.utils.data.Dataset):
             time.sleep(2.0)
         raise RuntimeError(f"图像读取失败(3 次重试): {path}")
 
-    def __getitem__(self, idx: int) -> Dict[str, object]:
+    def __getitem__(self, idx: int) -> dict[str, object]:
         name, pts = self.items[idx]
         img = self._imread_retry(str(self.data_dir / name))
         h, w = img.shape[:2]
@@ -260,14 +258,14 @@ class PoleDefectDataset(torch.utils.data.Dataset):
         }
 
 
-def _collate(batch: List[Dict[str, object]]) -> List[Dict[str, object]]:
+def _collate(batch: list[dict[str, object]]) -> list[dict[str, object]]:
     return batch
 
 
 # ================================ 训练/评估 ================================ #
 
 
-def build_model(base_dir: Path, device: str) -> Tuple[torch.nn.Module, object]:
+def build_model(base_dir: Path, device: str) -> tuple[torch.nn.Module, object]:
     from transformers import Sam3Model, Sam3Processor
 
     model = Sam3Model.from_pretrained(str(base_dir))
@@ -339,7 +337,7 @@ def eval_click_iou(model, processor, device, data_dir: Path, files: Sequence[str
     from core.image_io import imread_unicode
 
     model.eval()
-    ious: List[float] = []
+    ious: list[float] = []
     for name in list(files)[:limit]:
         shapes = extract_defect_shapes(data_dir / (Path(name).stem + ".json"))
         if not shapes:
@@ -381,7 +379,7 @@ def save_checkpoint(model, processor, out_dir: Path) -> None:
 # ================================ 入口 ================================ #
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="SAM3 极柱域微调（W48）")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--base", type=Path, default=DEFAULT_BASE)
@@ -433,13 +431,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         opt, T_max=max(args.epochs, 1)
     )
 
-    history: List[Dict[str, float]] = []
+    history: list[dict[str, float]] = []
     best_iou = -1.0
     aborted = False
     model.train()
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
-        losses: List[float] = []
+        losses: list[float] = []
         for step, batch in enumerate(loader, 1):
             losses.append(train_one_step(model, processor, batch, opt, scaler, device))
             # 塌缩护栏：每 200 步 mini-val（基线 ~0.5；<0.05 即塌损坏）

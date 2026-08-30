@@ -4,9 +4,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
+from labeling.base import DEFAULT_COLOR, RGBA, AnnotationMode, Point, Shape
 from labeling.geometry import normalize_rectangle, rectangle_size
 from labeling.modes._base import AbstractLabeler
 
@@ -33,7 +31,7 @@ class RectangleLabeler(AbstractLabeler):
     ) -> None:
         super().__init__(label, color, min_points=2)
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         if len(self._points) < 1:
             return None
         start = self._points[0]
@@ -46,7 +44,7 @@ class RectangleLabeler(AbstractLabeler):
         self.reset()
         return shape
 
-    def preview(self) -> Optional[Shape]:
+    def preview(self) -> Shape | None:
         if not self._active or not self._points:
             return None
         start = self._points[0]

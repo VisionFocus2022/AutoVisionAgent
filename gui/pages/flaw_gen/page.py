@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
@@ -36,7 +35,7 @@ class FlawGenPage(QWidget):
 
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._build_ui()
@@ -166,6 +165,7 @@ class FlawGenPage(QWidget):
                 from core.exceptions import SupervisedEngineError
                 from core.image_io import imwrite_unicode
                 from core.interfaces_supervised import TaskType
+
                 # registry 直连为 GUI 正式形态（v3 P2-7）
                 from models.supervised.engines import register_all_engines
                 from models.supervised.registry import get_engine

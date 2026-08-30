@@ -4,10 +4,7 @@
 """
 from __future__ import annotations
 
-from typing import Dict, Optional
-
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -54,12 +51,12 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 760)
         self._prev_geometry = None  # 最大化前保存位置/尺寸
 
-        self._pages: Dict[str, QWidget] = {}
-        self._nav_buttons: Dict[str, QPushButton] = {}
+        self._pages: dict[str, QWidget] = {}
+        self._nav_buttons: dict[str, QPushButton] = {}
         self._theme_manager = None
         # W29 角色消费（W39 反转）：None=未登录 → operator 最小集
         # （原宽容态全可见废弃，v6 P2-3 收口）
-        self._active_role: Optional[str] = None
+        self._active_role: str | None = None
 
         self._build_shell(title)
 
@@ -219,7 +216,7 @@ class MainWindow(QMainWindow):
 
     # ============================== 角色门控（W29） ============================== #
 
-    def set_role(self, role: Optional[str]) -> None:
+    def set_role(self, role: str | None) -> None:
         """设置当前会话角色并即时同步导航可见性。
 
         None=未登录（宽容态，全可见）；登录成功处调用（gui/main.py）。
@@ -270,7 +267,7 @@ class MainWindow(QMainWindow):
 
     def _toggle_language(self) -> None:
         """切换中英文。"""
-        from gui.core.i18n import current_language, set_language, tr
+        from gui.core.i18n import current_language, set_language
 
         new_lang = "en_US" if current_language() == "ch_CN" else "ch_CN"
         set_language(new_lang)
@@ -304,7 +301,7 @@ class MainWindow(QMainWindow):
 
     # ============================== 优雅退出 ============================== #
 
-    def _collect_active_busy(self) -> "tuple[list, list, list]":
+    def _collect_active_busy(self) -> tuple[list, list, list]:
         """活跃任务三路并集检测（W18 自 closeEvent 抽出，v3 AC-012）。
 
         ① gui.core.jobs 注册表（run_job 任务真相源）；② 各页 TrainWorker

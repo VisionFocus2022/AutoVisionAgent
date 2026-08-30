@@ -10,9 +10,8 @@ from __future__ import annotations
 import logging
 import time
 
-import pytest
-
 try:
+    from tests.uia.test_pole_dataset_flows import _ensure_logged_in
     from tests.uia.uia_helpers import (
         click_button,
         click_nav,
@@ -21,8 +20,8 @@ try:
         set_edit_value,
         wait_any_status,
     )
-    from tests.uia.test_pole_dataset_flows import _ensure_logged_in
 except ImportError:  # pragma: no cover - 顶层模式兜底
+    from test_pole_dataset_flows import _ensure_logged_in  # type: ignore[no-redef]
     from uia_helpers import (  # type: ignore[no-redef]
         click_button,
         click_nav,
@@ -31,7 +30,6 @@ except ImportError:  # pragma: no cover - 顶层模式兜底
         set_edit_value,
         wait_any_status,
     )
-    from test_pole_dataset_flows import _ensure_logged_in  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 

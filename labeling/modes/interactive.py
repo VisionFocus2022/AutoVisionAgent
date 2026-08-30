@@ -12,9 +12,9 @@
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
-from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
+from labeling.base import DEFAULT_COLOR, RGBA, AnnotationMode, Point, Shape
 from labeling.modes._base import AbstractLabeler
 
 
@@ -43,7 +43,7 @@ class InteractiveLabeler(AbstractLabeler):
         super().__init__(label, color, min_points=3)
         self._adapter = sam_adapter
         self._image = image
-        self._pending: Optional[Shape] = None
+        self._pending: Shape | None = None
 
     # ---- 外部注入 ---- #
     def set_adapter(self, adapter: Any) -> None:
@@ -79,13 +79,13 @@ class InteractiveLabeler(AbstractLabeler):
     def on_move(self, pt: Point) -> None:
         self._cursor = pt
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         return None
 
-    def preview(self) -> Optional[Shape]:
+    def preview(self) -> Shape | None:
         return self._pending
 
-    def commit(self) -> Optional[Shape]:
+    def commit(self) -> Shape | None:
         """确认当前 SAM 预测的多边形（双击/回车触发）。"""
         shape = self._pending
         self._pending = None

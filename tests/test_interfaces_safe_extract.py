@@ -268,8 +268,10 @@ def test_safe_extract_rejects_oversized_data_pkl(tmp_path):
     )
     path = tmp_path / "bomb.pt"
     chunk = b"\x00" * (1 << 20)
-    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
-        with zf.open("archive/data.pkl", "w", force_zip64=True) as wh:
+    with (
+        zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf,
+        zf.open("archive/data.pkl", "w", force_zip64=True) as wh,
+    ):
             written = 0
             while written <= limit:
                 wh.write(chunk)

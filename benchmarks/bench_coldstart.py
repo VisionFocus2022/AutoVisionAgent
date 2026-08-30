@@ -15,9 +15,8 @@ import subprocess
 import sys
 import time
 
-import pytest
-
 import _common
+import pytest
 
 _ROUNDS = 5
 _TIMEOUT_S = 180  # 单轮 import 超时（首含磁盘冷缓存，宽松上限）

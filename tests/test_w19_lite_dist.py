@@ -21,8 +21,8 @@ import importlib.util
 import json
 import os
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Dict, Iterable, List
 
 import pytest
 
@@ -114,7 +114,7 @@ def test_select_cuda_dlls_mixed():
 # ============================== derive_lite 假树集成 ============================== #
 
 # 假 torch/lib 树：CUDA 栈（应删）+ 纯 CPU 栈（应保留）
-_FAKE_LIB_FILES: Dict[str, int] = {
+_FAKE_LIB_FILES: dict[str, int] = {
     "torch_cuda.dll": 1000,
     "cudnn_adv64_9.dll": 500,
     "cublasLt64_12.dll": 300,
@@ -312,7 +312,7 @@ def test_cli_main_roundtrip(tmp_path):
     """CLI 显式参数成功路径 rc=0（测试绝不以默认参数触碰真 dist）。"""
     src = _make_fake_dist(tmp_path)
     dst = tmp_path / "lite_cli"
-    argv: List[str] = [
+    argv: list[str] = [
         "--source", str(src),
         "--dest", str(dst),
         "--max-gb", "10",

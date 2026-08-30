@@ -25,9 +25,9 @@ import statistics
 import sys
 import tempfile
 import time
+from collections.abc import Callable, Sequence
 from concurrent import futures
 from pathlib import Path
-from typing import Callable, List, Sequence, Tuple
 
 # 以脚本路径自举仓库根到 sys.path（python scripts/bench_region_transfer.py
 # 时 sys.path[0] 是 scripts/，直接 import serving 会失败）
@@ -38,7 +38,6 @@ if str(_REPO_ROOT) not in sys.path:
 import grpc  # noqa: E402
 import numpy as np  # noqa: E402
 
-from serving.proto import autovisionagent_pb2 as pb  # noqa: E402
 from serving.proto import autovisionagent_pb2_grpc as pb_grpc  # noqa: E402
 from serving.server import AutoVisionAgentServicer  # noqa: E402
 from serving.shared_memory import SharedMemoryManager  # noqa: E402
@@ -47,7 +46,7 @@ from serving.shared_memory import SharedMemoryManager  # noqa: E402
 class _BenchDispatcher:
     """FetchRegion 不触碰推理路径，占位分发器即可。"""
 
-    loaded_tasks: List[str] = []
+    loaded_tasks: list[str] = []
 
 
 def _make_payload(size_mib: float) -> bytes:
@@ -57,7 +56,7 @@ def _make_payload(size_mib: float) -> bytes:
     return rng.integers(0, 256, size=n, dtype=np.uint8).tobytes()
 
 
-def _timed_rounds(action: Callable[[], bytes], rounds: int) -> List[float]:
+def _timed_rounds(action: Callable[[], bytes], rounds: int) -> list[float]:
     """逐轮计时（秒）；每轮返回值由调用方校验。"""
     durations = []
     for _ in range(rounds):
@@ -70,13 +69,13 @@ def _timed_rounds(action: Callable[[], bytes], rounds: int) -> List[float]:
     return durations
 
 
-def _bench_direct(mgr: SharedMemoryManager, handle, rounds: int) -> Tuple[List[float], bytes]:
+def _bench_direct(mgr: SharedMemoryManager, handle, rounds: int) -> tuple[list[float], bytes]:
     """路径 (a)：现 manager 读回路径（read_bytes，本进程 mmap 切片）。"""
     durations = _timed_rounds(lambda: mgr.read_bytes(handle), rounds)
     return durations, mgr.read_bytes(handle)
 
 
-def _start_grpc_server(mgr: SharedMemoryManager) -> Tuple[grpc.Server, int]:
+def _start_grpc_server(mgr: SharedMemoryManager) -> tuple[grpc.Server, int]:
     """进程内起真实 gRPC server（临时端口 127.0.0.1:0，复用注入的 shm）。"""
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=2))
     pb_grpc.add_AutoVisionAgentServiceServicer_to_server(
@@ -91,7 +90,7 @@ def _start_grpc_server(mgr: SharedMemoryManager) -> Tuple[grpc.Server, int]:
 
 def _bench_grpc(
     mgr: SharedMemoryManager, handle, rounds: int
-) -> Tuple[List[float], bytes]:
+) -> tuple[list[float], bytes]:
     """路径 (b)：真实 gRPC FetchRegion 流式收齐（client stub，回环 TCP）。"""
     server, port = _start_grpc_server(mgr)
     try:
@@ -127,7 +126,7 @@ def _report(name: str, durations: Sequence[float], size_bytes: int) -> dict:
     }
 
 
-def main(argv: List[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="bench_region_transfer",
         description="W19 FR-2 方向 B：共享内存大区域 直读 vs gRPC FetchRegion 微基准",

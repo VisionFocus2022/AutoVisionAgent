@@ -13,8 +13,6 @@ import os
 import shutil
 import tempfile
 
-import pytest
-
 # setdefault 不覆盖显式注入（tests/test_w23_log_isolation.py 的定向用例
 # 在测试内 setenv 仍生效）；生产/打包 exe 不设该 env，行为不变。
 _TEST_LOG_DIR = tempfile.mkdtemp(prefix="ava-test-logs-")

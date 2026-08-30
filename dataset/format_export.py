@@ -17,7 +17,6 @@ import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -26,15 +25,15 @@ logger = logging.getLogger(__name__)
 class ExportSummary:
     """导出摘要（不可变）。"""
 
-    classes: Tuple[str, ...]
+    classes: tuple[str, ...]
     images: int
     labels: int
     skipped: int
 
 
-def _load_docs(annotation_dir: str) -> Tuple[List[dict], int]:
+def _load_docs(annotation_dir: str) -> tuple[list[dict], int]:
     """读取目录内全部 LabelMe JSON，坏文件跳过计数。"""
-    docs: List[dict] = []
+    docs: list[dict] = []
     skipped = 0
     for p in sorted(Path(annotation_dir).glob("*.json")):
         try:
@@ -58,7 +57,7 @@ def _resolve_image(doc: dict, image_dir: str, annotation_dir: str) -> Path:
     raise FileNotFoundError(name)
 
 
-def _normalize_pt(x: float, y: float, w: int, h: int) -> Tuple[float, float]:
+def _normalize_pt(x: float, y: float, w: int, h: int) -> tuple[float, float]:
     return (min(max(x / w, 0.0), 1.0), min(max(y / h, 0.0), 1.0))
 
 
@@ -71,7 +70,7 @@ def labelme_dir_to_yolo(
         raise ValueError(f"无有效 LabelMe 标注文件: {annotation_dir}")
 
     classes = sorted({s["label"] for d in docs for s in d["shapes"] if s.get("label")})
-    cls_id: Dict[str, int] = {c: i for i, c in enumerate(classes)}
+    cls_id: dict[str, int] = {c: i for i, c in enumerate(classes)}
 
     out = Path(out_dir)
     (out / "images").mkdir(parents=True, exist_ok=True)
@@ -90,7 +89,7 @@ def labelme_dir_to_yolo(
             skipped += 1
             continue
 
-        lines: List[str] = []
+        lines: list[str] = []
         for s in doc["shapes"]:
             label = s.get("label")
             if label not in cls_id or len(s.get("points", [])) < 2:
@@ -142,8 +141,8 @@ def labelme_dir_to_coco(
     classes = sorted({s["label"] for d in docs for s in d["shapes"] if s.get("label")})
     cat_id = {c: i + 1 for i, c in enumerate(classes)}  # COCO 从 1 起
 
-    images: List[dict] = []
-    annotations: List[dict] = []
+    images: list[dict] = []
+    annotations: list[dict] = []
     img_id = ann_id = 0
     for doc in docs:
         try:

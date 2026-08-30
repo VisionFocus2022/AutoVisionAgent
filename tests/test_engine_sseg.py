@@ -24,8 +24,8 @@ class TestSsegSmpFunctional:
         import segmentation_models_pytorch as smp
         import torch
 
-        from models.supervised.engines.sseg_smp import SsegSmpEngine
         from core.interfaces_supervised import TaskType
+        from models.supervised.engines.sseg_smp import SsegSmpEngine
 
         # 创建小模型并保存
         model = smp.DeepLabV3Plus(

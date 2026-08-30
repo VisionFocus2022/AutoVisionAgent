@@ -17,8 +17,8 @@ sys.path.insert(0, str(REPO))
 
 import cv2  # noqa: E402
 
-from labeling.sam3_adapter import Sam3Adapter  # noqa: E402
 from core.image_io import imread_unicode  # noqa: E402
+from labeling.sam3_adapter import Sam3Adapter  # noqa: E402
 
 DATA = Path(r"E:/学习项目/极柱外观检标注图")
 DEFECT_LABELS = {"YS", "ZW", "TJYS", "HS"}
@@ -140,7 +140,9 @@ for p in imgs:
     masks, scores = adapter._run_instances(img, text="hole")
     big = [m for m in masks if m.sum() >= 64]
     if not big:
-        prec_all.append(0.0); rec_all.append(0.0); best_ious.append(0.0)
+        prec_all.append(0.0)
+        rec_all.append(0.0)
+        best_ious.append(0.0)
         print(f"  {os.path.basename(p)[:24]:26} 零实例")
         continue
     hits = sum(1 for m in big if mask_iou(m > 0, gt_union) >= 0.1)

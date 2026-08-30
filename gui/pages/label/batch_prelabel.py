@@ -14,12 +14,10 @@ predict 批量 worker 的协作取消（threading.Event）与原子写。
 """
 from __future__ import annotations
 
-import json
 import logging
 import os
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from labeling import AnnotationMode, Shape
 from labeling.batch_tools import atomic_write_json  # W39·v6 P2-8：原子写单源
@@ -29,14 +27,14 @@ from project.paths import resolve_base_root
 logger = logging.getLogger(__name__)
 
 
-def autolabel_save_dir(project_dir: Optional[str]) -> str:
+def autolabel_save_dir(project_dir: str | None) -> str:
     """批量预标注输出目录：{root}/results/autolabel_{ts}（共享约定）。"""
     ts = int(time.time())
     root = project_dir or resolve_base_root()
     return os.path.join(root, "results", f"autolabel_{ts}")
 
 
-def _shapes_from_result(result) -> List[Shape]:
+def _shapes_from_result(result) -> list[Shape]:
     """DetectionResult → Shape 列表（语义同 run_ai_prelabel：框→矩形，
     标签缺省 defect；boxes 为 numpy/元组序列——不做真值判断）。"""
     if result.boxes is None or len(result.boxes) == 0:
@@ -57,12 +55,12 @@ def _shapes_from_result(result) -> List[Shape]:
 
 
 def run_batch_prelabel(
-    images: List[str],
+    images: list[str],
     out_dir: str,
     *,
     cancel=None,
     threshold: float = 0.5,
-) -> Dict:
+) -> dict:
     """目录内逐图 DET 推理 → LabelMe JSON 写入 autolabel 目录。
 
     语义：
@@ -88,10 +86,10 @@ def run_batch_prelabel(
         )
 
     os.makedirs(out_dir, exist_ok=True)
-    failed: List[str] = []
+    failed: list[str] = []
     written = 0
     cancelled = False
-    cross_drive: List[str] = []  # 跨盘符回退绝对路径的源图（v6 P2-2）
+    cross_drive: list[str] = []  # 跨盘符回退绝对路径的源图（v6 P2-2）
 
     for image_path in images:
         if cancel is not None and cancel.is_set():

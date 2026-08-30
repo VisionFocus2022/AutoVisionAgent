@@ -6,7 +6,7 @@ torchvision.models.resnet 系列，支持 1000 类 ImageNet 预训练或微调�
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -51,7 +51,7 @@ class ClsTorchvisionEngine(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         if self._model is None:
             raise SupervisedEngineError("引擎未加载权重", task=self.task.value)
@@ -77,7 +77,7 @@ class ClsTorchvisionEngine(AbstractTaskEngine):
         self,
         images: list,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> list:
         """批量推理：将多张图像张量化后一次性前向传播。"""
         if self._model is None:

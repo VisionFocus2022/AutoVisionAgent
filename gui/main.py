@@ -18,7 +18,7 @@ import tempfile
 from PySide6.QtCore import QLockFile, QTimer
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from gui.core.i18n import current_language, set_language, tr
+from gui.core.i18n import set_language, tr
 from gui.core.settings_io import load_user_settings
 from gui.core.shell import MainWindow
 from gui.core.theme import ThemeManager
@@ -195,7 +195,7 @@ def build_window() -> MainWindow:
         model_count = 0
         _img_exts = (".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff")
         _model_exts = (".pt", ".pth", ".onnx", ".ckpt")
-        for root, _dirs, files in os.walk(project_dir):
+        for _root, _dirs, files in os.walk(project_dir):
             for f in files:
                 ext = f.lower()
                 if ext.endswith(_img_exts):

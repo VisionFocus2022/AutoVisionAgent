@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -38,11 +38,10 @@ class PoseYoloEngine(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         if self._model is None:
             raise SupervisedEngineError("引擎未加载权重", task=self.task.value)
-        import torch
 
         results = self._model(image, conf=threshold, verbose=False)
         r = results[0]

@@ -2,9 +2,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 class _StatCard(QFrame):
     """统计卡片。"""
 
-    def __init__(self, title: str, value: str, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, title: str, value: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("statCard")
         self._title_label = QLabel(title)
@@ -50,7 +49,7 @@ class HomePage(QWidget):
     navigate = Signal(str)  # 请求导航到某页面 ID
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._build_ui()

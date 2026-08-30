@@ -23,6 +23,7 @@ transformers/Sam3Adapter（重打包波次后放开）；权重缺失自动 skip
 """
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import json
 import logging
@@ -36,6 +37,7 @@ import pytest
 try:
     from tests.uia.uia_helpers import (
         _find_canvas,
+        _wait_dialog,
         click_button,
         click_nav,
         confirm_dialog_if_present,
@@ -43,7 +45,6 @@ try:
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
-        _wait_dialog,
         find_control_by_name,
         find_edit_controls,
         read_status_text,
@@ -146,10 +147,8 @@ def _ensure_logged_in(win) -> None:
         try:
             win.SetActive()
         except Exception:  # noqa: BLE001
-            try:
+            with contextlib.suppress(Exception):
                 win.SetFocus()
-            except Exception:  # noqa: BLE001
-                pass
         dismiss_stale_dialogs()
         btn = find_control_by_name(win, "离线模式", _BUTTON_TYPES, timeout=8.0)
         if btn is None:
@@ -206,10 +205,8 @@ def _canvas_click(win, rel_x: float, rel_y: float) -> bool:
     # 双发提高投递率（实测偶发丢失）：on_press/run 均幂等重入——
     # INTERACTIVE 重预测替换 pending、AUTO 重跑替换队列，无副作用
     for _i in range(2):
-        try:
+        with contextlib.suppress(Exception):
             win.SetActive()
-        except Exception:  # noqa: BLE001
-            pass
         time.sleep(0.25)  # SetActive 异步落定（z 序/焦点切换有延迟）
         user32.SetCursorPos(x, y)
         time.sleep(0.08)
@@ -233,10 +230,8 @@ def _canvas_commit(win, rel_x: float = 0.5, rel_y: float = 0.5) -> None:
         logger.warning("未定位到画布控件，回退 SendKey Return")
         _press_return(win)
         return
-    try:
+    with contextlib.suppress(Exception):
         win.SetActive()
-    except Exception:  # noqa: BLE001
-        pass
     rect = canvas.BoundingRectangle
     user32 = ctypes.windll.user32
     x = int(rect.left + (rect.right - rect.left) * rel_x)
@@ -252,10 +247,8 @@ def _canvas_commit(win, rel_x: float = 0.5, rel_y: float = 0.5) -> None:
 
 def _press_return(win) -> None:
     """页面作用域 Return → controller.handle_commit（提交/drain 队列）。"""
-    try:
+    with contextlib.suppress(Exception):
         win.SetActive()
-    except Exception:  # noqa: BLE001
-        pass
     import uiautomation as _ua
 
     _ua.SendKey(_ua.Keys.VK_RETURN)
@@ -304,10 +297,8 @@ def _hard_confirm_save_dialog() -> None:
     if dlg is None:
         return
     logger.warning("保存对话框未关闭，补键盘确认")
-    try:
+    with contextlib.suppress(Exception):
         dlg.SetActive()
-    except Exception:  # noqa: BLE001
-        pass
     time.sleep(0.3)
     import uiautomation as _ua
 

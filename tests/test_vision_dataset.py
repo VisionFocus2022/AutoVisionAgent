@@ -6,9 +6,7 @@ W1 变更：读图失败由「静默 None」改为显式 ValueError（P2-5），
 """
 import io
 import json
-import os
 
-import numpy as np
 import pytest
 
 

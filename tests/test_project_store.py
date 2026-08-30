@@ -2,7 +2,6 @@
 
 覆盖：项目创建/列出/元数据读写，TaskCounter next_id/snapshot。
 """
-import json
 import os
 
 import pytest

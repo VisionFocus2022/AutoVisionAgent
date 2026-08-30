@@ -1,8 +1,6 @@
 """设置页（FR-D3）— 主题/语言/设备/路径配置，持久化到 user_settings.json。"""
 from __future__ import annotations
 
-from typing import Optional
-
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox,
@@ -16,9 +14,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from core.constants import CONFIG_DIR as _CONFIG_DIR
 from gui.core.i18n import tr
 from gui.core.settings_io import load_user_settings, save_user_settings
-from core.constants import CONFIG_DIR as _CONFIG_DIR
 
 
 class SettingsPage(QWidget):
@@ -26,7 +24,7 @@ class SettingsPage(QWidget):
 
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._build_ui()

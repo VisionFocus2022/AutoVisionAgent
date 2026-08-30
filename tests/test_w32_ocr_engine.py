@@ -21,8 +21,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 def test_ocr_engine_registers_without_easyocr(monkeypatch):
     """模块级不触 easyocr：毒化后 register_all_engines 仍注册 OCR。"""
     import models.supervised.engines as engines_pkg
-    from models.supervised.registry import get_default_registry
     from core.interfaces_supervised import TaskType
+    from models.supervised.registry import get_default_registry
 
     monkeypatch.setitem(sys.modules, "easyocr", None)
     engines_pkg.register_all_engines()
@@ -89,8 +89,8 @@ def test_ocr_infer_maps_text_lines_to_xyxy(monkeypatch, tmp_path):
     """四点 quad → xyxy 框；labels=识别串；scores=逐行置信度；threshold 过滤。"""
     import numpy as np
 
-    from models.supervised.engines import ocr_easyocr
     from core.interfaces_supervised import TaskType
+    from models.supervised.engines import ocr_easyocr
 
     class _FakeReader:
         def readtext(self, image, detail=1):
@@ -145,7 +145,7 @@ def test_train_page_combo_excludes_ocr(qapp=None):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QComboBox
 
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     from core.interfaces_supervised import TaskType
     from gui.core.tasks_ui import populate_task_combo
 
@@ -165,7 +165,7 @@ def test_predict_combo_lists_ocr_when_registered():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from PySide6.QtWidgets import QApplication, QComboBox
 
-    app = QApplication.instance() or QApplication([])
+    QApplication.instance() or QApplication([])
     from core.interfaces_supervised import TaskType
     from gui.core.tasks_ui import populate_task_combo
 

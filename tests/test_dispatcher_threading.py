@@ -15,8 +15,8 @@ from collections import OrderedDict
 
 import pytest
 
-from core.interfaces_supervised import DetectionResult, TaskType
 import industrial_vision_platform.vision_dispatcher as vp
+from core.interfaces_supervised import DetectionResult, TaskType
 
 
 class _FakeEngine:

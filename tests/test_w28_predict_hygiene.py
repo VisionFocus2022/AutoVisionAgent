@@ -94,9 +94,9 @@ def test_batch_save_dir_no_project_falls_back_to_workspace(tmp_path, monkeypatch
 def test_load_model_supervised_engine_error_recovers(qapp, monkeypatch, tmp_path):
     """坏 checkpoint 抛 SupervisedEngineError → 状态栏诚实报加载失败
     （旧元组漏收则逃出槽函数、引擎残留半加载态）。"""
+    from core.exceptions import SupervisedEngineError
     from gui.pages.predict import page as pred_mod
     from gui.pages.predict.page import PredictPage
-    from core.exceptions import SupervisedEngineError
 
     page = PredictPage()
     msgs = []
@@ -137,9 +137,9 @@ def test_batch_cancel_skips_batch_results_json(
     qapp, fake_threads, monkeypatch, tmp_path
 ):
     """取消后不得写 batch_results.json（现状：写空/截断 JSON 到非空目录）。"""
+    from core.interfaces_supervised import DetectionResult, TaskType
     from gui.pages.predict import page as pred_mod
     from gui.pages.predict.page import PredictPage
-    from core.interfaces_supervised import DetectionResult, TaskType
 
     d = tmp_path / "batch"
     d.mkdir()

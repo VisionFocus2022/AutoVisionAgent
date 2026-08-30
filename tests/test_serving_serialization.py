@@ -251,9 +251,11 @@ def test_decode_image_bytes_failure_logs_warning(tmp_path, caplog):
     import logging
 
     shm = SharedMemoryManager(base_dir=str(tmp_path))
-    with caplog.at_level(logging.WARNING, logger="serving.serialization"):
-        with pytest.raises(ValueError, match="无法解码"):
-            decode_request_image(pb.DetectRequest(image_bytes=b"garbage!"), shm)
+    with (
+        caplog.at_level(logging.WARNING, logger="serving.serialization"),
+        pytest.raises(ValueError, match="无法解码"),
+    ):
+        decode_request_image(pb.DetectRequest(image_bytes=b"garbage!"), shm)
     warns = [r for r in caplog.records
              if r.levelno == logging.WARNING and "解码" in r.getMessage()]
     assert warns, "image_bytes 解码失败应落 WARNING"

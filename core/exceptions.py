@@ -4,8 +4,6 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
 
 class AppError(Exception):
     """应用层所有自定义异常的基类。"""
@@ -54,7 +52,7 @@ class ModelExportError(AppError):
         self,
         message: str = "",
         *args: object,
-        details: Optional[dict] = None,
+        details: dict | None = None,
     ) -> None:
         super().__init__(message, *args)
         self._details: dict = details or {}

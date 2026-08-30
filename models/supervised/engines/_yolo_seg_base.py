@@ -8,7 +8,7 @@ seg/pseg 共享 load/infer 逻辑，子类只覆写 task 与 mask 处理顺序�
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
@@ -43,7 +43,7 @@ class _YoloSegBase(AbstractTaskEngine):
         self,
         image: Any,
         threshold: float = 0.5,
-        labels: Optional[list] = None,
+        labels: list | None = None,
     ) -> DetectionResult:
         """执行实例分割，返回每个实例的 bbox + 二值 mask。"""
         if self._model is None:

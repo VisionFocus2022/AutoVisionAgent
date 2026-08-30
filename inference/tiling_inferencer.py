@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import numpy as np
@@ -28,7 +28,7 @@ def compute_tiles(
     img_w: int,
     tile_size: int = 1024,
     overlap: int = 128,
-) -> List[Tuple[int, int, int, int]]:
+) -> list[tuple[int, int, int, int]]:
     """计算瓦片网格坐标。
 
     Args:
@@ -67,7 +67,7 @@ def tile_infer(
     overlap: int = 128,
     threshold: float = 0.5,
     merge_iou: float = 0.45,
-) -> List:
+) -> list:
     """对大图执行 sliding-window 分块推理。
 
     Args:
@@ -228,7 +228,7 @@ def tile_infer_sv(
     overlap_wh: int = 100,
     iou_threshold: float = 0.45,
     threshold: float = 0.5,
-) -> List:
+) -> list:
     """sv.InferenceSlicer 后端滑窗推理（W6-T1，对标 supervision 方法）。
 
     与 :func:`tile_infer` 同契约：小图直推；瓦片内坐标经 sv 合并

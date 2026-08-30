@@ -1,4 +1,4 @@
-"""UIA uia_helpers.find_main_window 窗口消歧守卫（W21 打包验证期发现）。
+r"""UIA uia_helpers.find_main_window 窗口消歧守卫（W21 打包验证期发现）。
 
 背景：桌面存在同名顶层窗口（如用户打开的 dist\AutoVisionAgent Explorer
 文件夹窗，CabinetWClass）时，Name-only 匹配按 UIA 枚举序错绑——整套

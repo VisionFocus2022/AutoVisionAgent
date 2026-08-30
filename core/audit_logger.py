@@ -14,7 +14,7 @@ import os
 import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from core.constants import CONFIG_DIR
 
@@ -44,23 +44,23 @@ class AuditLogger:
                   image="test.jpg", result_count=5)
     """
 
-    _instance: Optional["AuditLogger"] = None
+    _instance: AuditLogger | None = None
     _instance_lock = threading.Lock()
 
-    def __new__(cls, *args: Any, **kwargs: Any) -> "AuditLogger":
+    def __new__(cls, *args: Any, **kwargs: Any) -> AuditLogger:
         if cls._instance is None:
             with cls._instance_lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, log_dir: Optional[Path] = None) -> None:
+    def __init__(self, log_dir: Path | None = None) -> None:
         if hasattr(self, "_initialized"):
             return
         self._initialized = True
         self._log_dir = Path(log_dir) if log_dir else _resolve_audit_dir()
         self._lock = threading.Lock()
-        self._buffer: List[Dict[str, Any]] = []
+        self._buffer: list[dict[str, Any]] = []
         self._buffer_max = 100  # 缓冲区满后刷盘
         self._buffer_hard_max = 1000  # W39·v6 P3-3：目录不可写时的内存硬上限（丢最旧）
         # W11-P1: 首次创建单例时注册退出钩子，退出/崩溃兜底刷盘，
@@ -80,7 +80,7 @@ class AuditLogger:
             user: 操作用户。
             **details: 其他任意键值对细节。
         """
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "timestamp": datetime.now().isoformat(),
             "action": action,
             "user": user,
@@ -134,11 +134,11 @@ class AuditLogger:
 
     def query(
         self,
-        action: Optional[str] = None,
-        user: Optional[str] = None,
-        date_str: Optional[str] = None,
+        action: str | None = None,
+        user: str | None = None,
+        date_str: str | None = None,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """查询审计日志。
 
         Args:
@@ -157,9 +157,9 @@ class AuditLogger:
         if not log_file.exists():
             return []
 
-        results: List[Dict[str, Any]] = []
+        results: list[dict[str, Any]] = []
         try:
-            with open(log_file, "r", encoding="utf-8") as f:
+            with open(log_file, encoding="utf-8") as f:
                 for line in f:
                     try:
                         entry = json.loads(line.strip())
@@ -176,7 +176,7 @@ class AuditLogger:
         return results[-limit:]
 
 
-def get_audit_logger(log_dir: Optional[Path] = None) -> AuditLogger:
+def get_audit_logger(log_dir: Path | None = None) -> AuditLogger:
     """获取全局审计日志单例。"""
     return AuditLogger(log_dir)
 

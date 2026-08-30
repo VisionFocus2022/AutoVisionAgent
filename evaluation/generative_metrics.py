@@ -6,8 +6,7 @@ FID / 感知损失评估（FR-B2）
 """
 from __future__ import annotations
 
-import math
-from typing import List, Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 import numpy as np
 
@@ -106,7 +105,7 @@ def fid_score(
     return float(fid)
 
 
-def _sqrtm(mat: np.ndarray, eps: float = 1e-6) -> Tuple[np.ndarray, bool]:
+def _sqrtm(mat: np.ndarray, eps: float = 1e-6) -> tuple[np.ndarray, bool]:
     """numpy 版矩阵开方（替代 scipy.linalg.sqrtm）。
 
     - 对称矩阵：eigh 快路径（含 eps 地板，行为与历史版本一致）。

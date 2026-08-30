@@ -4,9 +4,7 @@
 """
 from __future__ import annotations
 
-from typing import Optional
-
-from labeling.base import AnnotationMode, DEFAULT_COLOR, RGBA, Point, Shape
+from labeling.base import DEFAULT_COLOR, RGBA, AnnotationMode, Point, Shape
 from labeling.modes._base import AbstractLabeler
 
 
@@ -37,7 +35,7 @@ class KeypointLabeler(AbstractLabeler):
         self._active = True
         self._points = [pt]
 
-    def on_release(self, pt: Point) -> Optional[Shape]:
+    def on_release(self, pt: Point) -> Shape | None:
         """释放返回单点标注。"""
         if not self._points:
             return None

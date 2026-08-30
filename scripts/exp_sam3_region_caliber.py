@@ -21,11 +21,11 @@ from pathlib import Path
 REPO_ROOT = Path(r"E:/学习项目/视觉大模型")
 sys.path.insert(0, str(REPO_ROOT))
 
-import cv2
-import numpy as np
+import cv2  # noqa: E402  # sys.path 注入后方可导入仓库依赖
+import numpy as np  # noqa: E402  # 同上
 
-from labeling.sam3_adapter import Sam3Adapter, _mask_to_polygon
-from core.image_io import imread_unicode
+from core.image_io import imread_unicode  # noqa: E402  # 同上
+from labeling.sam3_adapter import Sam3Adapter, _mask_to_polygon  # noqa: E402  # 同上
 
 DATA = Path(r"E:/学习项目/极柱外观检标注图")
 MANIFEST = REPO_ROOT / "weights/sam3-pole-ft/manifest.json"
@@ -128,7 +128,7 @@ for margin in MARGINS:
             poly_iou(_mask_to_polygon(clip_to_box(best_a, box)), t, h, w)
         )
         # nearest（质心离点击锚最近——W52 点击口径赢家移植区域场景）
-        def _d(m):
+        def _d(m, cx=cx, cy=cy):
             ys2, xs2 = np.nonzero(m)
             if len(xs2) == 0:
                 return 1e18

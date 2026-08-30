@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from core.constants import CONFIG_DIR
 
@@ -25,18 +25,18 @@ SETTINGS_FILENAME = "user_settings.json"
 _VALID_DEVICES = ("cuda", "cpu")
 
 
-def _resolve_dir(config_dir: Optional[Union[str, "os.PathLike[str]"]]) -> str:
+def _resolve_dir(config_dir: str | os.PathLike[str] | None) -> str:
     """解析配置目录：显式参数优先，缺省用模块级 CONFIG_DIR（可测试注入）。"""
     return str(config_dir) if config_dir is not None else str(CONFIG_DIR)
 
 
 def load_user_settings(
-    config_dir: Optional[Union[str, "os.PathLike[str]"]] = None,
-) -> Dict[str, Any]:
+    config_dir: str | os.PathLike[str] | None = None,
+) -> dict[str, Any]:
     """加载 user_settings.json；缺失/坏 JSON/非字典 → {}（代码默认值兜底）。"""
     path = os.path.join(_resolve_dir(config_dir), SETTINGS_FILENAME)
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError) as exc:
         logger.debug("user_settings.json 不可用（%s），使用默认值", exc)
@@ -45,8 +45,8 @@ def load_user_settings(
 
 
 def save_user_settings(
-    settings: Dict[str, Any],
-    config_dir: Optional[Union[str, "os.PathLike[str]"]] = None,
+    settings: dict[str, Any],
+    config_dir: str | os.PathLike[str] | None = None,
 ) -> str:
     """保存 user_settings.json（UTF-8 · ensure_ascii=False · indent=2）。
 
@@ -61,8 +61,8 @@ def save_user_settings(
 
 
 def get_device(
-    config_dir: Optional[Union[str, "os.PathLike[str]"]] = None,
-) -> Optional[str]:
+    config_dir: str | os.PathLike[str] | None = None,
+) -> str | None:
     """读取用户持久化推理设备。
 
     未设置 / 非法值 / 文件不可用 → None，调用方走自身默认链

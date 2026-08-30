@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Optional
 
 from PySide6.QtWidgets import QFileDialog, QWidget
 
@@ -21,7 +20,7 @@ def _load_last_dir(key: str = "last_dir") -> str:
     """加载最近使用的目录。"""
     try:
         if os.path.exists(_LAST_DIR_FILE):
-            with open(_LAST_DIR_FILE, "r", encoding="utf-8") as f:
+            with open(_LAST_DIR_FILE, encoding="utf-8") as f:
                 data = json.load(f)
                 return data.get(key, "")
     except (OSError, json.JSONDecodeError):
@@ -37,7 +36,7 @@ def _save_last_dir(path: str, key: str = "last_dir") -> None:
     try:
         data = {}
         if os.path.exists(_LAST_DIR_FILE):
-            with open(_LAST_DIR_FILE, "r", encoding="utf-8") as f:
+            with open(_LAST_DIR_FILE, encoding="utf-8") as f:
                 data = json.load(f)
         data[key] = directory
         with open(_LAST_DIR_FILE, "w", encoding="utf-8") as f:

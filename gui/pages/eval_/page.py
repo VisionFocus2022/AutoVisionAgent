@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Optional, Tuple
 
-from PySide6.QtCore import Qt, Signal, QRectF, QPointF, Slot
+from PySide6.QtCore import QRectF, Qt, Signal, Slot
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -26,7 +25,7 @@ from evaluation.eval_flow import run_eval_task
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main, ui_on_error
-from gui.widgets.file_dialog import pick_open_file, pick_directory
+from gui.widgets.file_dialog import pick_directory, pick_open_file
 
 logger = logging.getLogger(__name__)
 
@@ -43,13 +42,13 @@ class ConfusionMatrixWidget(QFrame):
     paintEvent 绘制"无混淆矩阵数据"提示，而非编造矩阵（P2-9 诚实化）。
     """
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("confusionMatrix")
         self.setMinimumHeight(220)
         self.setStyleSheet("background-color: #13151c; border-radius: 8px;")
-        self._matrix: List[List[int]] = []
-        self._labels: List[str] = []
+        self._matrix: list[list[int]] = []
+        self._labels: list[str] = []
         self._title_label = QLabel(self)
         self._title_label.setStyleSheet(
             "color: #cbd5e1; font-size: 12px; font-weight: bold; padding: 4px 8px;"
@@ -62,7 +61,7 @@ class ConfusionMatrixWidget(QFrame):
     def set_title(self, title: str) -> None:
         self._title_label.setText(title)
 
-    def set_matrix(self, matrix: List[List[int]], labels: List[str]) -> None:
+    def set_matrix(self, matrix: list[list[int]], labels: list[str]) -> None:
         """设置混淆矩阵数据和标签。"""
         self._matrix = matrix
         self._labels = labels
@@ -156,7 +155,7 @@ class EvalPage(QWidget):
 
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._build_ui()

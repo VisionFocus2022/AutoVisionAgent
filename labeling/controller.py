@@ -5,13 +5,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from PySide6.QtCore import Qt, QPointF
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGraphicsView
 
-from labeling.base import AnnotationMode, DEFAULT_COLOR, Point, Shape
+from labeling.base import DEFAULT_COLOR, AnnotationMode, Point, Shape
 from labeling.canvas import AnnotationCanvas
 from labeling.modes import make_labeler
 
@@ -39,7 +37,7 @@ class AnnotationController:
         self._mode: AnnotationMode = mode
         self._label: str = label
         self._labeler = None
-        self._view: Optional[QGraphicsView] = None
+        self._view: QGraphicsView | None = None
         self._make_labeler()
 
     # ============================== 模式/标签 ============================== #
@@ -90,7 +88,7 @@ class AnnotationController:
         view.setMouseTracking(True)
 
     # ============================== 坐标转换 ============================== #
-    def _to_scene_point(self, view: QGraphicsView, event) -> Optional[Point]:
+    def _to_scene_point(self, view: QGraphicsView, event) -> Point | None:
         """将视图坐标转为场景坐标。"""
         pos = view.mapToScene(event.pos())
         return (float(pos.x()), float(pos.y()))

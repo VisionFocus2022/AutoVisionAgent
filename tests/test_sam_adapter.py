@@ -220,7 +220,7 @@ class TestSamAdapterSetImagePerf:
     换对象命中后更新引用，把稳态开销降为指针比较。
     """
 
-    def _counting(self) -> "_CountingArray":
+    def _counting(self) -> _CountingArray:
         _CountingArray.tobytes_calls = 0
         return np.zeros((32, 32, 3), dtype=np.uint8).view(_CountingArray)
 
@@ -316,5 +316,5 @@ class TestSamRealCheckpointSmoke:
         xs = [p[0] for p in poly]
         ys = [p[1] for p in poly]
         # 轮廓应落在白方块附近（界内 + 容差）
-        assert 32 <= min(xs) and max(xs) <= 224
-        assert 32 <= min(ys) and max(ys) <= 224
+        assert min(xs) >= 32 and max(xs) <= 224
+        assert min(ys) >= 32 and max(ys) <= 224

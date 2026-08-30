@@ -16,11 +16,11 @@ from pathlib import Path
 REPO_ROOT = Path(r"E:/学习项目/视觉大模型")
 sys.path.insert(0, str(REPO_ROOT))
 
-import cv2
-import numpy as np
+import cv2  # noqa: E402  # sys.path 注入后方可导入仓库依赖
+import numpy as np  # noqa: E402  # 同上
 
-from labeling.sam3_adapter import Sam3Adapter
-from core.image_io import imread_unicode
+from core.image_io import imread_unicode  # noqa: E402  # 同上
+from labeling.sam3_adapter import Sam3Adapter  # noqa: E402  # 同上
 
 DATA = Path(r"E:/学习项目/极柱外观检标注图")
 MANIFEST = REPO_ROOT / "weights/sam3-pole-ft/manifest.json"
@@ -88,7 +88,7 @@ for p in imgs:
 print(f"[exp] 有效目标 {len(targets)}", flush=True)
 
 # ---- A: 半径扫描（实例选择=现 argmax）----
-import labeling.sam3_adapter as sa
+import labeling.sam3_adapter as sa  # noqa: E402  # A 节就地导入（前有可执行代码）
 
 for radius in (8, 16, 32, 64):
     sa._CLICK_BOX_R = radius
@@ -129,7 +129,7 @@ for p, h, w, t, cx, cy in targets:
     best_c = max(pool, key=lambda i: int(masks[i].sum()))
     sel["contains"].append(poly_iou(sa._mask_to_polygon(masks[best_c]), t, h, w))
     # 距点击最近（掩码质心距离）
-    def _centroid_dist(m):
+    def _centroid_dist(m, cx=cx, cy=cy):
         ys, xs = np.nonzero(m)
         if len(xs) == 0:
             return 1e9

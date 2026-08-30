@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from core.interfaces_supervised import DetectionResult, TaskType
 from serving.proto import autovisionagent_pb2 as pb
-from serving.shared_memory import SharedMemoryHandle, SharedMemoryManager
+from serving.shared_memory import SharedMemoryManager
+
+if TYPE_CHECKING:  # numpy 仅注解层使用，运行时按需函数内导入（保持惰性）
+    import numpy
 
 logger = logging.getLogger(__name__)
 
@@ -174,12 +177,11 @@ def _array_payload(
 def decode_request_image(
     request: pb.DetectRequest,
     shm: SharedMemoryManager,
-) -> "numpy.ndarray":
+) -> numpy.ndarray:
     """从 DetectRequest 解出图像 numpy 数组 (H, W, 3) RGB。
 
     优先级：image_shm > image_path > image_bytes。
     """
-    import numpy as np
 
     # 1) 共享内存大图（RAW uint8，shape=[H,W,C]）
     if request.HasField("image_shm") and request.image_shm.length > 0:
@@ -204,7 +206,7 @@ def decode_request_image(
     raise ValueError("DetectRequest 未提供任何图像源")
 
 
-def _load_image_file(path: str) -> "numpy.ndarray":
+def _load_image_file(path: str) -> numpy.ndarray:
     """通过 PIL 加载图像文件为 RGB numpy 数组。"""
     from PIL import Image
     if not os.path.exists(path):
@@ -214,9 +216,10 @@ def _load_image_file(path: str) -> "numpy.ndarray":
     return np.asarray(img)
 
 
-def _decode_image_bytes(raw: bytes) -> Optional["numpy.ndarray"]:
+def _decode_image_bytes(raw: bytes) -> numpy.ndarray | None:
     """解码 JPEG/PNG/... 字节为 RGB numpy 数组；失败返回 None。"""
     import io
+
     import numpy as np
     try:
         from PIL import Image
@@ -229,7 +232,7 @@ def _decode_image_bytes(raw: bytes) -> Optional["numpy.ndarray"]:
         return None
 
 
-def _gray_to_rgb(arr: "numpy.ndarray") -> "numpy.ndarray":
+def _gray_to_rgb(arr: numpy.ndarray) -> numpy.ndarray:
     import numpy as np
     return np.repeat(arr[:, :, None], 3, axis=2)
 

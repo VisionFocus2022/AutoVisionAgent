@@ -6,7 +6,7 @@
 """
 from __future__ import annotations
 
-from PySide6.QtCore import QRunnable, Qt, Signal, QObject
+from PySide6.QtCore import QObject, QRunnable, Qt, Signal
 from PySide6.QtGui import QImage, QPainter
 
 

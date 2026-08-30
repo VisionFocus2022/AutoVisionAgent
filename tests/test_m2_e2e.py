@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+
 import numpy as np
 import pytest
 
@@ -58,7 +59,6 @@ class TestEngineRegistration:
     def test_engines_are_protocols(self) -> None:
         """引擎实例满足 ISupervisedTaskEngine 接口。"""
         from core.interfaces_supervised import (
-            ISupervisedTaskEngine,
             TaskType,
         )
         from models.supervised.engines import register_all_engines

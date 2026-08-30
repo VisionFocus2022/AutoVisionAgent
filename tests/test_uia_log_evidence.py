@@ -9,8 +9,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests" / "uia"))
 
 from log_evidence import LogAnchor, resolve_app_log_dir, wait_audit_line  # noqa: E402

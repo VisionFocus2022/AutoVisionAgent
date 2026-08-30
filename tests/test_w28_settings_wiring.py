@@ -155,6 +155,6 @@ def test_about_text_no_zero_shot_claim(qapp):
     from gui.pages.settings.page import SettingsPage
 
     page = SettingsPage()
-    texts = " ".join(l.text() for l in page.findChildren(QLabel))
+    texts = " ".join(lbl.text() for lbl in page.findChildren(QLabel))
     assert "零样本" not in texts, "About 不得再宣称零样本范式（W18 起未实装）"
     assert "双范式" not in texts

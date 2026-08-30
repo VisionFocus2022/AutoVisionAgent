@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -28,8 +27,8 @@ from PySide6.QtWidgets import (
 from core.interfaces_supervised import TaskType, TrainConfig
 from gui.core.i18n import tr
 from gui.core.tasks_ui import populate_task_combo
-from gui.widgets.loss_chart import LossChartWidget
 from gui.pages.train.worker import TrainWorker
+from gui.widgets.loss_chart import LossChartWidget
 from models.supervised.amp_preflight import amp_preflight
 
 logger = logging.getLogger(__name__)
@@ -69,10 +68,10 @@ class TrainPage(QWidget):
 
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
-        self._worker: Optional[TrainWorker] = None
+        self._worker: TrainWorker | None = None
         self._build_ui()
         self._wire()
 

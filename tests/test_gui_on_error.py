@@ -167,6 +167,7 @@ def test_deploy_modelexporterror_recovers_button(qapp, fake_threads, monkeypatch
     page._out_edit.setText(str(tmp_path / "out"))
 
     import torch
+
     from core.exceptions import ModelExportError
 
     class _FakeModel:
@@ -239,7 +240,6 @@ def test_flaw_gen_unexpected_exception_recovers_button(qapp, fake_threads, monke
     page._flaw_edit.setText(str(tmp_path / "flaw"))
     page._out_edit.setText(str(tmp_path / "out"))
 
-    import gui.pages.flaw_gen.page as fg_mod
 
     # 引擎注册/获取是 _work 内的函数局部导入——打源模块补丁（调用期生效）
     monkeypatch.setattr("models.supervised.engines.register_all_engines", lambda: None)

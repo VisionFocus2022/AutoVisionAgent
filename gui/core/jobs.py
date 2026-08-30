@@ -23,13 +23,15 @@ grep run_job/PageJob = 0。本模块提供三者中最通用的"裸 Thread"一�
 """
 from __future__ import annotations
 
+import contextlib
 import inspect
 import itertools
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +64,7 @@ class JobHandle:
         check = getattr(self.thread, "is_alive", None)
         return bool(check()) if callable(check) else False
 
-    def join(self, timeout_s: Optional[float] = None) -> None:
+    def join(self, timeout_s: float | None = None) -> None:
         """有界/无限 join（替换线程无 join 时立即返回）。"""
         do_join = getattr(self.thread, "join", None)
         if callable(do_join):
@@ -70,7 +72,7 @@ class JobHandle:
 
 
 # 注册表：job_id -> 句柄；_lock 保护全部读写（含序号分配）
-_jobs: "dict[int, JobHandle]" = {}
+_jobs: dict[int, JobHandle] = {}
 _lock = threading.RLock()
 _seq = itertools.count(1)
 
@@ -94,7 +96,7 @@ def run_job(
     fn: Callable[..., Any],
     *,
     name: str,
-    on_error: Optional[ErrorHandler] = None,
+    on_error: ErrorHandler | None = None,
 ) -> JobHandle:
     """在 daemon 线程执行 fn，全程登记注册表，返回可取消句柄。
 
@@ -161,13 +163,13 @@ def run_job(
     return handle
 
 
-def active_jobs() -> "list[str]":
+def active_jobs() -> list[str]:
     """当前在册任务名列表（线程安全快照，注册先后序，同名可重复）。"""
     with _lock:
         return [h.name for h in _jobs.values()]
 
 
-def request_stop_all(timeout_s: float = 5.0) -> "list[str]":
+def request_stop_all(timeout_s: float = 5.0) -> list[str]:
     """对全部在册任务置位 cancel 并有界等待退出，返回未退出者名字。
 
     timeout_s 是所有 join 共享的总预算（非单线程预算）：到点即返回，
@@ -195,10 +197,9 @@ def request_stop_all(timeout_s: float = 5.0) -> "list[str]":
         remaining = deadline - time.monotonic()
         do_join = getattr(thread, "join", None)
         if callable(do_join):
-            try:
+            # 线程未 start 等异常；以注册表状态为准继续收尾
+            with contextlib.suppress(RuntimeError):
                 do_join(max(0.0, remaining))
-            except RuntimeError:
-                pass  # 线程未 start 等异常；以注册表状态为准继续收尾
 
     with _lock:
         still_registered = {id(h) for h in _jobs.values()}

@@ -83,8 +83,8 @@ def test_scanner_actually_scans():
     """探针：守卫真的在扫（防止 rglob 失效静默空集假绿）。"""
     literals = _tr_literals()
     assert len(literals) > 50, f"扫描面异常（仅 {len(literals)} 个字面量）"
-    assert any("登录" == k for k in literals), "已知高频串未扫到"
-    assert any("旧" == k for k in literals), "单引号字面量未扫到（W38 口径）"
+    assert any(k == "登录" for k in literals), "已知高频串未扫到"
+    assert any(k == "旧" for k in literals), "单引号字面量未扫到（W38 口径）"
 
 
 @pytest.mark.unit

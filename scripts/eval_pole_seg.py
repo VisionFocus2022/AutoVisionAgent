@@ -102,7 +102,7 @@ def main(argv=None) -> int:
             masks_np = res.masks.data.cpu().numpy()  # (N, mh, mw) letterbox 域
             # 逆 letterbox：从预测框回原图坐标更稳——用 boxes 缩放掩码
             boxes = res.boxes.xyxy.cpu().numpy()
-            for mi, (m, (x1, y1, x2, y2)) in enumerate(zip(masks_np, boxes)):
+            for m, (x1, y1, x2, y2) in zip(masks_np, boxes, strict=True):
                 # 质心是否落在预测框内（原图域）=「点击选中该实例」语义
                 if not (x1 <= cx <= x2 and y1 <= cy <= y2):
                     continue

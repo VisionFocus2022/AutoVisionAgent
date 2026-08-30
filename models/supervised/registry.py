@@ -20,8 +20,9 @@
 """
 from __future__ import annotations
 
+import builtins
 import threading
-from typing import Callable, Dict, List, Optional
+from collections.abc import Callable
 
 from core.exceptions import UnsupportedTaskError
 from core.interfaces_supervised import ISupervisedTaskEngine, TaskType
@@ -33,8 +34,8 @@ class EngineRegistry:
     """任务引擎注册表（工厂 + 实例缓存）。"""
 
     def __init__(self) -> None:
-        self._factories: Dict[TaskType, EngineFactory] = {}
-        self._cache: Dict[TaskType, ISupervisedTaskEngine] = {}
+        self._factories: dict[TaskType, EngineFactory] = {}
+        self._cache: dict[TaskType, ISupervisedTaskEngine] = {}
         self._lock = threading.RLock()
 
     def register(self, task: TaskType, factory: EngineFactory) -> None:
@@ -67,11 +68,11 @@ class EngineRegistry:
             self._cache[task] = engine
             return engine
 
-    def list(self) -> List[TaskType]:
+    def list(self) -> builtins.list[TaskType]:
         with self._lock:
             return sorted(self._factories.keys(), key=lambda t: t.value)
 
-    def clear_cache(self, task: Optional[TaskType] = None) -> None:
+    def clear_cache(self, task: TaskType | None = None) -> None:
         """清除实例缓存（不注销工厂），并释放引擎占用的 GPU 显存。
 
         task=None 清全部；否则只清指定任务。
@@ -100,8 +101,8 @@ _default_registry = EngineRegistry()
 
 def register_engine(
     task_type: TaskType,
-    factory: Optional[EngineFactory] = None,
-    registry: Optional[EngineRegistry] = None,
+    factory: EngineFactory | None = None,
+    registry: EngineRegistry | None = None,
 ) -> Callable[[type], type]:
     """
     类装饰器：注册任务引擎。
@@ -123,7 +124,7 @@ def register_engine(
 
 
 def get_engine(
-    task_type: TaskType, registry: Optional[EngineRegistry] = None
+    task_type: TaskType, registry: EngineRegistry | None = None
 ) -> ISupervisedTaskEngine:
     """从默认（或指定）注册表获取引擎实例。"""
     reg = registry if registry is not None else _default_registry

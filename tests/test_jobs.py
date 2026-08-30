@@ -181,7 +181,7 @@ class TestStopAll:
             started_stub.set()
             time.sleep(1.2)  # 无视 cancel 的赖床任务
 
-        ha = run_job(cooperative, name="coop")
+        run_job(cooperative, name="coop")
         hb = run_job(stubborn, name="stubborn")
         assert started_coop.wait(3) and started_stub.wait(3)
 

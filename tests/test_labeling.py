@@ -13,10 +13,10 @@ import pytest
 pytest.importorskip("PySide6")  # 无 PySide6 则跳过本模块
 
 import json
-import tempfile
 
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from core.exceptions import AnnotationIOError, InvalidShapeError  # noqa: E402
 from labeling import (  # noqa: E402
     AnnotationMode,
     Shape,
@@ -39,7 +39,6 @@ from labeling.geometry import (  # noqa: E402
     simplify_polyline,
 )
 from labeling.modes import make_labeler  # noqa: E402
-from core.exceptions import AnnotationIOError, InvalidShapeError  # noqa: E402
 
 
 # Qt 应用级会话只允许一个 QApplication 实例
@@ -155,7 +154,7 @@ def test_brush_mode_simplifies_stroke():
     corners = [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
     loop = corners + [corners[0]]
     raw = []
-    for a, b in zip(loop, loop[1:]):
+    for a, b in zip(loop, loop[1:], strict=False):  # 错位一格=闭合边序列
         for i in range(10):
             raw.append((a[0] + (b[0] - a[0]) * i / 10,
                         a[1] + (b[1] - a[1]) * i / 10))
@@ -191,7 +190,7 @@ def test_polygon_preview_rubber_band():
     lab.on_move((50, 50))
     prev = lab.preview()
     assert prev is not None
-    assert (50, 50) == prev.points[-1]  # 末端为光标
+    assert prev.points[-1] == (50, 50)  # 末端为光标
 
 
 @pytest.mark.unit

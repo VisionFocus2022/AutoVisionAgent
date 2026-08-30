@@ -16,7 +16,6 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _EXE_LOG_DIR = _REPO_ROOT / "dist" / "AutoVisionAgent" / "logs"
@@ -47,7 +46,7 @@ class LogAnchor:
         assert not anchor.error_lines()
     """
 
-    def __init__(self, log_dir: Optional[Path] = None):
+    def __init__(self, log_dir: Path | None = None):
         self.dir = Path(log_dir) if log_dir else resolve_app_log_dir()
         self.path = self.dir / "autovision.log"
         self.offset = self._current_size()
@@ -80,13 +79,13 @@ class LogAnchor:
 
     def error_lines(self) -> list:
         """尾部增量中的 ERROR 级日志行（诚实失败类操作的副作用断言用）。"""
-        return [l for l in self.tail().splitlines() if " - ERROR - " in l]
+        return [ln for ln in self.tail().splitlines() if " - ERROR - " in ln]
 
 
 def wait_audit_line(
     anchor: LogAnchor,
     action: str,
-    user: Optional[str] = None,
+    user: str | None = None,
     timeout: float = 15.0,
 ):
     """轮询锚点尾部增量中的 AUDIT 行（返回 match 或 None）。

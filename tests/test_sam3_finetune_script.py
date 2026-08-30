@@ -89,8 +89,8 @@ class TestRasterizePolygon:
         m = ft.rasterize_polygon(pts, (100, 100), (0.5, 0.5))
         ys, xs = np.nonzero(m)
         assert m.shape == (100, 100)
-        assert 48 <= xs.min() and xs.max() <= 100
-        assert 48 <= ys.min() and ys.max() <= 100
+        assert xs.min() >= 48 and xs.max() <= 100
+        assert ys.min() >= 48 and ys.max() <= 100
 
     def test_identity_scale(self):
         pts = np.array([[10, 10], [50, 10], [50, 50], [10, 50]], dtype=np.float32)

@@ -121,8 +121,8 @@ def test_split_dataset_runs_in_worker(qapp, fake_threads, tmp_path, monkeypatch)
 # ============================== label 预标注 ============================== #
 @pytest.mark.unit
 def test_ai_prelabel_runs_in_worker(qapp, fake_threads, monkeypatch):
-    from labeling.base import AnnotationMode, Shape
     from gui.pages.label import page as label_page_mod
+    from labeling.base import AnnotationMode, Shape
 
     page = label_page_mod.LabelPage()
     page._image_path = "demo.png"

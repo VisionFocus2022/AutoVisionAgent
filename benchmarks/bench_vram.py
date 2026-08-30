@@ -9,10 +9,9 @@ GPU 不可用 → ``pytest.skip`` 诚实标注（FR-1.1：不伪造；AC-1.3 只
 """
 from __future__ import annotations
 
+import _common
 import numpy as np
 import pytest
-
-import _common
 
 _ROUNDS = 10
 _WARMUP = 2

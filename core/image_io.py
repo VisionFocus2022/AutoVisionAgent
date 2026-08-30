@@ -9,10 +9,10 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any
 
 
-def imread_unicode(path: "str | Any", flags: "int | None" = None) -> Optional[Any]:
+def imread_unicode(path: str | Any, flags: int | None = None) -> Any | None:
     """中文路径安全读图。
 
     Args:
@@ -39,9 +39,8 @@ def imread_unicode(path: "str | Any", flags: "int | None" = None) -> Optional[An
         return None  # 文件不存在等 IO 错误
 
     try:
-        from PIL import Image
-
         import numpy as np
+        from PIL import Image
 
         with Image.open(p) as im:
             return np.asarray(im.convert("RGB"))
@@ -49,7 +48,7 @@ def imread_unicode(path: "str | Any", flags: "int | None" = None) -> Optional[An
         return None
 
 
-def imwrite_unicode(path: "str | Any", img: Any, ext: str = ".png") -> bool:
+def imwrite_unicode(path: str | Any, img: Any, ext: str = ".png") -> bool:
     """中文路径安全写图（与 cv2.imwrite 契约对齐：成功返回 bool）。
 
     Args:

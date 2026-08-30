@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
 
 import numpy as np
 import pytest
@@ -20,9 +19,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from core.interfaces_supervised import (
-    DetectionResult,
     TaskType,
-    TrainArtifact,
     TrainConfig,
 )
 
@@ -56,11 +53,11 @@ class TestM1E2E:
 
     def test_all_pages_construct(self, qapp):
         """所有 5 页可构造。"""
-        from gui.pages.label.page import LabelPage
         from gui.pages.data_manage import DataManagePage
-        from gui.pages.train import TrainPage
+        from gui.pages.label.page import LabelPage
         from gui.pages.predict import PredictPage
         from gui.pages.project import ProjectPage
+        from gui.pages.train import TrainPage
 
         for Cls in (LabelPage, DataManagePage, TrainPage, PredictPage, ProjectPage):
             page = Cls()
@@ -95,8 +92,8 @@ class TestM1E2E:
 
     def test_train_worker_smoke(self, qapp):
         """TrainWorker 冒烟训练（smoke strategy）。"""
-        from training.generic_trainer import GenericTrainer
         from gui.pages.train.worker import TrainWorker
+        from training.generic_trainer import GenericTrainer
 
         cfg = TrainConfig(
             task=TaskType.DET, epochs=3, lr=0.001, batch_size=2
@@ -157,7 +154,7 @@ class TestM1E2E:
 
     def test_language_switch(self, qapp):
         """切换语言后 tr() 生效。"""
-        from gui.core.i18n import set_language, tr, current_language
+        from gui.core.i18n import set_language, tr
 
         set_language("ch_CN")
         assert tr("标注") == "标注"

@@ -52,7 +52,7 @@ def test_permissions_module_is_pure_no_qt():
 @pytest.mark.unit
 def test_operator_page_matrix():
     """operator：现场操作页可见；系统/工程/发布页不可见（最小特权）。"""
-    from gui.core.permissions import page_allowed, ROLE_OPERATOR
+    from gui.core.permissions import ROLE_OPERATOR, page_allowed
 
     allowed = {"home", "label", "data_manage", "predict", "eval"}
     for page in _ALL_11_PAGES:
@@ -65,7 +65,7 @@ def test_operator_page_matrix():
 @pytest.mark.unit
 def test_engineer_page_matrix():
     """engineer：train/eval/deploy 可见；settings（系统配置）不可见。"""
-    from gui.core.permissions import page_allowed, ROLE_ENGINEER
+    from gui.core.permissions import ROLE_ENGINEER, page_allowed
 
     assert page_allowed(ROLE_ENGINEER, "settings") is False
     for page in ("train", "eval", "deploy", "predict", "label"):
@@ -75,7 +75,7 @@ def test_engineer_page_matrix():
 @pytest.mark.unit
 def test_admin_sees_all_pages():
     """admin：11 页全 True（UIA 离线=admin 全可见的矩阵基础）。"""
-    from gui.core.permissions import page_allowed, ROLE_ADMIN
+    from gui.core.permissions import ROLE_ADMIN, page_allowed
 
     for page in _ALL_11_PAGES:
         assert page_allowed(ROLE_ADMIN, page) is True, f"admin × {page}"
@@ -94,7 +94,7 @@ def test_login_page_always_allowed_and_unknown_page_denied():
 @pytest.mark.unit
 def test_unknown_role_falls_to_minimal_set():
     """未知/异常角色 → operator 最小集（默认最小特权，不放大）。"""
-    from gui.core.permissions import page_allowed, ROLE_OPERATOR
+    from gui.core.permissions import ROLE_OPERATOR, page_allowed
 
     for page in _ALL_11_PAGES:
         assert page_allowed("intruder", page) is page_allowed(ROLE_OPERATOR, page)
@@ -283,8 +283,8 @@ def test_main_consumes_role_on_login():
 @pytest.mark.unit
 def test_login_page_reexports_role_constants():
     """login 页 ROLE_* 改 import 自 permissions 并保 re-export（既有 import 路径兼容）。"""
-    from gui.pages.login import page as login_mod
     from gui.core.permissions import ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR
+    from gui.pages.login import page as login_mod
 
     assert login_mod.ROLE_ADMIN is ROLE_ADMIN
     assert login_mod.ROLE_ENGINEER is ROLE_ENGINEER

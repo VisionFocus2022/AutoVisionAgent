@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import base64
 import threading
-from pathlib import Path
 
 import pytest
 
@@ -60,8 +59,8 @@ def test_det_engine_available_requires_loaded_weights(monkeypatch):
 
     RED：现实现只查 registry.has，注册即过检，冷启动必在 infer 期炸。
     """
-    from gui.pages.label.workers import det_engine_available
     import models.supervised.registry as reg_mod
+    from gui.pages.label.workers import det_engine_available
 
     class _UnloadedReg:
         def has(self, t):
@@ -110,9 +109,9 @@ def test_run_ai_prelabel_propagates_supervised_engine_error(
 ):
     """审计折入：引擎级失败必须上抛（页面路由失败槽）——不得摊平成
     空列表冒充"零检出"（用户会误信模型没检出缺陷）。"""
+    import models.supervised.registry as reg_mod
     from core.exceptions import SupervisedEngineError
     from gui.pages.label.workers import run_ai_prelabel
-    import models.supervised.registry as reg_mod
 
     img = tmp_path / "img.png"
     img.write_bytes(PNG_1PX)

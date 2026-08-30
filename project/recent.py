@@ -6,10 +6,6 @@ from __future__ import annotations
 
 import json
 import os
-from typing import List, Optional
-
-from project.models import ProjectId
-
 
 _RECENT_FILENAME = "recent_projects.json"
 _MAX_RECENT = 20
@@ -19,19 +15,19 @@ def _recent_path(base_root: str) -> str:
     return os.path.join(base_root, _RECENT_FILENAME)
 
 
-def recent_list(base_root: str) -> List[str]:
+def recent_list(base_root: str) -> list[str]:
     """读取最近项目目录名列表。"""
     path = _recent_path(base_root)
     if not os.path.exists(path):
         return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f).get("recent", [])
     except (json.JSONDecodeError, OSError):
         return []
 
 
-def add_recent(base_root: str, dirname: str) -> List[str]:
+def add_recent(base_root: str, dirname: str) -> list[str]:
     """添加项目目录名到最近列表（去重，置顶，截断）。"""
     lst = recent_list(base_root)
     # 去重
@@ -49,7 +45,7 @@ def add_recent(base_root: str, dirname: str) -> List[str]:
     return lst
 
 
-def remove_recent(base_root: str, dirname: str) -> List[str]:
+def remove_recent(base_root: str, dirname: str) -> list[str]:
     """从最近列表移除。"""
     lst = [d for d in recent_list(base_root) if d != dirname]
     path = _recent_path(base_root)
