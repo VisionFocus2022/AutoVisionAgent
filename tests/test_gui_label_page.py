@@ -199,7 +199,15 @@ def test_apply_mode_buttons_dragmode_and_sam_warning(label_page, monkeypatch):
     # INTERACTIVE 且未选权重：诚实警告（必须屏蔽原生对话框，offscreen 会阻塞）
     # W27：_ensure_sam 自 page.py 抽出至 sam_session.py——对话框 monkeypatch
     # 缝随代码迁移（patch 页模块名不再拦截 Mixin 内解析），断言不变
+    # 2026-08-31：约定目录自动发现落地后，须同时屏蔽 weights/sam3 才能
+    # 到达"弹窗取消→未加载权重"分支（本机真权重在场会直接命中加载）
+    from pathlib import Path
+
     from gui.pages.label import sam_session as sam_mod
+    monkeypatch.setattr(
+        sam_mod, "_conventional_sam3_dir",
+        lambda: Path("Z:/__no_sam3_conventional__"),
+    )
     monkeypatch.setattr(sam_mod, "pick_open_file", lambda *a, **k: "")
     label_page._msgs.clear()
     label_page._apply_mode(AnnotationMode.INTERACTIVE)

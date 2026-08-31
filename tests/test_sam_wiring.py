@@ -70,10 +70,21 @@ class FakeAdapter:
 
 @pytest.mark.unit
 def test_interactive_without_sam_lib_reports_status(qapp, monkeypatch):
-    """依赖缺失时状态栏明示，而非点击静默无效（P2-6 主诉）。"""
-    import builtins
+    """依赖缺失时状态栏明示，而非点击静默无效（P2-6 主诉）。
 
+    2026-08-31：约定目录自动发现落地后，须同时屏蔽 weights/sam3 才能
+    到达"segment_anything 探测失败"分支（本机真权重在场会直接命中加载）。
+    """
+    import builtins
+    from pathlib import Path
+
+    from gui.pages.label import sam_session as sam_mod
     from gui.pages.label.page import LabelPage
+
+    monkeypatch.setattr(
+        sam_mod, "_conventional_sam3_dir",
+        lambda: Path("Z:/__no_sam3_conventional__"),
+    )
 
     real_import = builtins.__import__
 
