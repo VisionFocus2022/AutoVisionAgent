@@ -1,5 +1,6 @@
 # CI（架构审查 P2-26 落地；W18 v3 P2-4 升级）——与本地 .venv 构建方式一致的全量门禁。
-# 本工作流待 git remote 接入后首次生效（v3 P2-4）：本仓当前无 git 远程，推送后生效。
+# 双远端（gitee + github）已接入（R01 §3-3 双发），push/PR 即触发；
+# 2026-08-31 AVA-R2/P1-2 首跑验证。
 #
 # 说明：
 # - requirements.lock.txt 第 1 行已含 --extra-index-url cu121 索引（W12 P1-6 落地）；
