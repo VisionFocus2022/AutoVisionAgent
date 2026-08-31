@@ -21,6 +21,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # configs 目录
 CONFIG_DIR = _PROJECT_ROOT / "configs"
 
+# 权重目录（SAM3 约定发现基准：源码=仓库根/weights，frozen exe=_internal/weights）
+WEIGHTS_DIR = _PROJECT_ROOT / "weights"
+
 # 默认项目存储根目录
 # W28：调用期展开形态（~/…）供 project.paths.resolve_base_root 使用——
 # 不得在导入期预展开后消费（os.path.expanduser 的测试接缝须在调用期生效）
@@ -32,6 +35,7 @@ __all__ = [
     "IMG_EXTS",
     "ANN_EXTS",
     "CONFIG_DIR",
+    "WEIGHTS_DIR",
     "DEFAULT_PROJECT_ROOT",
     "DEFAULT_PROJECT_ROOT_TILDE",
 ]
