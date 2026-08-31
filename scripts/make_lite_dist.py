@@ -253,11 +253,12 @@ def _tree_bytes(root: Path) -> int:
 
 
 def _product_bytes(root: Path) -> int:
-    """产品内容字节（排除 ``__pycache__``/``*.pyc`` 运行时字节码缓存）。
+    """产品内容字节（排除运行痕迹：``__pycache__``/``*.pyc``/``logs/``）。
 
     与真产物守卫测试同口径：任何 ``PYTHONPATH=_internal`` 使用（蒸馏冒烟
-    等）都会在产物内生成字节码缓存，属使用痕迹非产品内容；PyInstaller
-    产物亦自带少量 .pyc——marker 与守卫必须同口径才可字节级对账。
+    等）都会在产物内生成字节码缓存；lite exe 被启动过一次即按 cwd 相对
+    落 ``logs/autovision.log``——均属使用痕迹非产品内容（2026-08-31 实证：
+    346B log 即击穿守卫字节级对账）。守卫必须与本函数同口径才可对账。
     """
     return sum(
         p.stat().st_size
@@ -265,6 +266,7 @@ def _product_bytes(root: Path) -> int:
         if p.is_file()
         and "__pycache__" not in p.parts
         and p.suffix != ".pyc"
+        and "logs" not in p.parts
     )
 
 

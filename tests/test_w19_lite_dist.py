@@ -337,9 +337,11 @@ def test_cli_main_over_limit_exits_nonzero(tmp_path):
 def test_real_lite_dist_guard():
     """真 lite 产物存在时：无 CUDA DLL + 总量 <2GiB + marker 与目录一致。
 
-    体积与一致性口径排除 ``__pycache__``/``*.pyc``：蒸馏冒烟等任何
-    ``PYTHONPATH=_internal`` 使用都会在产物内生成运行时字节码缓存，
-    属使用痕迹而非产品内容（实测冒烟两轮即写入 ~20MB）。
+    体积与一致性口径排除 ``__pycache__``/``*.pyc``/``logs/``：蒸馏冒烟等
+    ``PYTHONPATH=_internal`` 使用会生成字节码缓存；lite exe 被启动过即按
+    cwd 相对落 ``logs/autovision.log``——均属使用痕迹而非产品内容
+    （2026-08-31 实证：346B log 击穿字节级对账；与 make_lite_dist.
+    _product_bytes 同口径，两处豁免面必须同步增减）。
     """
     if not _LITE_DIST.is_dir():
         pytest.skip(
@@ -360,6 +362,7 @@ def test_real_lite_dist_guard():
             if p.is_file()
             and "__pycache__" not in p.parts
             and p.suffix != ".pyc"
+            and "logs" not in p.parts
         )
 
     total = product_bytes(_LITE_DIST)
