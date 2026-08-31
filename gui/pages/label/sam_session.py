@@ -25,22 +25,35 @@ from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file
 
 
+def _is_sam3_dir(p: Path) -> bool:
+    """SAM3 模型目录有效性（config.json + model.safetensors 同目录）。"""
+    return (
+        p.is_dir()
+        and (p / "config.json").is_file()
+        and (p / "model.safetensors").is_file()
+    )
+
+
 def resolve_sam3_model_dir(
     env_value: str | None,
     picked_path: str | Path | None,
+    conventional_dir: str | Path | None = None,
 ) -> str | None:
-    """SAM3 模型目录解析（纯函数，W46）。
+    """SAM3 模型目录解析（纯函数，W46；2026-08-31 增约定目录第三优先级）。
 
-    - AVA_SAM3_DIR 指向有效目录 → 该目录（测试/幂等装配优先通道）；
-    - 对话框选中 config.json 且同目录存在 model.safetensors → 其父目录
-      （transformers from_pretrained 目录形态）；
-    - 其余（含 .pth 选择、env 目录无效）→ None，回落 SAM1 流程。
+    判断顺序（参数序保持 env/picked 原位不动）：
+    - AVA_SAM3_DIR 指向有效目录 → 该目录（显式指定，可指向微调版）；
+    - conventional_dir（约定目录，如 WEIGHTS_DIR/sam3）有效 → 该目录；
+    - picked 为 config.json 且同目录有 model.safetensors → 其父目录；
+    - 其余 → None（回落弹窗）。
     """
     if env_value and Path(env_value).is_dir():
         return str(Path(env_value))
+    if conventional_dir is not None and _is_sam3_dir(Path(conventional_dir)):
+        return str(Path(conventional_dir))
     if picked_path is not None and Path(picked_path).name == "config.json":
         parent = Path(picked_path).parent
-        if (parent / "model.safetensors").is_file():
+        if _is_sam3_dir(parent):
             return str(parent)
     return None
 

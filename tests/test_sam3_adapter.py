@@ -305,6 +305,70 @@ class TestResolveSam3ModelDir:
         pth.write_bytes(b"x")
         assert resolve_sam3_model_dir(None, pth) is None
 
+    def test_conventional_valid_dir(self, tmp_path):
+        from gui.pages.label.sam_session import resolve_sam3_model_dir
+
+        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "model.safetensors").write_bytes(b"x")
+        assert resolve_sam3_model_dir(
+            None, None, conventional_dir=tmp_path
+        ) == str(tmp_path)
+
+    def test_conventional_missing_safetensors_skipped(self, tmp_path):
+        from gui.pages.label.sam_session import resolve_sam3_model_dir
+
+        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+        # 无 model.safetensors → 不命中
+        assert resolve_sam3_model_dir(
+            None, None, conventional_dir=tmp_path
+        ) is None
+
+    def test_conventional_missing_config_skipped(self, tmp_path):
+        from gui.pages.label.sam_session import resolve_sam3_model_dir
+
+        (tmp_path / "model.safetensors").write_bytes(b"x")
+        assert resolve_sam3_model_dir(
+            None, None, conventional_dir=tmp_path
+        ) is None
+
+    def test_env_overrides_conventional(self, tmp_path):
+        from gui.pages.label.sam_session import resolve_sam3_model_dir
+
+        env_dir = tmp_path / "env_dir"
+        conv_dir = tmp_path / "conv_dir"
+        for d in (env_dir, conv_dir):
+            d.mkdir()
+            (d / "config.json").write_text("{}", encoding="utf-8")
+            (d / "model.safetensors").write_bytes(b"x")
+        assert resolve_sam3_model_dir(
+            str(env_dir), None, conventional_dir=conv_dir
+        ) == str(env_dir)
+
+    def test_conventional_overrides_picked(self, tmp_path):
+        from gui.pages.label.sam_session import resolve_sam3_model_dir
+
+        conv_dir = tmp_path / "conv_dir"
+        conv_dir.mkdir()
+        (conv_dir / "config.json").write_text("{}", encoding="utf-8")
+        (conv_dir / "model.safetensors").write_bytes(b"x")
+        # picked 指向另一个有效 config.json，但 conventional 优先
+        other = tmp_path / "other"
+        other.mkdir()
+        (other / "config.json").write_text("{}", encoding="utf-8")
+        (other / "model.safetensors").write_bytes(b"x")
+        assert resolve_sam3_model_dir(
+            None, other / "config.json", conventional_dir=conv_dir
+        ) == str(conv_dir)
+
+    def test_conventional_none_keeps_two_arg_behavior(self, tmp_path):
+        from gui.pages.label.sam_session import resolve_sam3_model_dir
+
+        # conventional_dir=None（缺省）→ 行为与两参版完全一致
+        picked = tmp_path / "config.json"
+        picked.write_text("{}", encoding="utf-8")
+        (tmp_path / "model.safetensors").write_bytes(b"x")
+        assert resolve_sam3_model_dir(None, picked) == str(tmp_path)
+
 
 # ---------------------------------------------------------------- 真权重冒烟
 
