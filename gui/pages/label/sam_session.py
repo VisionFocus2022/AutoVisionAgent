@@ -14,15 +14,22 @@ W46：SAM3 后端装配——AVA_SAM3_DIR 有效目录或对话框选中 config.
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from PySide6.QtCore import Slot
 
+from core.constants import WEIGHTS_DIR
 from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_open_file
+
+_logger = logging.getLogger(__name__)
+
+# SAM3 约定发现目录（源码=仓库根/weights/sam3；frozen exe=_internal/weights/sam3）
+_SAM3_CONVENTIONAL_DIR = WEIGHTS_DIR / "sam3"
 
 
 def _is_sam3_dir(p: Path) -> bool:
@@ -71,8 +78,11 @@ class SamSessionMixin:
             self._warm_sam()
             return
 
-        sam3_dir = resolve_sam3_model_dir(os.environ.get("AVA_SAM3_DIR"), None)
+        sam3_dir = resolve_sam3_model_dir(
+            os.environ.get("AVA_SAM3_DIR"), None, _SAM3_CONVENTIONAL_DIR
+        )
         if sam3_dir:
+            _logger.info("SAM3 权重来源: %s", sam3_dir)
             self._load_sam3(sam3_dir)
             return
 
@@ -90,8 +100,11 @@ class SamSessionMixin:
             self.status_changed.emit(tr("SAM 未加载权重"), tr("交互式标注不可用"))
             return
 
-        sam3_dir = resolve_sam3_model_dir(None, Path(ckpt))
+        sam3_dir = resolve_sam3_model_dir(
+            None, Path(ckpt), _SAM3_CONVENTIONAL_DIR
+        )
         if sam3_dir:
+            _logger.info("SAM3 权重来源: %s", sam3_dir)
             self._load_sam3(sam3_dir)
             return
 
