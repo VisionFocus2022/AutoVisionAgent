@@ -123,6 +123,12 @@ def sam3_weights_env():
     restore()
 
 
+@pytest.fixture()
+def no_sam3_env(monkeypatch):
+    """删除 AVA_SAM3_DIR（须先于 ava_app 实例化——子进程启动时继承 env）。"""
+    monkeypatch.delenv("AVA_SAM3_DIR", raising=False)
+
+
 # ================================ 会话原语（与 test_sam3_labeling.py 同源） ================================ #
 
 
@@ -548,3 +554,51 @@ def test_sam3_next_image_rewarm_and_roundtrip(
     )
     _assert_min_geometry(doc, "换图往返")
     logger.info("FR-4 铁证通过: %d shapes（换图重预热 + 往返复用）", len(shapes))
+
+
+def test_sam3_auto_discovery_no_env(
+    no_sam3_env, ava_app, pole_subset_dir, workspace_dir
+):
+    """约定目录自动发现：unset AVA_SAM3_DIR + weights/sam3 在场 → 交互式
+    直接就绪（不弹权重选择框）→ 点击提交产 polygon（真窗铁证）。
+
+    exe 模式需 _internal/weights/sam3（权重随包分发后放开）；python 源码
+    模式约定目录=仓库根/weights/sam3。
+    """
+    if os.environ.get("AVA_UIA_SOURCE", "exe").lower() != "python":
+        exe_conv = (
+            _REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal"
+            / "weights" / "sam3"
+        )
+        if not (exe_conv / "model.safetensors").is_file():
+            pytest.skip(
+                f"exe 模式约定目录无权重: {exe_conv}"
+                "（权重随包分发后放开；本用例请用 AVA_UIA_SOURCE=python 跑）"
+            )
+    if not (_SAM3_WEIGHTS / "model.safetensors").is_file():
+        pytest.skip(f"约定目录无 SAM3 权重: {_SAM3_WEIGHTS}")
+
+    win = ava_app
+    _ensure_logged_in(win)
+    _open_label_folder(win, pole_subset_dir)
+    _set_label_edit(win, "sam3auto")
+    # 无 env 也不弹窗——直接走约定目录加载并就绪
+    base = _enter_interactive_ready(win)
+
+    assert _canvas_click(win, 0.5, 0.5), "画布单击失败（find timeout）"
+    time.sleep(T_INFER)
+    _canvas_commit(win)
+    assert _wait_count(win, base + 1, timeout=8.0), (
+        f"自动发现会话提交应 +1（base={base}，最后='{_last_status(win)}'）"
+    )
+
+    doc = _save_and_read_json(
+        win, workspace_dir / "labels", "sam3_auto_discovery.json"
+    )
+    shapes = doc.get("shapes", [])
+    assert len(shapes) >= 1, f"应 ≥1 shape，实际 {len(shapes)}"
+    assert all(s.get("label") == "sam3auto" for s in shapes), (
+        f"label 应为 'sam3auto': {[s.get('label') for s in shapes]}"
+    )
+    _assert_min_geometry(doc, "自动发现")
+    logger.info("约定目录自动发现铁证通过: %d shapes", len(shapes))
