@@ -22,9 +22,9 @@
 **动作**：`git push giteu/github` 双发 feature 分支（或先合 master 再推）；观察 ci.yml 首跑（test + dotnet-test 双 job）。
 
 **验收**：
-- [ ] `git branch -r` 含 feature 分支
-- [ ] GitHub Actions / Gitee 流水线出现本分支运行记录且绿；若红，修复后留档（这正是 CI 存在的意义）
-- [ ] ci.yml 第 2 行过时注释（"本仓当前无 git 远程"）更新
+- [x] `git branch -r` 含 feature 分支（2026-08-31 实测：gitee HTTPS + github SSH-over-443 双推，`ls-remote` 双端指针 = HEAD `3269a3b`；github HTTPS 443 阻断按 R01 §3-3 走已配 SSH 通道，未改 remote 配置）
+- [~] GitHub Actions / Gitee 流水线出现本分支运行记录且绿——**待人工确认**：推送已送达（on:push 必触发），但本机 github.com 网页不可达（443 同源阻断）且无 gh CLI，无法程序化观察；请人工查看 https://github.com/VisionFocus2022/AutoVisionAgent/actions （首次运行无 pip 缓存，cu121 轮子 ~2.5GB，预计 15-25 分钟）；若红修复后留档
+- [x] ci.yml 第 2 行过时注释（"本仓当前无 git 远程"）更新（commit `3269a3b`）
 
 ## P2 · 两周内（守卫补强）
 
