@@ -1,0 +1,69 @@
+// AutoVisionAgent 架构风险关系图（rankdir=TB）
+// 产出：architecture-visualization:risk-quality-reviewer + graphviz
+// 关联报告：docs/architecture-review/architecture-review.md（2026-08-24）
+// 图例：顶层=质量属性（蓝） 中层=架构元素（灰） 底层=风险（按严重度着色）
+digraph AutoVisionAgentRiskMap {
+    rankdir=TB;
+    node [shape=box, style="rounded,filled", fontname="Microsoft YaHei", fontsize=11];
+    edge [color="#64748b", fontsize=9];
+
+    // ---- 质量属性层 ----
+    QA_DELIVER  [label="交付可重复性\nReproducible Delivery", fillcolor="#dbeafe", color="#2563eb"];
+    QA_GATE     [label="门禁可信度\nGate Credibility", fillcolor="#dbeafe", color="#2563eb"];
+    QA_RELIA    [label="可靠性（进程内）\nIn-process Reliability", fillcolor="#d1fae5", color="#059669"];
+    QA_MAINT    [label="可维护性\nMaintainability", fillcolor="#d1fae5", color="#059669"];
+    QA_SECURITY [label="安全/隐私（本地）\nLocal Security & Privacy", fillcolor="#dbeafe", color="#2563eb"];
+
+    // ---- 架构元素层 ----
+    EL_SPEC     [label="autovisionagent.spec\n(PyInstaller 打包配置)", fillcolor="#f1f5f9", color="#475569"];
+    EL_VENV     [label=".venv (Py 3.12.9)\n唯一打包环境 [R01 规则]", fillcolor="#f1f5f9", color="#475569"];
+    EL_DIST     [label="dist/ 6.36GiB\n(完整版产物)", fillcolor="#f1f5f9", color="#475569"];
+    EL_LITE     [label="dist-lite/\n(CPU 版 <2GiB) ✗缺失", fillcolor="#f1f5f9", color="#475569"];
+    EL_GATE     [label="主门禁 pytest\n1222绿/92.87%", fillcolor="#f1f5f9", color="#475569"];
+    EL_CI       [label="ci.yml\n(push/PR 触发)", fillcolor="#f1f5f9", color="#475569"];
+    EL_GIT      [label="git 双远端\ngitee + github", fillcolor="#f1f5f9", color="#475569"];
+    EL_UIA      [label="tests/uia\n真窗套件(默认排除)", fillcolor="#f1f5f9", color="#475569"];
+    EL_JOBS     [label="gui/core/jobs.py\n统一后台调度", fillcolor="#f1f5f9", color="#475569"];
+    EL_DEPS     [label="依赖方向\ngui→X→core 零违规", fillcolor="#f1f5f9", color="#475569"];
+
+    // ---- 风险层（红=高 橙=中高 黄=中） ----
+    R1 [label="AVA-R1 打包环境无防呆\n✅已补救(2026-08-31 P1-1)\nspec双断言+双向验证", fillcolor="#e2e8f0", color="#94a3b8"];
+    R2 [label="AVA-R2 门禁本机孤岛\n8提交未推/CI未跑分支", fillcolor="#fee2e2", color="#dc2626", penwidth=2];
+    R3 [label="AVA-R3 dist-lite缺失\n棘轮'不存在则skip'盲区", fillcolor="#ffedd5", color="#ea580c"];
+    R4 [label="AVA-R4 UIA默认排除\nGUI回归靠发版手动", fillcolor="#fef9c3", color="#ca8a04"];
+    R5 [label="AVA-R5 完整dist无体积棘轮\n4.3→6.36GiB (+48%)", fillcolor="#fef9c3", color="#ca8a04"];
+    R6 [label="AVA-R6 覆盖余量0.87pt\n92.87 vs fail-under 92", fillcolor="#fef9c3", color="#ca8a04"];
+    R7 [label="AVA-R7 user_settings.json\n条件打包泄入交付物", fillcolor="#fefce8", color="#a16207"];
+
+    // ---- 关系边 ----
+    // 交付可重复性
+    QA_DELIVER -> EL_SPEC [label="受制于"];
+    QA_DELIVER -> EL_VENV [label="依赖"];
+    EL_SPEC -> R1 [label="无环境断言", color="#dc2626"];
+    EL_VENV -> R1 [label="文档约束非机械防呆", style=dashed, color="#dc2626"];
+    EL_SPEC -> EL_DIST [label="产出"];
+    EL_DIST -> R5 [label="无体积门禁", color="#ca8a04"];
+    EL_SPEC -> R7 [label="L20-23 条件打包", color="#a16207"];
+    EL_DIST -> EL_LITE [label="派生(make_lite_dist)", style=dashed];
+    EL_LITE -> R3 [label="缺失→守卫skip", color="#ea580c"];
+
+    // 门禁可信度
+    QA_GATE -> EL_GATE;
+    QA_GATE -> EL_CI;
+    EL_GIT -> EL_CI [label="push 触发"];
+    EL_GIT -> R2 [label="feature分支未推/领先8提交", color="#dc2626"];
+    EL_CI -> R2 [label="从未在本分支运行", style=dashed, color="#dc2626"];
+    EL_GATE -> R6 [label="余量0.87pt", color="#ca8a04"];
+    EL_UIA -> R4 [label="pytest.ini --ignore", color="#ca8a04"];
+    EL_CI -> EL_UIA [label="不在CI跑", style=dashed];
+
+    // 可靠性（正向基线，无风险边）
+    QA_RELIA -> EL_JOBS [label="协作取消+有界停机", color="#059669"];
+
+    // 可维护性（正向基线）
+    QA_MAINT -> EL_DEPS [label="grep 可验证", color="#059669"];
+    QA_MAINT -> EL_GATE [label="棘轮制度", color="#059669"];
+
+    // 安全/隐私
+    QA_SECURITY -> R7 [label="配置污染面", style=dashed, color="#a16207"];
+}

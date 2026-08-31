@@ -26,6 +26,8 @@ description: 模块依赖与构建发布约束。修改依赖文件、PyInstalle
 | lite 派生 | `.venv/Scripts/python.exe scripts/make_lite_dist.py` | 手工删 dist 内 DLL 造 lite |
 | C# 客户端 | `dotnet test serving/dotnet_client` | 跳过（CI 有独立 job） |
 
+> **打包环境机械防呆（2026-08 架构审查 AVA-R1 / P1-1）**：`autovisionagent.spec` 头部内建双断言——① 解释器必须是 spec 同级 `.venv`；② torch/torchvision/numpy/cv2/PySide6 可导入。错误环境立即 `[BUILD-ABORT]` 退出（退出码 1）。上表"打包"行的文档约束由此升级为机械强制；守卫测试（test_w26/test_dynamic_import_guard）对 spec 仅 AST 解析不受影响。
+
 ## 3. 打包与发布（L0/L1）
 
 1. **[L0] lite 体积棘轮**：`dist-lite` 产物 <2GiB（`tests/test_w19_lite_dist.py` 守卫）；只升不降，升线前先减重

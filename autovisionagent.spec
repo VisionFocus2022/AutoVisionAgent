@@ -1,13 +1,41 @@
 # -*- mode: python ; coding: utf-8 -*-
 """AutoVisionAgent PyInstaller 打包配置（FR-G3）— T-AVA-16
 
-构建命令：
-  pyinstaller autovisionagent.spec --noconfirm
+构建命令（R01 §2 唯一入口）：
+  .venv/Scripts/python.exe -m PyInstaller autovisionagent.spec --noconfirm
 
 产出：dist/AutoVisionAgent/AutoVisionAgent.exe
 """
 import sys
 from pathlib import Path
+
+# ---- 打包环境防呆（架构审查 2026-08-24 AVA-R1 / remediation P1-1）----
+# 动机：错误环境（系统 python / 其他 venv）缺 torch 等重依赖时仍能打出
+# "GUI 可启动、推理训练全不可用"的残废 exe（2026-08-24 会话实测 3.5MB 假
+# 产物），故双断言把 R01 文档约束升级为机械防呆：
+#   1) 解释器必须是 spec 同级 .venv
+#   2) 核心重依赖可导入（防 .venv 被裁剪/依赖未装全的环境漂移）
+# 注：tests/test_w26_spec_packaging.py 等守卫对本文件仅做 AST 解析不
+# exec，本断言只在真实打包时触发，不影响测试与 CI。
+_spec_venv = Path(SPECPATH).resolve() / ".venv"
+if Path(sys.prefix).resolve() != _spec_venv:
+    raise SystemExit(
+        f"[BUILD-ABORT] interpreter is not project venv.\n"
+        f"  current : {sys.prefix}\n"
+        f"  expected: {_spec_venv}\n"
+        f"  R01 rule: use  .venv/Scripts/python.exe -m PyInstaller"
+        f" autovisionagent.spec --noconfirm"
+    )
+for _hard_dep in ("torch", "torchvision", "numpy", "cv2", "PySide6"):
+    try:
+        __import__(_hard_dep)
+    except ImportError as _exc:
+        raise SystemExit(
+            f"[BUILD-ABORT] hard dependency '{_hard_dep}' not importable: {_exc}\n"
+            f"  expected: project .venv installed via requirements.lock.txt\n"
+            f"  R01 rule: use  .venv/Scripts/python.exe -m PyInstaller"
+            f" autovisionagent.spec --noconfirm"
+        )
 
 block_cipher = None
 
