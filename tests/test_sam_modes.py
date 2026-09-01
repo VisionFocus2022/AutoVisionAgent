@@ -270,6 +270,66 @@ class TestAutoLabeler:
         # detector 返回的 Shape 自带 label，AutoLabeler 不覆盖
         assert shape.label == "defect"
 
+    # ------------------ W55：结果回调（FR-002 诚实降级的领域接缝） ------------------ #
+
+    def test_result_hook_called_with_count(self) -> None:
+        """真实执行后以 Shape 数回调（页面据此发 0 形状降级提示）。"""
+        labeler = AutoLabeler(
+            "defect", detector=self._fake_detector, image="img"
+        )
+        got: list[int] = []
+        labeler.set_result_hook(got.append)
+        labeler.run()
+        assert got == [3]
+
+    def test_result_hook_fires_on_zero_shapes(self) -> None:
+        """detector 返回空列表 → 回调收 0（AC-005 领域面）。"""
+        labeler = AutoLabeler("defect", detector=lambda img: [], image="img")
+        got: list[int] = []
+        labeler.set_result_hook(got.append)
+        assert labeler.run() == 0
+        assert got == [0]
+
+    def test_result_hook_fires_on_detector_exception(self) -> None:
+        """detector 抛异常 → 回调收 0（异常路径同样是 0 形状事实）。"""
+        def bad(img: object) -> list[Shape]:
+            raise RuntimeError("boom")
+
+        labeler = AutoLabeler("x", detector=bad, image="img")
+        got: list[int] = []
+        labeler.set_result_hook(got.append)
+        assert labeler.run() == 0
+        assert got == [0]
+
+    def test_result_hook_not_fired_without_execution(self) -> None:
+        """detector/image 缺位（未装配）不回调——非执行不算 0 形状。"""
+        labeler = AutoLabeler("defect")  # 无 detector
+        got: list[int] = []
+        labeler.set_result_hook(got.append)
+        assert labeler.run() == 0
+        assert got == []
+
+    def test_result_hook_exception_swallowed(self) -> None:
+        """回调自身异常不反噬标注主流程。"""
+        def bad_hook(count: int) -> None:
+            raise RuntimeError("hook boom")
+
+        labeler = AutoLabeler(
+            "defect", detector=self._fake_detector, image="img"
+        )
+        labeler.set_result_hook(bad_hook)
+        assert labeler.run() == 3
+
+    def test_result_hook_clearable(self) -> None:
+        labeler = AutoLabeler(
+            "defect", detector=self._fake_detector, image="img"
+        )
+        got: list[int] = []
+        labeler.set_result_hook(got.append)
+        labeler.set_result_hook(None)
+        labeler.run()
+        assert got == []
+
 
 # =====================================================================
 # 集成：工厂 + 属性注入

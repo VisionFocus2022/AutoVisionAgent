@@ -215,9 +215,21 @@ class SamSessionMixin:
 
         mode = self.controller.mode
         if mode is AnnotationMode.AUTO:
-            label = self.label_input.text().strip() or "defect"
+            # W55：空标签=网格盒全覆盖（无概念词也可分割，FR-001）；
+            # 非空=概念词走既有文本通道
+            label = self.label_input.text().strip()
             detector = self._sam_adapter.build_amg_detector(label=label)
-            if self.controller.attach_detector(detector, self._pending_sam_image):
+
+            def _on_auto_result(count: int) -> None:
+                if count <= 0:
+                    self.status_changed.emit(
+                        tr("SAM 全图零分割"),
+                        tr("未分出标注：可改用区域/点击模式，或输入概念词"),
+                    )
+
+            if self.controller.attach_detector(
+                detector, self._pending_sam_image, on_result=_on_auto_result
+            ):
                 self.status_changed.emit(tr("SAM 已加载"), tr("自动标注就绪"))
             return
         if self.controller.attach_interactive(

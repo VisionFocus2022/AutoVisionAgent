@@ -23,7 +23,14 @@ import numpy as np
 import pytest
 
 from labeling.base import AnnotationMode, Shape
-from labeling.sam3_adapter import _BRUSH_MARGIN, _CLICK_BOX_R, Sam3Adapter
+from labeling.sam3_adapter import (
+    _BRUSH_MARGIN,
+    _CLICK_BOX_R,
+    _GRID_OVERLAP,
+    Sam3Adapter,
+    _grid_boxes,
+    _mask_iou,
+)
 
 _DUMMY_IMG = np.zeros((64, 64, 3), dtype=np.uint8)
 
@@ -222,10 +229,17 @@ class TestAmgDetector:
         assert shapes[0].label == "YS"
         assert len(shapes[0].points) >= 3
 
-    def test_empty_label_defaults_to_defect(self):
+    def test_empty_label_uses_grid_box_channel(self):
+        """W55 契约翻转（PRD FR-001）：空标签不再回退 "defect" 文本通道，
+        改走网格盒全覆盖——大圆/背景无可表述概念词（W47 零命中矩阵）。"""
         adapter, runner = _make_adapter()
-        adapter.build_amg_detector(label="")(_DUMMY_IMG)
-        assert runner.calls[0]["text"] == "defect"
+        shapes = adapter.build_amg_detector(label="")(_DUMMY_IMG)
+        assert len(runner.calls) == 9, "默认 3×3 网格应逐盒推理"
+        for call in runner.calls:
+            assert call["text"] is None
+            assert call["boxes"] and call["boxes"][0], "应走盒提示通道"
+        assert len(shapes) == 1, "同掩码 9 盒重复 → 去重后剩 1"
+        assert shapes[0].label == "auto"
 
     def test_score_threshold_filter(self):
         adapter, _ = _make_adapter(
@@ -259,6 +273,182 @@ class TestAmgDetector:
         adapter, _ = _make_adapter(masks=[empty], scores=[0.9])
         detector = adapter.build_amg_detector(label="x")
         assert detector(_DUMMY_IMG) == []
+
+
+# ---------------------------------------------------------------- 网格盒全覆盖（W55）
+
+
+class _PerBoxRunner:
+    """按盒返回不同实例的 FakeRunner（跨盒去重/保留的判别夹具）。"""
+
+    def __init__(self, per_box: list[tuple[list, list]]):
+        self.per_box = per_box
+        self.calls: list = []
+
+    def __call__(self, image, text=None, boxes=None):
+        self.calls.append({"image": image, "text": text, "boxes": boxes})
+        masks, scores = self.per_box[len(self.calls) - 1]
+        return masks, scores
+
+
+class TestGridBoxes:
+    """AC-003：网格生成纯函数——盒数上限、全覆盖、相邻重叠。"""
+
+    def test_large_image_box_count_capped(self):
+        boxes = _grid_boxes(4000, 3000)
+        assert len(boxes) <= 9, "默认 3×3 网格盒数 ≤ 上限 9"
+        assert len(boxes) == 9
+
+    def test_union_covers_full_image(self):
+        w, h = 4000, 3000
+        boxes = _grid_boxes(w, h)
+        covered = np.zeros((h, w), dtype=bool)
+        for x1, y1, x2, y2 in boxes:
+            covered[int(y1):int(y2) + 1, int(x1):int(x2) + 1] = True
+        assert covered.all(), "网格盒联合应覆盖全图（含四角与边界）"
+
+    def test_adjacent_boxes_overlap(self):
+        boxes = _grid_boxes(4000, 3000)
+        # 按行主序：同行相邻盒（i, i+1 同 rows 段）x 向须重叠
+        for row in range(3):
+            for col in range(2):
+                left = boxes[row * 3 + col]
+                right = boxes[row * 3 + col + 1]
+                assert left[2] > right[0], f"同行相邻盒应重叠（col={col}）"
+        for col in range(3):
+            for row in range(2):
+                top = boxes[row * 3 + col]
+                bottom = boxes[(row + 1) * 3 + col]
+                assert top[3] > bottom[1], f"同列相邻盒应重叠（row={row}）"
+
+    def test_boxes_clipped_to_image_bounds(self):
+        w, h = 100, 80
+        for x1, y1, x2, y2 in _grid_boxes(w, h):
+            assert 0 <= x1 < x2 <= w - 1
+            assert 0 <= y1 < y2 <= h - 1
+
+    def test_overlap_fraction_reasonable(self):
+        w, h = 3000, 3000
+        boxes = _grid_boxes(w, h)
+        bw = boxes[0][2] - boxes[0][0]
+        cell = w / 3
+        assert bw > cell, "盒宽应大于单元宽（外扩 overlap）"
+        assert bw < cell * (1 + 4 * _GRID_OVERLAP), "外扩过量"
+
+
+class TestMaskIou:
+    def test_identical_masks_iou_one(self):
+        m = _square_mask()
+        assert _mask_iou(m, m) == 1.0
+
+    def test_disjoint_masks_iou_zero(self):
+        a = np.zeros((64, 64), dtype=bool)
+        b = np.zeros((64, 64), dtype=bool)
+        a[0:20, 0:20] = True
+        b[40:60, 40:60] = True
+        assert _mask_iou(a, b) == 0.0
+
+    def test_half_overlap(self):
+        a = np.zeros((64, 64), dtype=bool)
+        b = np.zeros((64, 64), dtype=bool)
+        a[0:20, 0:20] = True
+        b[0:20, 10:30] = True  # 交 10×20，并 20×30 → 1/3
+        assert abs(_mask_iou(a, b) - 10 * 20 / (20 * 30)) < 1e-9
+
+
+class TestGridAmgDetector:
+    """AC-001/002：空标签网格 detector——盒通道 + 跨盒 IoU 去重。"""
+
+    def test_ac001_box_channel_and_shapes(self):
+        adapter = Sam3Adapter()
+        adapter._model = MagicMock()
+        adapter._processor = MagicMock()
+        runner = _PerBoxRunner([([_square_mask()], [0.9])] * 9)
+        adapter._run_instances = runner
+        shapes = adapter.build_amg_detector(label="")(_DUMMY_IMG)
+        assert len(runner.calls) == 9
+        for call in runner.calls:
+            assert call["text"] is None
+            assert call["boxes"] and len(call["boxes"][0]) == 1
+            x1, y1, x2, y2 = call["boxes"][0][0]
+            assert 0 <= x1 < x2 <= 63 and 0 <= y1 < y2 <= 63
+        assert len(shapes) >= 1
+
+    def test_ac002_duplicate_masks_deduped(self):
+        """9 盒返回同一掩码（相邻盒重复分割同一目标）→ 只保留其一。"""
+        adapter = Sam3Adapter()
+        adapter._model = MagicMock()
+        adapter._processor = MagicMock()
+        adapter._run_instances = _PerBoxRunner([([_square_mask()], [0.9])] * 9)
+        shapes = adapter.build_amg_detector(label="")(_DUMMY_IMG)
+        assert len(shapes) == 1
+
+    def test_distinct_masks_all_kept(self):
+        """不同区域掩码不去重——去重只针对同区域重复（步长 5 → 相邻
+        IoU≈0.35 < 0.5，不触去重阈）。"""
+        def _off(lo):
+            m = np.zeros((64, 64), dtype=bool)
+            m[lo:lo + 18, lo:lo + 18] = True
+            return m
+
+        per_box = [([_off(2 + 5 * i)], [0.9]) for i in range(9)]
+        adapter = Sam3Adapter()
+        adapter._model = MagicMock()
+        adapter._processor = MagicMock()
+        adapter._run_instances = _PerBoxRunner(per_box)
+        shapes = adapter.build_amg_detector(label="")(_DUMMY_IMG)
+        assert len(shapes) == 9
+
+    def test_score_and_area_filters_apply(self):
+        tiny = np.zeros((64, 64), dtype=bool)
+        tiny[30:34, 30:34] = True  # 16px² < min_area
+        per_box = [
+            ([_square_mask(), tiny], [0.2, 0.9]),   # 大掩码分低被滤
+        ] + [([], [])] * 8
+        adapter = Sam3Adapter()
+        adapter._model = MagicMock()
+        adapter._processor = MagicMock()
+        adapter._run_instances = _PerBoxRunner(per_box)
+        assert adapter.build_amg_detector(label="")(_DUMMY_IMG) == []
+
+    def test_whitespace_label_also_grid(self):
+        """纯空白标签与空标签同语义（strip 后分流）。"""
+        adapter = Sam3Adapter()
+        adapter._model = MagicMock()
+        adapter._processor = MagicMock()
+        runner = _PerBoxRunner([([_square_mask()], [0.9])] * 9)
+        adapter._run_instances = runner
+        adapter.build_amg_detector(label="   ")(_DUMMY_IMG)
+        assert runner.calls and runner.calls[0]["text"] is None
+
+    def test_max_masks_truncation(self):
+        def _off(lo):
+            m = np.zeros((64, 64), dtype=bool)
+            m[lo:lo + 18, lo:lo + 18] = True
+            return m
+
+        per_box = [([_off(2 + 5 * i)], [0.9]) for i in range(9)]
+        adapter = Sam3Adapter()
+        adapter._model = MagicMock()
+        adapter._processor = MagicMock()
+        adapter._run_instances = _PerBoxRunner(per_box)
+        assert len(
+            adapter.build_amg_detector(label="", max_masks=4)(_DUMMY_IMG)
+        ) == 4
+
+
+class TestZeroShapePromptI18n:
+    """AC-005：0 形状降级提示 zh/en 键对偶（tr() 字面量守卫由
+    test_w20 承担，此处钉住两个新键确实成对入字典）。"""
+
+    def test_ac005_degradation_keys_paired(self):
+        from gui.core.i18n import _EN_US
+
+        for key in (
+            "SAM 全图零分割",
+            "未分出标注：可改用区域/点击模式，或输入概念词",
+        ):
+            assert key in _EN_US, f"en_US 缺键: {key}"
 
 
 class TestToShapes:

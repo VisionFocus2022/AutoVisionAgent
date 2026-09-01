@@ -49,6 +49,47 @@ except ImportError:  # pragma: no cover
 _CLICK_BOX_R = 16
 # 笔划外包盒外扩边距（px）
 _BRUSH_MARGIN = 8
+# 网格盒全覆盖（W55）：默认 3×3 网格；相邻盒重叠比例（单元边长 × 比例
+# 双侧外扩 → 相邻盒实际重叠 2×），兜住网格边切穿目标的截断
+_GRID_OVERLAP = 0.12
+_GRID_COLS = 3
+_GRID_ROWS = 3
+# 跨盒去重：IoU ≥ 阈值视为同一目标的重复分割
+_GRID_DEDUP_IOU = 0.5
+
+
+def _grid_boxes(
+    w: int,
+    h: int,
+    cols: int = _GRID_COLS,
+    rows: int = _GRID_ROWS,
+    overlap: float = _GRID_OVERLAP,
+) -> list[tuple[float, float, float, float]]:
+    """网格盒生成纯函数（W55 · FR-001）：cols×rows 带重叠网格，联合覆盖全图。
+
+    每盒 = 单元格向四侧外扩 overlap×单元边长，clamp 到图界 [0, w-1]×[0, h-1]。
+    """
+    cell_w, cell_h = w / cols, h / rows
+    ex, ey = cell_w * overlap, cell_h * overlap
+    boxes: list[tuple[float, float, float, float]] = []
+    for r in range(rows):
+        for c in range(cols):
+            boxes.append((
+                max(c * cell_w - ex, 0.0),
+                max(r * cell_h - ey, 0.0),
+                min((c + 1) * cell_w + ex, w - 1),
+                min((r + 1) * cell_h + ey, h - 1),
+            ))
+    return boxes
+
+
+def _mask_iou(a: np.ndarray, b: np.ndarray) -> float:
+    """两二值掩码 IoU（跨盒去重判据；零交集/零并集 → 0）。"""
+    inter = int(np.logical_and(a, b).sum())
+    if inter == 0:
+        return 0.0
+    union = int(np.logical_or(a, b).sum())
+    return inter / union if union else 0.0
 
 
 def _mask_to_polygon(
@@ -281,20 +322,32 @@ class Sam3Adapter:
         iou_thresh: float = 0.3,
         min_area: int = 64,
         max_masks: int = 64,
-        label: str = "defect",
+        label: str = "",
+        dedup_iou: float = _GRID_DEDUP_IOU,
     ):
-        """文本概念全图分割 detector（W44 AMG 通道复用，签名鸭子兼容）。
+        """全图分割 detector（W44 AMG 通道复用，签名鸭子兼容；W55 分支）。
 
-        SAM3 后端下 iou_thresh 语义 = 实例分数阈值（真机实测：极柱域
-        有效实例大量落在 0.3-0.5 带，默认 0.3 对齐 post_process 阈值，
-        0.5 会滤掉过半真实例）；label 即概念文本提示（label 输入框=
-        概念提示词，空值回落 "defect"）。概念词必须贴域——W47 以极柱
-        GT 实测（12 图对照标注）：唯一有效词 "scratch"（精确率 32%/
-        GT 覆盖 57%，阈值 0.3），"mark" 次之（11%/68%）；"hole" 高分
-        实例全为误检（精确率 0%），"pole"/"defect"/"dent"/"flaw" 零
-        命中。分数高≠命中 GT——以 scripts/eval_sam3_accuracy.py 复测。
+        - label 非空 → 文本概念通道（原样保留）：label 即概念文本提示，
+          iou_thresh 语义 = 实例分数阈值（真机实测：极柱域有效实例大量落在
+          0.3-0.5 带，默认 0.3 对齐 post_process 阈值，0.5 会滤掉过半真实例）。
+          概念词必须贴域——W47 以极柱 GT 实测（12 图对照标注）：唯一有效词
+          "scratch"（精确率 32%/GT 覆盖 57%，阈值 0.3），"mark" 次之
+          （11%/68%）；"hole" 高分实例全为误检（精确率 0%），"pole"/"defect"/
+          "dent"/"flaw" 零命中。分数高≠命中 GT——以 scripts/eval_sam3_accuracy.py
+          复测。
+        - label 空 → 网格盒全覆盖通道（W55 · FR-001）：大圆/背景等目标无
+          可表述概念词（上述零命中矩阵），SAM3 亦无原生 AMG——以 3×3 带
+          重叠网格盒逐盒盒提示分割近似「分割一切」（盒提示本域有效：W53
+          紧盒 IoU 0.755）；跨盒按 mask IoU ≥ dedup_iou 去重。
         """
-        text = (label or "").strip() or "defect"
+        text = (label or "").strip()
+        if not text:
+            return self._build_grid_detector(
+                iou_thresh=iou_thresh,
+                min_area=min_area,
+                max_masks=max_masks,
+                dedup_iou=dedup_iou,
+            )
 
         def _detector(image):
             masks, scores = self._run_instances(image, text=text)
@@ -318,6 +371,60 @@ class Sam3Adapter:
                         points=tuple(poly),
                         label=label,
                     ))
+            return shapes
+
+        return _detector
+
+    def _build_grid_detector(
+        self,
+        iou_thresh: float,
+        min_area: int,
+        max_masks: int,
+        dedup_iou: float,
+    ):
+        """网格盒全覆盖 detector（W55 · FR-001，空标签分支）。
+
+        逐盒循环单前向（boxes=[[box]]，调用形态与 predict_* 一致）；
+        processor 多盒批量前向属后续优化批（9 盒最坏 ~13s @RTX 3060，
+        PRD 风险①已预案）。Shape label="auto"（空标签无可携带的概念词）。
+        """
+
+        def _detector(image):
+            h, w = image.shape[:2]
+            candidates: list[tuple[np.ndarray, float]] = []
+            for box in _grid_boxes(w, h):
+                masks, scores = self._run_instances(
+                    image, boxes=[[list(box)]]
+                )
+                for m, s in zip(masks, scores, strict=True):
+                    if (
+                        s >= iou_thresh
+                        and int(np.count_nonzero(m)) >= min_area
+                    ):
+                        candidates.append((m, s))
+            candidates.sort(
+                key=lambda p: int(np.count_nonzero(p[0])), reverse=True
+            )
+            kept_masks: list[np.ndarray] = []
+            shapes: list[Shape] = []
+            for m, _s in candidates:
+                if len(shapes) >= max_masks:
+                    _logger.warning(
+                        "SAM3 网格分割 %d 个超上限 %d，已截断（面积最小者丢弃）",
+                        len(candidates), max_masks,
+                    )
+                    break
+                if any(_mask_iou(m, k) >= dedup_iou for k in kept_masks):
+                    continue
+                poly = _mask_to_polygon(m)
+                if len(poly) < 3:
+                    continue
+                kept_masks.append(m)
+                shapes.append(Shape(
+                    mode=AnnotationMode.POLYGON,
+                    points=tuple(poly),
+                    label="auto",
+                ))
             return shapes
 
         return _detector

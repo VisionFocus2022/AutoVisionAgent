@@ -321,7 +321,9 @@ class LabelPage(SamSessionMixin, LabelClipboardMixin, QWidget):
         p.setContentsMargins(8, 8, 8, 8)
         p.setSpacing(6)
         p.addWidget(self._caption(tr("当前标签")))
-        self.label_input = QLineEdit("defect", panel)
+        # W55：默认空——AUTO 全图走网格盒全覆盖；手动加标签时
+        # _apply_label 自带 or "defect" 兜底
+        self.label_input = QLineEdit("", panel)
         p.addWidget(self.label_input)
         self.btn_apply_label = QPushButton(tr("添加标签"), panel)
         self.btn_apply_label.clicked.connect(self._apply_label)

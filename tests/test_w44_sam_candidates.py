@@ -109,6 +109,22 @@ class TestAutoModeWiring:
         )
         assert ctrl.attach_detector(lambda img: [], _DUMMY_IMG) is True
 
+    def test_controller_attach_detector_wires_result_hook(self, qapp):
+        """W55（FR-002）：on_result 经 attach_detector 透传到
+        AutoLabeler 结果回调——0 形状时页面据此发降级提示。"""
+        from labeling.canvas import AnnotationCanvas
+        from labeling.controller import AnnotationController
+
+        ctrl = AnnotationController(
+            AnnotationCanvas(), mode=AnnotationMode.AUTO, label="d"
+        )
+        got: list[int] = []
+        assert ctrl.attach_detector(
+            lambda img: [], _DUMMY_IMG, on_result=got.append
+        ) is True
+        ctrl._labeler.on_press((0, 0))
+        assert got == [0], "on_result 应透传到结果回调（0 形状即回调 0）"
+
     def test_entering_auto_triggers_sam_setup(self, qapp, monkeypatch):
         from gui.pages.label.page import LabelPage
 

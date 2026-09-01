@@ -111,6 +111,11 @@ _EN_US: dict[str, str] = {
     "自动标注就绪": "Auto-annotation ready",
     "拖拽划定区域，区域内点击分割": "Drag to set region, click inside to segment",
 
+    # ---- W55：SAM 全图零分割诚实降级提示 ----
+    "SAM 全图零分割": "SAM full-image: nothing segmented",
+    "未分出标注：可改用区域/点击模式，或输入概念词":
+        "No shapes produced; try region/click mode or type a concept word",
+
     # ---- v6 P2-5 补译（守卫扩单引号口径后补齐，W38；版本对比对话框） ----
     "旧": "Old",
     "新": "New",

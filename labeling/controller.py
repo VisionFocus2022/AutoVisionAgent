@@ -322,10 +322,12 @@ class AnnotationController:
             self._labeler.set_image(image)
         return True
 
-    def attach_detector(self, detector, image=None) -> bool:
+    def attach_detector(self, detector, image=None, on_result=None) -> bool:
         """为 AUTO 模式注入检测回调与当前帧（W44·C：SAM AMG 接入通道）。
 
-        仅在当前模式为 AUTO 且标注器支持 set_detector 时生效。
+        仅在当前模式为 AUTO 且标注器支持 set_detector 时生效；
+        on_result（W55 · FR-002）：透传到 AutoLabeler 结果回调，
+        0 形状时页面据此发诚实降级提示（None=不接）。
         """
         if self._mode is not AnnotationMode.AUTO or self._labeler is None:
             return False
@@ -334,6 +336,8 @@ class AnnotationController:
         self._labeler.set_detector(detector)
         if image is not None:
             self._labeler.set_image(image)
+        if on_result is not None and hasattr(self._labeler, "set_result_hook"):
+            self._labeler.set_result_hook(on_result)
         return True
 
     def _commit_shape(self, shape: Shape) -> None:

@@ -49,6 +49,7 @@ class AutoLabeler(AbstractLabeler):
         self._detector: DetectorFn | None = detector
         self._image = image
         self._queue: list[Shape] = []
+        self._result_hook: Callable[[int], None] | None = None
 
     # ---- 外部注入 ---- #
     def set_detector(self, detector: DetectorFn) -> None:
@@ -58,6 +59,12 @@ class AutoLabeler(AbstractLabeler):
     def set_image(self, image: Any) -> None:
         """设置当前帧。"""
         self._image = image
+
+    def set_result_hook(self, hook: Callable[[int], None] | None) -> None:
+        """注入结果回调（W55 · FR-002）：run() 每次真实执行后以 Shape 数
+        调用（含 0 与异常路径的 0）——页面据此发「零分割」诚实降级提示；
+        传 None 清除。"""
+        self._result_hook = hook
 
     # ---- 批量推理 ---- #
     def run(self) -> int:
@@ -69,10 +76,22 @@ class AutoLabeler(AbstractLabeler):
         except Exception:
             import logging as _log
             _log.getLogger(__name__).exception("自动检测器推理失败")
+            self._notify_result(0)
             return 0
         self._queue = shapes
         self._active = True
+        self._notify_result(len(self._queue))
         return len(self._queue)
+
+    def _notify_result(self, count: int) -> None:
+        """结果回调分发——回调自身异常不反噬标注主流程。"""
+        if self._result_hook is None:
+            return
+        try:
+            self._result_hook(count)
+        except Exception:
+            import logging as _log
+            _log.getLogger(__name__).exception("自动标注结果回调失败")
 
     @property
     def pending_count(self) -> int:

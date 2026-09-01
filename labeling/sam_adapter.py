@@ -227,6 +227,8 @@ class SamAdapter:
         """
         import cv2
         from segment_anything import SamAutomaticMaskGenerator
+        # W55：GUI 标签框默认空——SAM1 AMG 空标签规范化为 "auto"
+        shape_label = (label or "").strip() or "auto"
 
         gen = SamAutomaticMaskGenerator(
             self._predictor.model,
@@ -260,7 +262,7 @@ class SamAdapter:
                     shapes.append(Shape(
                         mode=AnnotationMode.POLYGON,
                         points=tuple(poly),
-                        label=label,
+                        label=shape_label,
                     ))
             return shapes
 
