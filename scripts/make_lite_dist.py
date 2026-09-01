@@ -341,7 +341,10 @@ def derive_lite(
         dst_path,
         # easyocr 本体 + 独占依赖（pip Required-by 唯一依赖方=easyocr，
         # v5 P2-N2：余量 2.4MB 时 ~15MB 残留不可接受）
-        ("easyocr", "bidi", "pyclipper", "shapely", "Shapely.libs"),
+        # SAM3 权重（2026-09-01 spec datas 纳入批 FR-003）：full dist 经
+        # datas 携带 3.21GiB，lite 为 CPU-only 且 2GiB 硬预算装不下；
+        # 多级相对路径（_internal/weights/sam3）由 Path 拼接天然支持
+        ("easyocr", "bidi", "pyclipper", "shapely", "Shapely.libs", "weights/sam3"),
     ))
     replaced: dict[str, str] = {}
     if cpu_wheels_dir is not None:

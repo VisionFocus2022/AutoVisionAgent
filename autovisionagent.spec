@@ -37,6 +37,23 @@ for _hard_dep in ("torch", "torchvision", "numpy", "cv2", "PySide6"):
             f" autovisionagent.spec --noconfirm"
         )
 
+# ---- SAM3 权重存在性防呆（2026-09-01 spec datas 纳入批 FR-002）----
+# 动机：权重经 datas 打包（FR-001）但 weights/ 被 .gitignore——新克隆
+# 机器无此目录时若静默跳过，会产出"以为带了权重实际没带"的残废 exe
+# （SAM3 自动发现落空→弹窗，与 AVA-R1 残废 exe 同型事故面）。防呆=
+# 硬失败并给下载指引；打包是发版动作，只在有权重的开发机执行。
+# 验收锚：tests/test_w26_spec_packaging.py::test_spec_datas_bundles_sam3_weights
+_sam3_weights = Path(SPECPATH).resolve() / "weights" / "sam3"
+_sam3_required = ("model.safetensors", "config.json", "processor_config.json")
+_sam3_missing = [n for n in _sam3_required if not (_sam3_weights / n).is_file()]
+if _sam3_missing:
+    raise SystemExit(
+        f"[BUILD-ABORT] SAM3 weights incomplete under {_sam3_weights}:\n"
+        f"  missing : {', '.join(_sam3_missing)}\n"
+        f"  fix     : download transformers-format weights to weights/sam3/"
+        f" (see weights/sam3/README.md, ModelScope facebook/sam3)"
+    )
+
 block_cipher = None
 
 a = Analysis(
@@ -44,7 +61,10 @@ a = Analysis(
     pathex=["."],
     binaries=[],
     datas=[
-        # 仅打包存在的文件；configs/ 在运行时按需创建
+        # SAM3 权重（2026-09-01 FR-001）：落 _internal/weights/sam3，与
+        # sam_session 约定发现目录逐字吻合（WEIGHTS_DIR frozen 语义）；
+        # 存在性由头部 BUILD-ABORT 防呆保证，此处无条件打包
+        ("weights/sam3", "weights/sam3"),
     ] + ([
         # 如果 configs/user_settings.json 存在则打包
         ("configs/user_settings.json", "configs"),

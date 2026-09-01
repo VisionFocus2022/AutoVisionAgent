@@ -332,3 +332,54 @@ def test_vendored_load_bearing_never_module_level_imports_excluded():
         f"要么移出 excludes，要么外科排除该引用方模块（如"
         f"transformers.utils.notebook 先例）"
     )
+
+
+def _parse_spec_datas(source: str) -> set:
+    """从 Analysis(datas=...) 递归收集字面量 (src, dst) 元组。
+
+    datas 允许 ``[] + ([...] if ... else [])`` 拼接形态（configs 先例），
+    故走 ast.walk 收集关键字值子树内全部字符串二元 Tuple 常量——
+    动态拼装条目（非字面量）守卫天然不可见，与 hiddenimports 守卫同边界。
+    """
+    tuples: set = set()
+    found = 0
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        func_name = getattr(node.func, "id", "") or getattr(node.func, "attr", "")
+        if func_name != "Analysis":
+            continue
+        for kw in node.keywords:
+            if kw.arg != "datas":
+                continue
+            found += 1
+            for sub in ast.walk(kw.value):
+                if (
+                    isinstance(sub, ast.Tuple)
+                    and len(sub.elts) == 2
+                    and all(
+                        isinstance(e, ast.Constant) and isinstance(e.value, str)
+                        for e in sub.elts
+                    )
+                ):
+                    tuples.add((sub.elts[0].value, sub.elts[1].value))
+    assert found == 1, (
+        f"spec 中 Analysis(datas=...) 应为恰 1 处，实测 {found}"
+        "——多 bundle 时守卫口径需显式选择"
+    )
+    return tuples
+
+
+@pytest.mark.unit
+def test_spec_datas_bundles_sam3_weights():
+    """SAM3 权重 datas 锚（2026-09-01 spec datas 纳入批 FR-004）。
+
+    weights/sam3 必须在 datas——否则每次重打包产出无 SAM3 权重的 exe
+    （自动发现落空→弹窗），须手动 robocopy 3.21GiB 补救（08-31 权宜态）。
+    """
+    datas = _parse_spec_datas(SPEC_FILE.read_text(encoding="utf-8"))
+    assert ("weights/sam3", "weights/sam3") in datas, (
+        "spec datas 缺 weights/sam3——重打包产物将不带 SAM3 权重，"
+        "自动发现退化为手选对话框（上批 08-31 手动复制权宜态回归）。"
+        "缺失防呆断言在 spec 头部（BUILD-ABORT），本守卫锁 datas 条日本体。"
+    )

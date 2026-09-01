@@ -19,10 +19,17 @@
 
 确认 `dist/AutoVisionAgent/AutoVisionAgent.exe` 生成且时间戳更新。
 
+SAM3 权重（2026-09-01 datas 纳入）：`weights/sam3` 经 spec datas 自动带入
+`_internal/weights/sam3`（3.21GiB，打包时长 +约 1 分钟）；权重不完整时
+spec 头部防呆直接 `[BUILD-ABORT]`（防静默产出无 SAM3 exe）——须先按
+`weights/sam3/README.md`（ModelScope transformers 格式）下载补齐再打包。
+重打包后**不再需要**手动 robocopy 权重（08-31 权宜态已废除）。
+
 可选：派生 CPU-only lite 产物（W19 双产物方案——复制全量产物并裁剪
 `_internal/torch/lib` 内 CUDA DLL 栈，目标 <2GiB；引擎侧已做 cuda 不可用
 → cpu 回退，蒸馏冒烟见 `scripts/make_lite_dist.py` 与
-`tests/test_w19_lite_dist.py` 守卫）：
+`tests/test_w19_lite_dist.py` 守卫）。lite 派生会自动裁掉 `weights/sam3`
+（CPU-only 不带 SAM3，标注页自动发现落空后走手选对话框）：
 
 ```bash
 .venv/Scripts/python.exe scripts/make_lite_dist.py

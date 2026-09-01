@@ -331,6 +331,35 @@ def test_cli_main_over_limit_exits_nonzero(tmp_path):
     assert excinfo.value.code == 1
 
 
+def test_derive_lite_prunes_sam3_weights(tmp_path):
+    """SAM3 权重裁剪锚（2026-09-01 spec datas 纳入批 FR-003）。
+
+    full dist 经 spec datas 携带 weights/sam3（3.21GiB）后，lite 派生
+    必须裁掉——lite 是 CPU-only 且 2GiB 硬预算装不下；引擎注册保留、
+    load 走诚实失败路径（easyocr 同语义）。裁剪量须留档 marker。
+    """
+    src = _make_fake_dist(tmp_path)
+    sam3 = src / "_internal" / "weights" / "sam3"
+    sam3.mkdir(parents=True)
+    (sam3 / "model.safetensors").write_bytes(b"\0" * 1024)
+    (sam3 / "config.json").write_text("{}", encoding="utf-8")
+    dst = tmp_path / "lite"
+
+    mld.derive_lite(src, dst, max_bytes=10 * 1024**3)
+
+    assert not (dst / "_internal" / "weights" / "sam3").exists(), (
+        "lite 派生后 weights/sam3 应被整体裁剪（2GiB 预算 + CPU-only）"
+    )
+    assert (src / "_internal" / "weights" / "sam3" / "model.safetensors").exists(), (
+        "裁剪只动 dst，full 源产物的权重必须原样保留"
+    )
+    marker = json.loads((dst / "LITE_MARKER.json").read_text(encoding="utf-8"))
+    assert "weights/sam3" in marker["pruned_dlls"], (
+        f"weights/sam3 裁剪应留档 marker（实测 pruned_dlls={marker['pruned_dlls']}）"
+    )
+    assert marker["pruned_bytes"]["weights/sam3"] == 1024 + 2
+
+
 # ============================== 真产物守卫（FR-3.3） ============================== #
 
 
