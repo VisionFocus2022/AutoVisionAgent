@@ -30,6 +30,7 @@ from gui.core.jobs import run_job
 from gui.core.permissions import check_action  # W35：动作门控
 from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.pages.label import batch_prelabel as _bp  # W30：批量预标注（模块引用保测试缝）
+from gui.pages.label.clipboard import LabelClipboardMixin  # W55：剪贴板抽取（保 800 行守卫）
 from gui.pages.label.sam_session import SamSessionMixin
 from gui.pages.label.workers import det_engine_available, run_ai_prelabel
 from gui.widgets.file_dialog import pick_directory, pick_open_file, pick_save_file
@@ -49,6 +50,7 @@ _MODES = [
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
     (AnnotationMode.REGION_SAM, "SAM 区域", "J"),
     (AnnotationMode.SAM_BRUSH, "SAM 笔刷", "B"),
+    (AnnotationMode.EDIT, "编辑", "E"),
     # W46·B：补 W44 AUTO/AMG 通道缺失的 UI 入口（此前 _sam_attach 的
     # AUTO 分支无按钮可达=死路）——SAM3 后端下 label 输入框即概念提示词
     (AnnotationMode.AUTO, "SAM 全图", "G"),
@@ -63,6 +65,7 @@ _SAM_MODES = frozenset({
 _DRAW_MODES = _SAM_MODES | {
     AnnotationMode.POLYGON, AnnotationMode.RECTANGLE,
     AnnotationMode.BRUSH, AnnotationMode.KEYPOINT,
+    AnnotationMode.EDIT,
 }
 
 
@@ -144,8 +147,15 @@ class _ZoomableView(QGraphicsView):
         else:
             super().mouseReleaseEvent(event)
 
+    def mouseDoubleClickEvent(self, event) -> None:
+        # W55：EDIT 模式双击边插入顶点；其他模式由 controller 自行忽略
+        if self._controller is not None:
+            self._controller.on_mouse_double_click(event)
+        else:
+            super().mouseDoubleClickEvent(event)
 
-class LabelPage(SamSessionMixin, QWidget):
+
+class LabelPage(SamSessionMixin, LabelClipboardMixin, QWidget):
     """标注画布页（实装页）— 支持文件夹批量加载。
 
     SAM 交互式会话（加载/预热/注入）混入自 SamSessionMixin（W27 抽取，
@@ -366,6 +376,9 @@ class LabelPage(SamSessionMixin, QWidget):
         self.btn_toggle_shapes.clicked.connect(self._toggle_shapes_visible)
 
         self.file_list.currentRowChanged.connect(self._on_file_selected)
+        # W55 编辑模式：列表选中 ↔ 画布选中（blockSignals 防环）
+        self.shape_list.currentRowChanged.connect(self._on_shape_row_selected)
+        self.canvas.selection_changed.connect(self._on_canvas_selection_changed)
 
         self.canvas.shapes_changed.connect(self._on_shapes_changed)
         self.canvas.undo_redo_changed.connect(self._on_undo_redo_changed)
@@ -710,54 +723,17 @@ class LabelPage(SamSessionMixin, QWidget):
         if row >= 0:
             self.canvas.remove_shape_at(row)
 
-    def _copy_shapes(self) -> None:
-        """复制选中标注到剪贴板（Ctrl+C）。"""
-        row = self.shape_list.currentRow()
-        if row >= 0 and row < len(self.canvas.shapes):
-            shape = self.canvas.shapes[row]
-            # 深拷贝形状数据（points/mode/label）
-            self._clipboard = [{
-                "mode": shape.mode,
-                "label": shape.label,
-                "points": list(getattr(shape, "points", [])),
-            }]
-            self.status_changed.emit(tr("已复制"), f"1 {tr('标注')}")
-        else:
-            # 复制全部
-            self._clipboard = [{
-                "mode": s.mode,
-                "label": s.label,
-                "points": list(getattr(s, "points", [])),
-            } for s in self.canvas.shapes]
-            self.status_changed.emit(tr("已复制"), f"{len(self._clipboard)} {tr('标注')}")
 
-    def _paste_shapes(self, offset: int = 20) -> None:
-        """粘贴剪贴板标注（Ctrl+V），偏移避免完全重叠。"""
-        if not self._clipboard:
-            self.status_changed.emit(tr("剪贴板为空"), "!")
-            return
-        for item in self._clipboard:
-            try:
-                # 创建偏移后的点列表
-                offset_points = [
-                    (p[0] + offset, p[1] + offset) if isinstance(p, (tuple, list)) else p
-                    for p in item.get("points", [])
-                ]
-                # 通过 controller 添加形状
-                self.controller.set_mode(item["mode"])
-                self.controller.set_label(item["label"])
-                if hasattr(self.canvas, "add_shape_from_points"):
-                    self.canvas.add_shape_from_points(
-                        offset_points, item["mode"], item["label"]
-                    )
-                elif hasattr(self.canvas, "add_shape"):
-                    self.canvas.add_shape(
-                        offset_points, item["mode"], item["label"]
-                    )
-            except (ImportError, RuntimeError, OSError, ValueError):
-                import logging
-                logging.getLogger(__name__).exception("粘贴标注失败")
-        self.status_changed.emit(tr("已粘贴"), f"{len(self._clipboard)} {tr('标注')}")
+    # ------------------------------ W55 选中联动 ------------------------------ #
+    def _on_shape_row_selected(self, row: int) -> None:
+        """形状列表选中行 → 画布选中（编辑模式下手柄立即可见）。"""
+        self.canvas.select_shape(row if row >= 0 else None)
+
+    def _on_canvas_selection_changed(self, index: int) -> None:
+        """画布选中 → 列表高亮（blockSignals 防回环）。"""
+        self.shape_list.blockSignals(True)
+        self.shape_list.setCurrentRow(index)
+        self.shape_list.blockSignals(False)
 
     # ------------------------------ 回刷 ------------------------------ #
     def _on_shapes_changed(self, shapes) -> None:

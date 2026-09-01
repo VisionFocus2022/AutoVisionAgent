@@ -27,10 +27,11 @@ import numpy as np
 _logger = logging.getLogger(__name__)
 
 try:
-    from labeling.geometry import simplify_polyline
+    from labeling.geometry import SAM_POLY_EPSILON, simplify_polyline
 except ImportError:  # pragma: no cover — 与 sam_adapter 同款降级守卫
     _logger.warning("labeling.geometry 不可用，使用简化轮廓")
-    def simplify_polyline(points, epsilon=2.0):
+    SAM_POLY_EPSILON = 2.0
+    def simplify_polyline(points, epsilon=SAM_POLY_EPSILON):
         return points
 
 try:
@@ -50,7 +51,9 @@ _CLICK_BOX_R = 16
 _BRUSH_MARGIN = 8
 
 
-def _mask_to_polygon(mask: np.ndarray, epsilon: float = 2.0) -> list[tuple[float, float]]:
+def _mask_to_polygon(
+    mask: np.ndarray, epsilon: float = SAM_POLY_EPSILON
+) -> list[tuple[float, float]]:
     """二值掩码 → 最大轮廓 → ε 折点多边形（与 SamAdapter 同管线）。"""
     import cv2
 

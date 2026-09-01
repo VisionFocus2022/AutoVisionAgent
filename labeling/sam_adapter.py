@@ -17,10 +17,11 @@ _logger = logging.getLogger(__name__)
 
 # 延迟导入：labeling.geometry 和 labeling.base 可能尚未实现
 try:
-    from labeling.geometry import simplify_polyline
+    from labeling.geometry import SAM_POLY_EPSILON, simplify_polyline
 except ImportError:
     _logger.warning("labeling.geometry 不可用，使用简化轮廓")
-    def simplify_polyline(points, epsilon=2.0):
+    SAM_POLY_EPSILON = 2.0
+    def simplify_polyline(points, epsilon=SAM_POLY_EPSILON):
         return points
 
 try:
@@ -110,7 +111,7 @@ class SamAdapter:
             return []
         largest = max(contours, key=cv2.contourArea)
         pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
-        return simplify_polyline(pts, epsilon=2.0)
+        return simplify_polyline(pts, epsilon=SAM_POLY_EPSILON)
 
     def predict_box(
         self,
@@ -138,7 +139,7 @@ class SamAdapter:
             return []
         largest = max(contours, key=cv2.contourArea)
         pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
-        return simplify_polyline(pts, epsilon=2.0)
+        return simplify_polyline(pts, epsilon=SAM_POLY_EPSILON)
 
     def predict_point_in_box(
         self,
@@ -176,7 +177,7 @@ class SamAdapter:
             return []
         largest = max(contours, key=cv2.contourArea)
         pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
-        return simplify_polyline(pts, epsilon=2.0)
+        return simplify_polyline(pts, epsilon=SAM_POLY_EPSILON)
 
     def predict_points(
         self,
@@ -209,7 +210,7 @@ class SamAdapter:
             return [], logits
         largest = max(contours, key=cv2.contourArea)
         pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
-        return simplify_polyline(pts, epsilon=2.0), logits
+        return simplify_polyline(pts, epsilon=SAM_POLY_EPSILON), logits
 
     def build_amg_detector(
         self,
@@ -254,7 +255,7 @@ class SamAdapter:
                     continue
                 largest = max(contours, key=cv2.contourArea)
                 pts = [(float(p[0][0]), float(p[0][1])) for p in largest]
-                poly = simplify_polyline(pts, epsilon=2.0)
+                poly = simplify_polyline(pts, epsilon=SAM_POLY_EPSILON)
                 if len(poly) >= 3:
                     shapes.append(Shape(
                         mode=AnnotationMode.POLYGON,

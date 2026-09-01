@@ -318,3 +318,18 @@ class TestSamRealCheckpointSmoke:
         # 轮廓应落在白方块附近（界内 + 容差）
         assert min(xs) >= 32 and max(xs) <= 224
         assert min(ys) >= 32 and max(ys) <= 224
+
+
+# ---------------------------------------------------------------- W55 ε 细化
+@pytest.mark.unit
+def test_epsilon_uses_single_source_constant():
+    """SAM v1 适配器调用点统一消费 SAM_POLY_EPSILON（源码契约，W55）。
+
+    行为级顶点密度由 test_sam3_adapter 圆弧门覆盖；v1 的 cv2 全 mock
+    形态下密度断言不可信，改锁源码：epsilon=2.0 字面量不得残留。
+    """
+    from pathlib import Path
+
+    src = Path("labeling/sam_adapter.py").read_text(encoding="utf-8")
+    assert "epsilon=2.0" not in src, "ε=2.0 字面量残留——须统一走 SAM_POLY_EPSILON"
+    assert "SAM_POLY_EPSILON" in src

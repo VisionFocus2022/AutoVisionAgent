@@ -455,3 +455,19 @@ class TestRegionNearestSelection:
         poly = adapter.predict_point_in_box(_DUMMY_IMG, (30, 30), (0, 0, 63, 63))
         assert len(poly) >= 3
 
+
+
+# ---------------------------------------------------------------- W55 顶点细化
+class TestVertexDensityW55:
+    """ε=0.5 后 SAM 多边形顶点密度门（校准探针 2026-09-01：圆 r=25 掩码
+    raw 84 点 → ε=2.0 简化至 13、ε=0.5 → 28；阈值 20 居中防边缘抖动）。"""
+
+    def test_circle_mask_keeps_fine_vertices(self):
+        import cv2
+
+        drawn = np.zeros((64, 64), dtype=np.uint8)
+        cv2.circle(drawn, (32, 32), 25, 1, -1)
+        mask = drawn.astype(bool)
+        adapter, _ = _make_adapter(masks=[mask], scores=[0.9])
+        poly = adapter.predict_point(_DUMMY_IMG, (32, 32))
+        assert len(poly) >= 20, f"顶点过粗（{len(poly)} < 20）——ε 未生效？"

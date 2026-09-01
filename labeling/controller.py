@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QGraphicsView
 
 from labeling.base import DEFAULT_COLOR, AnnotationMode, Point, Shape
 from labeling.canvas import AnnotationCanvas
+from labeling.geometry import hit_vertex, nearest_edge_point, point_in_polygon
 from labeling.modes import make_labeler
 
 _logger = logging.getLogger(__name__)
@@ -38,6 +39,8 @@ class AnnotationController:
         self._label: str = label
         self._labeler = None
         self._view: QGraphicsView | None = None
+        # W55 编辑模式：拖动中的顶点索引（None=未拖动）
+        self._edit_drag_vertex: int | None = None
         self._make_labeler()
 
     # ============================== 模式/标签 ============================== #
@@ -49,6 +52,10 @@ class AnnotationController:
         """切换标注模式。"""
         if mode == self._mode and self._labeler is not None:
             return
+        if self._mode is AnnotationMode.EDIT and mode is not AnnotationMode.EDIT:
+            # W55：离开编辑模式清拖动态与选中
+            self._edit_drag_vertex = None
+            self._canvas.clear_selection()
         self._mode = mode
         self._make_labeler()
 
@@ -99,31 +106,51 @@ class AnnotationController:
     def on_mouse_press(self, event) -> None:
         if self._view is None:
             return
+        pt = self._to_scene_point(self._view, event)
+        if pt is None:
+            return
+        if self._mode is AnnotationMode.EDIT:
+            # W55：编辑模式接管鼠标（labeler=None），不经绘制路径
+            if event.button() == Qt.LeftButton:
+                self._edit_press_left(pt)
+            elif event.button() == Qt.RightButton:
+                self._edit_press_right(pt)
+            return
         if event.button() == Qt.LeftButton and self._labeler is not None:
-            pt = self._to_scene_point(self._view, event)
-            if pt is not None:
-                self._labeler.on_press(pt)
-                # 关键点/矩形/画笔在 release 时完成，检查是否有即时结果
-                shape = self._labeler.preview()
-                self._canvas._redraw()
-                if shape:
-                    self._draw_preview(shape)
+            self._labeler.on_press(pt)
+            # 关键点/矩形/画笔在 release 时完成，检查是否有即时结果
+            shape = self._labeler.preview()
+            self._canvas._redraw()
+            if shape:
+                self._draw_preview(shape)
         elif event.button() == Qt.RightButton:
             self.handle_commit()
 
     def on_mouse_move(self, event) -> None:
-        if self._view is None or self._labeler is None:
+        if self._view is None:
             return
         pt = self._to_scene_point(self._view, event)
-        if pt is not None:
-            self._labeler.on_move(pt)
-            self._canvas._redraw()
-            shape = self._labeler.preview()
-            if shape:
-                self._draw_preview(shape)
+        if pt is None:
+            return
+        if self._mode is AnnotationMode.EDIT:
+            if self._edit_drag_vertex is not None:
+                self._canvas.move_vertex(self._edit_drag_vertex, pt)
+            return
+        if self._labeler is None:
+            return
+        self._labeler.on_move(pt)
+        self._canvas._redraw()
+        shape = self._labeler.preview()
+        if shape:
+            self._draw_preview(shape)
 
     def on_mouse_release(self, event) -> None:
-        if self._view is None or self._labeler is None:
+        if self._view is None:
+            return
+        if self._mode is AnnotationMode.EDIT:
+            self._edit_drag_vertex = None  # W55：拖动结束
+            return
+        if self._labeler is None:
             return
         if event.button() == Qt.LeftButton:
             pt = self._to_scene_point(self._view, event)
@@ -132,11 +159,22 @@ class AnnotationController:
                 if shape is not None:
                     self._commit_shape(shape)
 
+    def on_mouse_double_click(self, event) -> None:
+        """双击事件（W55：EDIT 模式下=在最近边插入顶点；其他模式不消费）。"""
+        if self._view is None or self._mode is not AnnotationMode.EDIT:
+            return
+        pt = self._to_scene_point(self._view, event)
+        if pt is not None:
+            self._edit_double_click(pt)
+
     # ============================== 便捷 API（点元组，绕开 Qt 事件） ============================== #
     # 供单元测试与脚本化调用使用，不需要 view 与 QMouseEvent。
     # 直接以场景坐标驱动 labeler，行为等价于 on_mouse_* 但跳过坐标转换。
     def handle_press(self, pt: Point) -> None:
         """按下（左键）— 直接以场景坐标驱动 labeler。"""
+        if self._mode is AnnotationMode.EDIT:
+            self._edit_press_left(pt)
+            return
         if self._labeler is None:
             return
         self._labeler.on_press(pt)
@@ -147,6 +185,10 @@ class AnnotationController:
 
     def handle_move(self, pt: Point) -> None:
         """移动 — 直接以场景坐标驱动 labeler。"""
+        if self._mode is AnnotationMode.EDIT:
+            if self._edit_drag_vertex is not None:
+                self._canvas.move_vertex(self._edit_drag_vertex, pt)
+            return
         if self._labeler is None:
             return
         self._labeler.on_move(pt)
@@ -157,11 +199,73 @@ class AnnotationController:
 
     def handle_release(self, pt: Point) -> None:
         """释放（左键）— 直接以场景坐标驱动 labeler，完成形状提交。"""
+        if self._mode is AnnotationMode.EDIT:
+            self._edit_drag_vertex = None
+            return
         if self._labeler is None:
             return
         shape = self._labeler.on_release(pt)
         if shape is not None:
             self._commit_shape(shape)
+
+    # ------------------ W55 编辑模式便捷 API（点元组，测试/脚本化） ------------------ #
+
+    def handle_right_press(self, pt: Point) -> bool:
+        """右键（EDIT 模式）— 命中顶点则删除；返回是否删除成功。"""
+        return self._edit_press_right(pt)
+
+    def handle_double_click(self, pt: Point) -> bool:
+        """双击（EDIT 模式）— 在最近边投影点插入顶点；返回是否插入。"""
+        return self._edit_double_click(pt)
+
+    def _selected_polygon(self) -> Shape | None:
+        idx = self._canvas.selected_index
+        if idx is None:
+            return None
+        shape = self._canvas.shapes[idx]
+        if shape.mode is not AnnotationMode.POLYGON or len(shape.points) < 3:
+            return None
+        return shape
+
+    def _edit_press_left(self, pt: Point) -> None:
+        """编辑模式左键：命中顶点→开始拖动；命中形状→选中；空白→取消。"""
+        shape = self._selected_polygon()
+        if shape is not None:
+            v = hit_vertex(list(shape.points), pt)
+            if v is not None:
+                self._edit_drag_vertex = v
+                self._canvas.begin_vertex_edit()  # 拖前快照：一次拖动=一步 undo
+                _logger.info("W55 顶点拖动开始: vertex=%s pt=%s", v, pt)
+                return
+        for i, s in enumerate(self._canvas.shapes):
+            if s.mode is AnnotationMode.POLYGON and point_in_polygon(
+                pt, list(s.points)
+            ):
+                self._canvas.select_shape(i)
+                _logger.info("W55 编辑选中: shape=%s pt=%s", i, pt)
+                return
+        self._canvas.clear_selection()
+
+    def _edit_press_right(self, pt: Point) -> bool:
+        """编辑模式右键：命中选中形状顶点→删除（保底 ≥3 点）。"""
+        shape = self._selected_polygon()
+        if shape is None:
+            return False
+        v = hit_vertex(list(shape.points), pt)
+        if v is None:
+            return False
+        return self._canvas.remove_vertex(v)
+
+    def _edit_double_click(self, pt: Point) -> bool:
+        """编辑模式双击：最近边投影点插入顶点。"""
+        shape = self._selected_polygon()
+        if shape is None:
+            return False
+        got = nearest_edge_point(list(shape.points), pt)
+        if got is None:
+            return False
+        pos, proj = got
+        return self._canvas.insert_vertex(pos, proj)
 
     def _draw_preview(self, shape: Shape) -> None:
         """在画布上绘制预览标注（半透明）。"""
@@ -187,6 +291,10 @@ class AnnotationController:
         """取消当前标注操作。"""
         if self._labeler is not None:
             self._labeler.reset()
+        if self._mode is AnnotationMode.EDIT:
+            # W55：编辑模式下 Esc=取消选中（无进行中绘制）
+            self._canvas.clear_selection()
+            return
         self._canvas._redraw()
 
     def attach_interactive(self, adapter, image=None) -> bool:

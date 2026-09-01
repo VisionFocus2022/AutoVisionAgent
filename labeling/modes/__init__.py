@@ -85,7 +85,7 @@ def make_labeler(
     label: str,
     color: RGBA = DEFAULT_COLOR,
     **options,
-) -> ILabeler:
+) -> ILabeler | None:
     """构造指定模式的标注器。
 
     Args:
@@ -96,9 +96,15 @@ def make_labeler(
             INTERACTIVE 模式：sam_adapter, image（可选，后续可注入）。
             AUTO 模式：detector, image（可选，后续可注入）。
 
+    Returns:
+        标注器实例；EDIT 模式返回 None（W55：编辑模式无标注器，鼠标
+        事件由 controller 编辑分支接管，None 为合法值非构造失败）。
+
     Raises:
         ValueError: 未知模式。
     """
+    if mode is AnnotationMode.EDIT:
+        return None
     factory = _ALL_FACTORIES.get(mode)
     if factory is None:
         raise ValueError(f"未知标注模式: {mode}")

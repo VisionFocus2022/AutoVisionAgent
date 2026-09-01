@@ -44,7 +44,7 @@ def _mode_label_keys() -> set:
     )
     m = re.search(r"_MODES = \[(.*?)\]", src, re.S)
     assert m, "_MODES 表未找到——结构变更须同步本守卫"
-    return set(re.findall(r'"([^"]+)",\s*"[QRPKIJB]"', m.group(1)))
+    return set(re.findall(r'"([^"]+)",\s*"[A-Z]"', m.group(1)))
 
 
 def _tr_literals() -> dict:

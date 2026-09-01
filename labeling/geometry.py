@@ -8,6 +8,11 @@ import math
 
 from labeling.base import Point
 
+# SAM 掩码→多边形折点容差（W55：2.0→0.5，全 SAM 模式 I/J/B/G 统一消费；
+# 校准 2026-09-01：圆 r=25 掩码 raw 84 点 → ε=2.0 简化至 13 / ε=0.5 → 28，
+# 顶点密度 3-5 倍且边界贴合掩码边缘，配合编辑模式顶点手柄微调）
+SAM_POLY_EPSILON: float = 0.5
+
 
 def simplify_polyline(
     points: list[Point], epsilon: float = 2.0
@@ -183,7 +188,65 @@ def close_polygon(points: list[Point]) -> tuple[Point, ...]:
     return pts
 
 
+# ------------------------------------------------- W55 编辑模式命中检测
+
+# 顶点命中半径（px）——画布缩放下按场景坐标判定，取可见手柄半径
+VERTEX_HIT_RADIUS: float = 8.0
+
+
+def hit_vertex(
+    points: list[Point], pt: Point, radius: float = VERTEX_HIT_RADIUS
+) -> int | None:
+    """命中检测：pt 半径内最近顶点的索引（无命中返回 None）。
+
+    多个顶点落在半径内时取最近者（同距取最小索引）。
+    """
+    best_idx: int | None = None
+    best_d = radius
+    for i, v in enumerate(points):
+        d = math.hypot(v[0] - pt[0], v[1] - pt[1])
+        if d < best_d:
+            # 严格小于：平局取最小索引——闭合多边形首/尾同点时命中首点
+            best_d = d
+            best_idx = i
+    return best_idx
+
+
+def nearest_edge_point(
+    points: list[Point], pt: Point
+) -> tuple[int, Point] | None:
+    """pt 到多边形各边的最近投影点。
+
+    Returns:
+        (插入位置, 投影点)：插入位置 = 距离最近边 (points[i]→points[i+1])
+        之后的 list.insert 索引；点数 <3 无多边形语义时返回 None。
+    """
+    n = len(points)
+    if n < 3:
+        return None
+    best: tuple[float, int, Point] | None = None
+    for i in range(n):
+        a, b = points[i], points[(i + 1) % n]
+        ax, ay = a
+        bx, by = b
+        dx, dy = bx - ax, by - ay
+        seg2 = dx * dx + dy * dy
+        if seg2 < 1e-12:
+            t = 0.0
+        else:
+            t = ((pt[0] - ax) * dx + (pt[1] - ay) * dy) / seg2
+            t = min(1.0, max(0.0, t))
+        proj = (ax + t * dx, ay + t * dy)
+        d = math.hypot(proj[0] - pt[0], proj[1] - pt[1])
+        if best is None or d < best[0]:
+            best = (d, i + 1, proj)
+    assert best is not None
+    return best[1], best[2]
+
+
 __all__ = [
+    "SAM_POLY_EPSILON",
+    "VERTEX_HIT_RADIUS",
     "simplify_polyline",
     "polygon_area",
     "normalize_rectangle",
@@ -193,4 +256,6 @@ __all__ = [
     "polygon_centroid",
     "is_closed",
     "close_polygon",
+    "hit_vertex",
+    "nearest_edge_point",
 ]

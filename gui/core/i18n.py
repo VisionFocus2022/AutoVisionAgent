@@ -103,6 +103,7 @@ _EN_US: dict[str, str] = {
     "未修改密码，暂不登录": "Password unchanged; login deferred",
     "AMP 预检失败，已回退 FP32": "AMP preflight failed, falling back to FP32",
     "交互式": "Interactive",
+    "编辑": "Edit",  # W55：顶点编辑模式
     # ---- W43：SAM 区域分割（模式标签经变量键传入，顺手补直译） ----
     "SAM 区域": "SAM Region",
     "SAM 笔刷": "SAM Brush",

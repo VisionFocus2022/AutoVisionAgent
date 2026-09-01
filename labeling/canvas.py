@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 
 from PySide6.QtCore import QPointF, QRectF, Signal
 from PySide6.QtGui import (
@@ -30,6 +31,7 @@ class AnnotationCanvas(QGraphicsScene):
     """
 
     shapes_changed = Signal(list)
+    selection_changed = Signal(int)  # W55 编辑模式：选中形状索引；-1=取消
     undo_redo_changed = Signal(bool, bool)
 
     def __init__(self, parent=None) -> None:
@@ -40,6 +42,7 @@ class AnnotationCanvas(QGraphicsScene):
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._show_shapes: bool = True
         self._image_pixmap: QPixmap | None = None
+        self._selected_index: int | None = None
 
     # ============================== 图像管理 ============================== #
     @property
@@ -82,6 +85,7 @@ class AnnotationCanvas(QGraphicsScene):
             return False
         self._redo_stack.append(list(self._shapes))
         self._shapes = self._undo_stack.pop()
+        self._reset_selection()
         self._redraw()
         self._notify_undo_redo()
         self.shapes_changed.emit(self.shapes)
@@ -93,6 +97,7 @@ class AnnotationCanvas(QGraphicsScene):
             return False
         self._undo_stack.append(list(self._shapes))
         self._shapes = self._redo_stack.pop()
+        self._reset_selection()
         self._redraw()
         self._notify_undo_redo()
         self.shapes_changed.emit(self.shapes)
@@ -151,6 +156,7 @@ class AnnotationCanvas(QGraphicsScene):
         if 0 <= index < len(self._shapes):
             self._save_state()
             self._shapes.pop(index)
+            self._reset_selection()
             self._redraw()
             self.shapes_changed.emit(self.shapes)
 
@@ -159,6 +165,7 @@ class AnnotationCanvas(QGraphicsScene):
         if self._shapes:
             self._save_state()
             self._shapes.clear()
+            self._reset_selection()
             self._redraw()
             self.shapes_changed.emit(self.shapes)
 
@@ -167,6 +174,7 @@ class AnnotationCanvas(QGraphicsScene):
         new_shapes = list(shapes)
         self._save_state()
         self._shapes = new_shapes
+        self._reset_selection()
         self._redraw()
         self.shapes_changed.emit(self.shapes)
 
@@ -180,6 +188,131 @@ class AnnotationCanvas(QGraphicsScene):
     def setItemsVisible(self, visible: bool) -> None:
         self.set_items_visible(visible)
 
+    # ============================== W55 编辑模式：选中与顶点编辑 ============================== #
+
+    @property
+    def selected_index(self) -> int | None:
+        """当前选中形状索引（None=未选中）。"""
+        return self._selected_index
+
+    def select_shape(self, index: int | None) -> None:
+        """选中指定形状并绘制顶点手柄（None/越界=取消选中）。
+
+        仅 POLYGON 形状显示手柄；其他类型可被选中但不渲染手柄，
+        编辑操作（move/insert/remove_vertex）对其一律拒绝。
+        """
+        idx = (
+            index
+            if index is not None and 0 <= index < len(self._shapes)
+            else None
+        )
+        if idx == self._selected_index:
+            return
+        self._selected_index = idx
+        self._redraw()
+        self.selection_changed.emit(idx if idx is not None else -1)
+
+    def clear_selection(self) -> None:
+        """取消选中（不产生 undo 步）。"""
+        self.select_shape(None)
+
+    def _reset_selection(self) -> None:
+        """列表结构变化（undo/删除/清空/替换）后使选中索引失效。"""
+        if self._selected_index is not None:
+            self._selected_index = None
+            self.selection_changed.emit(-1)
+
+    def _editable_polygon(self) -> tuple[int, Shape] | None:
+        """当前选中且为可编辑 POLYGON 的 (索引, 形状)；否则 None。"""
+        idx = self._selected_index
+        if idx is None or not 0 <= idx < len(self._shapes):
+            return None
+        shape = self._shapes[idx]
+        if shape.mode is not AnnotationMode.POLYGON or len(shape.points) < 3:
+            return None
+        return idx, shape
+
+    def begin_vertex_edit(self) -> None:
+        """顶点编辑快照——拖动开始时调用，使一次拖动=一步 undo。"""
+        self._save_state()
+
+    def move_vertex(self, vertex_idx: int, pt) -> bool:
+        """移动选中多边形顶点（拖动中调用；不发 shapes_changed）。
+
+        闭合多边形（首尾同点）拖动首/尾顶点时同步另一份副本——
+        收尾点只是渲染闭合约定，逻辑上是同一顶点，不同步会首尾分裂。
+        """
+        got = self._editable_polygon()
+        if got is None:
+            return False
+        idx, shape = got
+        pts = list(shape.points)
+        if not 0 <= vertex_idx < len(pts):
+            return False
+        n = len(pts)
+        # 闭合判定须在改点前（首点被改后与收尾副本必然不等）
+        closed = n >= 4 and pts[0] == pts[-1]
+        pts[vertex_idx] = (float(pt[0]), float(pt[1]))
+        if closed:
+            if vertex_idx == 0:
+                pts[-1] = pts[0]
+            elif vertex_idx == n - 1:
+                pts[0] = pts[-1]
+        self._replace_points(idx, pts)
+        self._redraw()
+        return True
+
+    def insert_vertex(self, pos: int, pt) -> bool:
+        """在选中多边形 pos 处插入顶点（一步 undo）。"""
+        got = self._editable_polygon()
+        if got is None:
+            return False
+        idx, shape = got
+        pts = list(shape.points)
+        pos = max(0, min(pos, len(pts)))
+        pts.insert(pos, (float(pt[0]), float(pt[1])))
+        self._save_state()
+        self._replace_points(idx, pts)
+        self._redraw()
+        self.shapes_changed.emit(self.shapes)
+        return True
+
+    def remove_vertex(self, vertex_idx: int) -> bool:
+        """删除选中多边形顶点（一步 undo）；删除后不足 3 点则拒绝。
+
+        闭合多边形删除首/尾顶点=删同一逻辑顶点，两份副本一并移除
+        （剩余须 ≥3 点：闭合 4 点三角形拒绝删端点）。
+        """
+        got = self._editable_polygon()
+        if got is None:
+            return False
+        idx, shape = got
+        pts = list(shape.points)
+        if not 0 <= vertex_idx < len(pts):
+            return False
+        n = len(pts)
+        closed = n >= 4 and pts[0] == pts[-1]
+        if closed and vertex_idx in (0, n - 1):
+            if n - 2 < 3:
+                return False
+            self._save_state()
+            pts.pop(n - 1)
+            pts.pop(0)
+        else:
+            if len(pts) <= 3:
+                return False
+            self._save_state()
+            pts.pop(vertex_idx)
+        self._replace_points(idx, pts)
+        self._redraw()
+        self.shapes_changed.emit(self.shapes)
+        return True
+
+    def _replace_points(self, idx: int, pts: list) -> None:
+        """以新点列替换形状为**新对象**——undo 快照持旧引用，原位改会使
+        撤销失效（era-2 浅快照契约：undo 恢复同一（旧）Shape 对象）。"""
+        self._shapes[idx] = replace(self._shapes[idx], points=tuple(pts))
+
     # ============================== 渲染 ============================== #
     def _redraw(self) -> None:
         """重绘所有标注（先移除旧标注 items，再绘制新的）。"""
@@ -191,13 +324,15 @@ class AnnotationCanvas(QGraphicsScene):
         if not self._show_shapes:
             return
 
-        for shape in self._shapes:
-            self._draw_shape(shape)
+        for i, shape in enumerate(self._shapes):
+            self._draw_shape(shape, selected=(i == self._selected_index))
 
-    def _draw_shape(self, shape: Shape) -> None:
-        """绘制单个标注。"""
+    def _draw_shape(self, shape: Shape, selected: bool = False) -> None:
+        """绘制单个标注（selected=True 时高亮描边并绘制顶点手柄）。"""
         color = QColor(*shape.color[:3], min(shape.color[3] if len(shape.color) > 3 else 255, 255))
-        pen = QPen(color, 2)
+        pen = QPen(color, 3 if selected else 2)
+        if selected:
+            pen.setColor(QColor(255, 200, 0))  # 选中高亮（琥珀）
         fill_color = QColor(color)
         fill_color.setAlpha(50)
         brush = QBrush(fill_color)
@@ -218,6 +353,12 @@ class AnnotationCanvas(QGraphicsScene):
             # 多边形/画笔 → QPolygonF（W14 P2-10：QPointF 静态导入，行为等价）
             poly = QPolygonF([QPointF(p[0], p[1]) for p in points])
             self.addPolygon(poly, pen, brush)
+            if selected and shape.mode is AnnotationMode.POLYGON:
+                # W55 顶点手柄：白边蓝心小方块，命中半径同 VERTEX_HIT_RADIUS 量级
+                hp = QPen(QColor(255, 255, 255), 1)
+                hb = QBrush(QColor(52, 152, 219, 255))
+                for pt in points:
+                    self.addRect(pt[0] - 3, pt[1] - 3, 6, 6, hp, hb)
 
 
 __all__ = ["AnnotationCanvas"]

@@ -582,3 +582,23 @@ def test_run_ai_prelabel_multiclass_labels_per_box(tmp_path, monkeypatch):
     assert [s.label for s in shapes] == ["crack", "dent"], (
         f"逐框标签应与检出对应，got {[s.label for s in shapes]}"
     )
+
+
+# ============================== W55 编辑模式接线 ============================== #
+@pytest.mark.unit
+def test_edit_mode_wired_and_list_canvas_selection_sync(label_page):
+    label_page._apply_mode(AnnotationMode.EDIT)
+    assert label_page.controller.mode is AnnotationMode.EDIT
+    assert label_page.view.dragMode() == QGraphicsView.NoDrag
+    assert "编辑" in label_page._mode_btns[AnnotationMode.EDIT].text()
+
+    label_page.canvas.add_shape(
+        mode=AnnotationMode.POLYGON, label="d",
+        points=[(10, 10), (90, 10), (90, 90)],
+    )
+    # 画布选中 → 列表高亮
+    label_page.canvas.select_shape(0)
+    assert label_page.shape_list.currentRow() == 0
+    # 列表取消 → 画布清选中
+    label_page.shape_list.setCurrentRow(-1)
+    assert label_page.canvas.selected_index is None

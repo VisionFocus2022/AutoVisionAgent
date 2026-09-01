@@ -375,3 +375,253 @@ def test_controller_undo_clears_active_drawing(qapp):
     # 切换模式应丢弃进行中绘制，不产出形状
     ctrl.set_mode(AnnotationMode.RECTANGLE)
     assert len(c.shapes) == 0
+
+
+# ---------------------------------------------------------------- W55 ε 细化
+@pytest.mark.unit
+def test_sam_poly_epsilon_constant():
+    """SAM 掩码→多边形折点容差单源常量=0.5（W55：2.0→0.5，全 SAM 模式统一）。"""
+    from labeling.geometry import SAM_POLY_EPSILON
+
+    assert SAM_POLY_EPSILON == 0.5
+
+
+# ------------------------------------------------- W55 编辑模式命中检测纯函数
+@pytest.mark.unit
+def test_hit_vertex_basic_and_priority():
+    from labeling.geometry import hit_vertex
+
+    pts = [(10, 10), (80, 10), (80, 80)]
+    assert hit_vertex(pts, (12, 12), radius=5.0) == 0
+    # 两点都在半径内 → 取更近者
+    assert hit_vertex(pts, (76, 10), radius=6.0) == 1
+    assert hit_vertex(pts, (50, 50), radius=5.0) is None
+    assert hit_vertex([], (0, 0)) is None
+
+
+@pytest.mark.unit
+def test_nearest_edge_point_projection_and_insert_pos():
+    from labeling.geometry import nearest_edge_point
+
+    square = [(10, 10), (90, 10), (90, 90), (10, 90)]
+    # 命中上边中点 → 插入位 1（边 0→1 之后）
+    pos, proj = nearest_edge_point(square, (50, 12))
+    assert pos == 1
+    assert proj == (50.0, 10.0)
+    # 线段延长线外 → 夹取端点（右边延长上方，最近= (90,10)）
+    pos, proj = nearest_edge_point(square, (95, 5))
+    assert proj == (90.0, 10.0)
+    assert pos in (1, 2)  # 端点共享两侧边，插入位取距离更近边
+    # 不足 3 点无多边形语义
+    assert nearest_edge_point([(0, 0), (10, 10)], (5, 5)) is None
+
+
+# ------------------------------------------------- W55 canvas 顶点编辑能力
+def _canvas_with_polygon(qapp):
+    from labeling.canvas import AnnotationCanvas
+
+    c = AnnotationCanvas()
+    c.set_blank(200, 200)
+    c.add_shape(
+        mode=AnnotationMode.POLYGON, label="defect",
+        points=[(10, 10), (90, 10), (90, 90)],
+    )
+    return c
+
+
+@pytest.mark.unit
+def test_canvas_select_emits_and_handles_rendered(qapp):
+    c = _canvas_with_polygon(qapp)
+    got: list[int] = []
+    c.selection_changed.connect(got.append)
+    before = len(c.items())
+    c.select_shape(0)
+    assert got == [0]
+    # 选中后多出顶点手柄 items
+    assert len(c.items()) > before + 1
+    # 越界/None → 取消选中，发 -1
+    c.select_shape(9)
+    assert got == [0, -1]
+    assert c.selected_index is None
+
+
+@pytest.mark.unit
+def test_canvas_move_vertex_undo_single_step(qapp):
+    c = _canvas_with_polygon(qapp)
+    c.select_shape(0)
+    c.begin_vertex_edit()          # 拖前快照
+    assert c.move_vertex(0, (25, 25)) is True
+    assert c.shapes[0].points[0] == (25.0, 25.0)
+    c.move_vertex(0, (30, 30))     # 拖动中间态不再快照
+    assert c.undo() is True
+    assert c.shapes[0].points[0] == (10.0, 10.0)
+    # 未选中 / 越界顶点 → False
+    c.clear_selection()
+    assert c.move_vertex(0, (1, 1)) is False
+
+
+@pytest.mark.unit
+def test_canvas_insert_and_remove_vertex(qapp):
+    c = _canvas_with_polygon(qapp)
+    c.select_shape(0)
+    assert c.insert_vertex(1, (50.0, 10.0)) is True
+    assert len(c.shapes[0].points) == 4
+    assert c.shapes[0].points[1] == (50.0, 10.0)
+    assert c.remove_vertex(1) is True   # 4 → 3
+    assert len(c.shapes[0].points) == 3
+    assert c.remove_vertex(0) is False  # 3 点保底：再删剩 2 点即拒绝
+    assert c.undo() is True             # 撤销「删点」→ 回 4 点
+    assert len(c.shapes[0].points) == 4
+
+
+@pytest.mark.unit
+def test_canvas_non_polygon_not_editable(qapp):
+    c = _canvas_with_polygon(qapp)
+    c.add_shape(
+        mode=AnnotationMode.RECTANGLE, label="r",
+        points=[(0, 0), (50, 50)],
+    )
+    c.select_shape(1)
+    assert c.selected_index == 1
+    # 矩形不可编辑（select 允许但编辑操作拒绝）——编辑期手柄仅 POLYGON
+    assert c.move_vertex(0, (5, 5)) is False
+    assert c.insert_vertex(1, (5, 5)) is False
+
+
+@pytest.mark.unit
+def test_canvas_clear_shapes_resets_selection(qapp):
+    c = _canvas_with_polygon(qapp)
+    c.select_shape(0)
+    got: list[int] = []
+    c.selection_changed.connect(got.append)
+    c.clear_shapes()
+    assert got == [-1]
+    assert c.selected_index is None
+
+
+# ------------------------------------------------- W55 controller EDIT 路由
+def _edit_fixture(qapp):
+    from labeling.controller import AnnotationController
+
+    c = AnnotationCanvas()
+    c.set_blank(200, 200)
+    c.add_shape(
+        mode=AnnotationMode.POLYGON, label="defect",
+        points=[(10, 10), (90, 10), (90, 90)],
+    )
+    ctrl = AnnotationController(c, mode=AnnotationMode.EDIT, label="d")
+    return c, ctrl
+
+
+@pytest.mark.unit
+def test_edit_click_selects_and_blank_deselects(qapp):
+    c, ctrl = _edit_fixture(qapp)
+    ctrl.handle_press((40.0, 40.0))          # 点内部 → 选中
+    assert c.selected_index == 0
+    ctrl.handle_press((150.0, 150.0))        # 空白 → 取消
+    assert c.selected_index is None
+
+
+@pytest.mark.unit
+def test_edit_drag_vertex_undo_one_step(qapp):
+    c, ctrl = _edit_fixture(qapp)
+    ctrl.handle_press((40.0, 40.0))
+    ctrl.handle_press((10.0, 10.0))          # 命中顶点 0 → 开始拖动
+    ctrl.handle_move((25.0, 25.0))
+    ctrl.handle_release((25.0, 25.0))
+    assert c.shapes[0].points[0] == (25.0, 25.0)
+    assert c.undo() is True
+    assert c.shapes[0].points[0] == (10.0, 10.0)
+
+
+@pytest.mark.unit
+def test_edit_double_click_inserts_vertex(qapp):
+    c, ctrl = _edit_fixture(qapp)
+    ctrl.handle_press((40.0, 40.0))
+    assert ctrl.handle_double_click((50.0, 12.0)) is True
+    assert len(c.shapes[0].points) == 4
+    assert c.shapes[0].points[1] == (50.0, 10.0)
+
+
+@pytest.mark.unit
+def test_edit_right_click_deletes_vertex_with_floor(qapp):
+    c, ctrl = _edit_fixture(qapp)
+    ctrl.handle_press((40.0, 40.0))
+    ctrl.handle_double_click((50.0, 12.0))   # 4 点
+    assert ctrl.handle_right_press((50.0, 10.0)) is True   # 删插入点 → 3
+    assert len(c.shapes[0].points) == 3
+    assert ctrl.handle_right_press((90.0, 90.0)) is False  # 3 点保底拒删
+    assert len(c.shapes[0].points) == 3
+
+
+@pytest.mark.unit
+def test_edit_non_polygon_click_not_selectable(qapp):
+    c, ctrl = _edit_fixture(qapp)
+    c.add_shape(
+        mode=AnnotationMode.RECTANGLE, label="r",
+        points=[(120, 120), (180, 180)],
+    )
+    ctrl.handle_press((150.0, 150.0))        # 点矩形内部 → 不可选
+    assert c.selected_index is None
+
+
+@pytest.mark.unit
+def test_edit_cancel_and_mode_switch_clear_selection(qapp):
+    c, ctrl = _edit_fixture(qapp)
+    ctrl.handle_press((40.0, 40.0))
+    assert c.selected_index == 0
+    ctrl.cancel()                             # Esc → 取消选中
+    assert c.selected_index is None
+    ctrl.handle_press((40.0, 40.0))
+    ctrl.set_mode(AnnotationMode.POLYGON)     # 离开编辑 → 清选中
+    assert c.selected_index is None
+
+
+@pytest.mark.unit
+def test_make_labeler_edit_returns_none_legally():
+    from labeling.modes import make_labeler
+
+    assert make_labeler(AnnotationMode.EDIT, "d") is None
+
+
+# ------------------------------------------- W55 闭合多边形首尾副本同步
+@pytest.mark.unit
+def test_canvas_move_vertex_closed_polygon_sync(qapp):
+    """闭合多边形（首尾同点）拖首点须同步收尾副本——不同步会首尾分裂。"""
+    from labeling.geometry import close_polygon
+
+    c = AnnotationCanvas()
+    c.set_blank(200, 200)
+    tri = close_polygon([(10, 10), (90, 10), (90, 90)])  # (A,B,C,A')
+    c.add_shape(mode=AnnotationMode.POLYGON, label="d", points=list(tri))
+    c.select_shape(0)
+    c.begin_vertex_edit()
+    assert c.move_vertex(0, (25, 25)) is True
+    pts = c.shapes[0].points
+    assert pts[0] == (25.0, 25.0)
+    assert pts[-1] == (25.0, 25.0), "收尾副本未同步"
+    assert pts[1] == (90.0, 10.0) and pts[2] == (90.0, 90.0)
+
+
+@pytest.mark.unit
+def test_hit_vertex_tie_prefers_first_index():
+    from labeling.geometry import hit_vertex
+
+    pts = [(10, 10), (50, 50), (90, 90), (10, 10)]  # 闭合：0 与 3 同位
+    assert hit_vertex(pts, (10, 10), radius=5.0) == 0
+
+
+@pytest.mark.unit
+def test_canvas_remove_vertex_closed_endpoint(qapp):
+    from labeling.geometry import close_polygon
+
+    c = AnnotationCanvas()
+    c.set_blank(200, 200)
+    quad = close_polygon([(10, 10), (90, 10), (90, 90), (10, 90)])  # 5 点
+    c.add_shape(mode=AnnotationMode.POLYGON, label="d", points=list(quad))
+    c.select_shape(0)
+    assert c.remove_vertex(0) is True          # 删首=删首尾两份 → 3 点
+    pts = c.shapes[0].points
+    assert len(pts) == 3
+    assert pts[0] == (90.0, 10.0) and pts[-1] == (10.0, 90.0)
+    assert c.remove_vertex(0) is False         # 剩 3 点（未闭合）再删拒
