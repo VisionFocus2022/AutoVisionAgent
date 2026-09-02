@@ -15,7 +15,7 @@ from labeling.base import AnnotationMode
 # W56 复刻程序全集口径（Task 12 定稿）
 _EXPECTED_MODES = {
     "POLYGON", "RECTANGLE", "CUT_LINE", "OPERATION",
-    "INTERACTIVE", "REGION_SAM", "EDIT",
+    "INTERACTIVE", "REGION_SAM", "EDIT", "CROP",
 }
 
 
@@ -37,7 +37,7 @@ def test_probe_operation_mode_member_exists():
 
 @pytest.mark.unit
 def test_annotation_mode_full_set():
-    """全集相等（FB-016）：七成员不多不少——增删成员须同步本断言与全链路。"""
+    """全集相等（FB-016）：八成员不多不少——增删成员须同步本断言与全链路。"""
     actual = {m.name for m in AnnotationMode}
     assert actual == _EXPECTED_MODES, (
         f"AnnotationMode 全集漂移: {sorted(actual ^ _EXPECTED_MODES)}"

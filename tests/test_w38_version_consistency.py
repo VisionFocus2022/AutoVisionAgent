@@ -7,7 +7,7 @@ RELEASES 所称「五方打包一致性守卫」实为动态导入守卫，与�
 口径：提取四处版本串并断言一致——
   README.md                    ``# AutoVisionAgent <ver>``
   RELEASES.md                  首个 ``## v<ver>``（最新条目）
-  gui/pages/settings/page.py   ``v<ver> (M<n>)``
+  gui/pages/settings/page.py   ``"<v<ver><br>"``（W61 milestone 清理后形态）
   pyproject.toml               ``version = "<ver>"``
 git tag 不在断言内（tag 属发布动作，由收尾门禁裁决）。
 """
@@ -37,7 +37,7 @@ def test_four_way_version_consistency():
     versions = {
         "README.md": _first(r"^# AutoVisionAgent (\d+\.\d+\.\d+)", "README.md"),
         "RELEASES.md": _first(r"^## v(\d+\.\d+\.\d+)", "RELEASES.md"),
-        "settings/page.py": _first(r"v(\d+\.\d+\.\d+) \(M\d\)", "gui/pages/settings/page.py"),
+        "settings/page.py": _first(r"\"v(\d+\.\d+\.\d+)", "gui/pages/settings/page.py"),
         "pyproject.toml": _first(r'^version = "(\d+\.\d+\.\d+)"', "pyproject.toml"),
     }
     distinct = set(versions.values())

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import QGraphicsView
 
 from labeling.base import DEFAULT_COLOR, AnnotationMode, Point, Shape
 from labeling.canvas import AnnotationCanvas
+from labeling.crop import split_polygon_by_line, split_rectangle_by_line
 from labeling.geometry import hit_vertex, nearest_edge_point, point_in_polygon
 from labeling.modes import make_labeler
 
@@ -41,6 +42,8 @@ class AnnotationController:
         self._view: QGraphicsView | None = None
         # W55 编辑模式：拖动中的顶点索引（None=未拖动）
         self._edit_drag_vertex: int | None = None
+        # W62 裁剪工具：切线起点（None=未开始；两点成线后提交裁剪）
+        self._crop_start: Point | None = None
         self._make_labeler()
 
     # ============================== 模式/标签 ============================== #
@@ -56,6 +59,9 @@ class AnnotationController:
             # W55：离开编辑模式清拖动态与选中
             self._edit_drag_vertex = None
             self._canvas.clear_selection()
+        if self._mode is AnnotationMode.CROP and mode is not AnnotationMode.CROP:
+            # W62：离开裁剪模式清未完成切线
+            self._crop_start = None
         self._mode = mode
         self._make_labeler()
 
@@ -109,6 +115,13 @@ class AnnotationController:
         pt = self._to_scene_point(self._view, event)
         if pt is None:
             return
+        if self._mode is AnnotationMode.CROP:
+            # W62：裁剪工具接管鼠标（labeler=None）——左键两点定切线，右键取消
+            if event.button() == Qt.LeftButton:
+                self._crop_press_left(pt)
+            elif event.button() == Qt.RightButton:
+                self._crop_cancel()
+            return
         if self._mode is AnnotationMode.EDIT:
             # W55：编辑模式接管鼠标（labeler=None），不经绘制路径
             if event.button() == Qt.LeftButton:
@@ -131,6 +144,9 @@ class AnnotationController:
             return
         pt = self._to_scene_point(self._view, event)
         if pt is None:
+            return
+        if self._mode is AnnotationMode.CROP:
+            self._crop_move(pt)
             return
         if self._mode is AnnotationMode.EDIT:
             if self._edit_drag_vertex is not None:
@@ -175,6 +191,9 @@ class AnnotationController:
         if self._mode is AnnotationMode.EDIT:
             self._edit_press_left(pt)
             return
+        if self._mode is AnnotationMode.CROP:
+            self._crop_press_left(pt)
+            return
         if self._labeler is None:
             return
         self._labeler.on_press(pt)
@@ -185,6 +204,9 @@ class AnnotationController:
 
     def handle_move(self, pt: Point) -> None:
         """移动 — 直接以场景坐标驱动 labeler。"""
+        if self._mode is AnnotationMode.CROP:
+            self._crop_move(pt)
+            return
         if self._mode is AnnotationMode.EDIT:
             if self._edit_drag_vertex is not None:
                 self._canvas.move_vertex(self._edit_drag_vertex, pt)
@@ -273,6 +295,66 @@ class AnnotationController:
         pos, proj = got
         return self._canvas.insert_vertex(pos, proj)
 
+    # ------------------ W62 裁剪工具（X 键进入；两点定切线） ------------------ #
+
+    def _crop_press_left(self, pt: Point) -> None:
+        """左键：第 1 点定切线起点；第 2 点提交裁剪并复位。"""
+        if self._crop_start is None:
+            self._crop_start = pt
+        else:
+            self._commit_crop(self._crop_start, pt)
+            self._crop_start = None
+        self._canvas._redraw()
+
+    def _crop_move(self, pt: Point) -> None:
+        """移动预览：两点开放折线，复用切割线虚线渲染。"""
+        if self._crop_start is None:
+            return
+        self._canvas._redraw()
+        self._canvas._draw_shape(
+            Shape(
+                mode=AnnotationMode.CUT_LINE,
+                points=(self._crop_start, pt),
+                label=self._label,
+            )
+        )
+
+    def _crop_cancel(self) -> None:
+        """右键取消未完成切线。"""
+        self._crop_start = None
+        self._canvas._redraw()
+
+    def _commit_crop(self, a: Point, b: Point) -> None:
+        """对全部可切形状应用切分：原形删除、新形生成（label/color 继承）。
+
+        可切面=RECTANGLE/OPERATION（二点矩形）与 POLYGON（≥3 点）；
+        CUT_LINE 等其余形态不参与（SKolpha 裁剪亦仅作用于矩形/多边形）。
+        无形状被切 → 无操作（SKolpha「都不裁剪」同款口径）。
+        """
+        replacements: dict[int, list[Shape]] = {}
+        for i, shape in enumerate(self._canvas.shapes):
+            pts = list(shape.points)
+            if shape.mode in (
+                AnnotationMode.RECTANGLE, AnnotationMode.OPERATION,
+            ) and len(pts) == 2:
+                pieces = split_rectangle_by_line((pts[0], pts[1]), a, b)
+            elif shape.mode is AnnotationMode.POLYGON and len(pts) >= 3:
+                pieces = split_polygon_by_line(pts, a, b)
+            else:
+                continue
+            if pieces:
+                replacements[i] = [
+                    Shape(
+                        mode=shape.mode,
+                        points=tuple((float(p[0]), float(p[1])) for p in piece),
+                        label=shape.label,
+                        color=shape.color,
+                    )
+                    for piece in pieces
+                ]
+        if replacements:
+            self._canvas.replace_shapes(replacements)
+
     def _draw_preview(self, shape: Shape) -> None:
         """在画布上绘制预览标注（半透明）。"""
         self._canvas._draw_shape(shape)
@@ -297,6 +379,9 @@ class AnnotationController:
         """取消当前标注操作。"""
         if self._labeler is not None:
             self._labeler.reset()
+        if self._mode is AnnotationMode.CROP:
+            # W62：Esc 取消未完成切线（清预览）
+            self._crop_start = None
         if self._mode is AnnotationMode.EDIT:
             # W55：编辑模式下 Esc=取消选中（无进行中绘制）
             self._canvas.clear_selection()

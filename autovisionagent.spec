@@ -97,6 +97,7 @@ a = Analysis(
         # 全量收集，无需逐一列出子模块）
         "labeling.sam3_adapter",
         "labeling.batch_tools",
+        "labeling.crop",
         "labeling.io_labelme",
         "labeling.modes.cut_line",
         "labeling.modes.interactive",

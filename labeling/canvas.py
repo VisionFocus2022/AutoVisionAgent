@@ -152,6 +152,22 @@ class AnnotationCanvas(QGraphicsScene):
         """从坐标点列表添加形状（兼容 paste 调用）。"""
         self.add_shape(mode=mode, label=label, points=points)
 
+    def replace_shapes(self, replacements: dict[int, list[Shape]]) -> None:
+        """批量替换标注（W62 裁剪工具）：一次 ``_save_state`` = 一次裁剪一步撤销。
+
+        Args:
+            replacements: {原索引: 新形状列表}；新形状落在原索引位置（保序），
+                逆序应用避免索引漂移；空入参无副作用（不入撤销栈）。
+        """
+        if not replacements:
+            return
+        self._save_state()
+        for idx in sorted(replacements, reverse=True):
+            self._shapes[idx : idx + 1] = replacements[idx]
+        self._reset_selection()  # 索引已变，选中态失效
+        self._redraw()
+        self.shapes_changed.emit(self.shapes)
+
     def remove_shape_at(self, index: int) -> None:
         """删除指定索引的标注。"""
         if 0 <= index < len(self._shapes):

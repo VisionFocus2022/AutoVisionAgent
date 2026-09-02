@@ -50,6 +50,7 @@ _EN_US: dict[str, str] = {
     "矩形": "Rectangle",
     # W56：工业标注形态（SKolpha 复刻 FR-001/002）
     "切割线": "Cut Line",
+    "裁剪": "Crop",
     "操作标注": "Operation",
     # W56：批量预测模式（SKolpha 复刻 FR-003）
     "批量模式": "Batch Mode",
