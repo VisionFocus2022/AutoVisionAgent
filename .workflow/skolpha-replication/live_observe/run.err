@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "E:\学习项目\视觉大模型\.workflow\skolpha-replication\live_observe_ac010.py", line 130, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "E:\学习项目\视觉大模型\.workflow\skolpha-replication\live_observe_ac010.py", line 73, in main
+    proc = subprocess.Popen([EXE], cwd=os.path.dirname(EXE))
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\888\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1028, in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+  File "C:\Users\888\AppData\Local\Programs\Python\Python312\Lib\subprocess.py", line 1540, in _execute_child
+    hp, ht, pid, tid = _winapi.CreateProcess(executable, args,
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: [WinError 740] 请求的操作需要提升。
