@@ -14,6 +14,7 @@ shape_type=="polygon" 的 points）。本模块：
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,8 @@ from labeling.base import (
     AnnotationMode,
     Shape,
 )
+
+_logger = logging.getLogger(__name__)
 
 # LabelMe 标注文件版本（写出处）
 LABELME_VERSION = "5.4.3"
@@ -69,13 +72,23 @@ def shape_to_labelme(shape: Shape) -> dict[str, Any]:
 
 
 def shape_from_labelme(data: dict[str, Any]) -> Shape:
-    """LabelMe shape 字典 → Shape。优先用 "mode" 自定义键，否则按 shape_type 推断。"""
+    """LabelMe shape 字典 → Shape。优先用 "mode" 自定义键，否则按 shape_type 推断。
+
+    未知形态（mode 键无效且 shape_type 不在映射内，如旧 keypoint 的
+    "point"）→ InvalidShapeError 诚实不支持（W59 复核修正：静默兜成退化
+    多边形=语义污染，比跳过更糟）；批量入口 labelme_to_shapes 逐 shape
+    跳过并留 DEBUG 痕。
+    """
     raw_mode = data.get("mode")
     if raw_mode and raw_mode in {m.value for m in AnnotationMode}:
         mode = AnnotationMode(raw_mode)
     else:
         shape_type = data.get("shape_type", "polygon")
-        mode = _SHAPE_TYPE_TO_MODE.get(shape_type, AnnotationMode.POLYGON)
+        mode = _SHAPE_TYPE_TO_MODE.get(shape_type)
+        if mode is None:
+            raise InvalidShapeError(
+                f"不支持的标注形态: {shape_type}", mode=str(shape_type)
+            )
 
     raw_points = data.get("points") or []
     points: tuple = tuple((float(x), float(y)) for x, y in raw_points)
@@ -97,12 +110,21 @@ def shape_from_labelme(data: dict[str, Any]) -> Shape:
 
 
 def labelme_to_shapes(doc: dict[str, Any]) -> list[Shape]:
-    """完整 LabelMe 文档字典 → Shape 列表。（W1: 自 era-2 树移植）"""
+    """完整 LabelMe 文档字典 → Shape 列表。（W1: 自 era-2 树移植）
+
+    未知形态的 shape 逐条跳过（DEBUG 留痕）——与单 shape 入口的
+    InvalidShapeError 诚实契约配合（W59 复核修正）。
+    """
     out: list[Shape] = []
     for item in doc.get("shapes") or []:
         if not isinstance(item, dict):
             continue
-        out.append(shape_from_labelme(item))
+        try:
+            out.append(shape_from_labelme(item))
+        except InvalidShapeError:
+            _logger.debug(
+                "跳过不支持的标注形态: %s", item.get("shape_type")
+            )
     return out
 
 

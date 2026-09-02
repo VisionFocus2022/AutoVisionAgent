@@ -80,7 +80,14 @@ def read_binding(project_root: str | Path) -> ProjectBinding:
 
 
 def write_binding(project_root: str | Path, binding: ProjectBinding) -> None:
-    """原子写入项目绑定（temp + os.replace；失败上抛 OSError 由调用方处理）。"""
+    """原子写入项目绑定（mkstemp + os.replace；失败上抛 OSError 由调用方处理）。
+
+    复核 LOW 修正：临时文件用 mkstemp 随机名（固定 .tmp 名在并发
+    create_project/update_binding 下互踩——batch_tools.atomic_write_json
+    已论证并升为全仓单源纪律，此处对齐）。
+    """
+    import tempfile
+
     path = binding_path(project_root)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -89,11 +96,19 @@ def write_binding(project_root: str | Path, binding: ProjectBinding) -> None:
         "transfer_type": binding.transfer_type,
         "data_path": binding.data_path,
     }
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    fd, tmp = tempfile.mkstemp(
+        prefix="binding.", suffix=".tmp", dir=str(path.parent)
     )
-    os.replace(tmp, path)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            _logger.warning("绑定临时文件清理失败: %s", tmp, exc_info=True)
+        raise
 
 
 def update_binding(

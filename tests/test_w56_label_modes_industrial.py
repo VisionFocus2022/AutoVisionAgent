@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 from labeling import (  # noqa: E402
     AnnotationMode,
     Shape,
+    labelme_to_shapes,
     load_labelme_shapes,
     save_labelme,
     shape_from_labelme,
@@ -303,3 +304,21 @@ def test_set_default_shape_mode_entry(label_page):
     label_page.set_default_shape_mode(AnnotationMode.RECTANGLE)
     assert label_page.controller.mode is AnnotationMode.RECTANGLE
 
+
+@pytest.mark.unit
+def test_old_keypoint_shape_skipped_honestly():
+    """复核 MEDIUM 修正：旧 keypoint（mode 无效 + shape_type=point）批量读跳过、
+    单 shape 读诚实 raise——不静默扭成退化多边形。"""
+    from core.exceptions import InvalidShapeError
+
+    doc = {"shapes": [
+        {"label": "kp", "points": [[1, 2]], "shape_type": "point",
+         "mode": "keypoint", "flags": {}},
+        {"label": "ok", "points": [[0, 0], [9, 9]], "shape_type": "rectangle",
+         "flags": {}},
+    ]}
+    shapes = labelme_to_shapes(doc)
+    assert len(shapes) == 1 and shapes[0].label == "ok"
+
+    with pytest.raises(InvalidShapeError, match="不支持的标注形态"):
+        shape_from_labelme(doc["shapes"][0])

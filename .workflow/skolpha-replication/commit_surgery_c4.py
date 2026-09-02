@@ -1,4 +1,54 @@
-"""训练模板/增强参数动作 Mixin（W57 FR-004——页面 ≤800 守卫，动作外置）。
+# -*- coding: utf-8 -*-
+"""C4 (W57) 前向重建。一次性使用。"""
+from pathlib import Path
+
+
+def rep(path, old, new, count=1):
+    p = Path(path)
+    s = p.read_text(encoding="utf-8")
+    assert s.count(old) == count, f"{path}: old 出现 {s.count(old)} 次（预期 {count}）"
+    p.write_text(s.replace(old, new), encoding="utf-8")
+    print("OK", path)
+
+
+# 1. train_templates.py → W57 版（回退复核 try-wrap）
+rep("training/train_templates.py",
+    '''        variant = str(raw.get("variant") or "normal")
+        try:
+            template = TrainTemplate(
+                task=task,
+                variant=variant,
+                backbone=str(raw.get("backbone") or "yolov8n"),
+                img_size=int(raw.get("img_size") or 640),
+                epochs=(
+                    int(raw["epochs"])
+                    if raw.get("epochs") is not None else None
+                ),
+                batch_size=int(raw.get("batch_size") or 8),
+                lr=float(raw.get("lr") or 0.001),
+                augmentation=_augmentation_from_raw(raw.get("augmentation")),
+            )
+        except (TypeError, ValueError) as exc:
+            # 复核 HIGH 修正：数值转换纳入逐文件保护——启动链（训练页
+            # 构建期同步调用）上坏值文件只跳过告警，不炸应用
+            logger.warning(
+                "训练模板字段值非法（跳过）: %s (%s)", path.name, exc
+            )
+            continue''',
+    '''        variant = str(raw.get("variant") or "normal")
+        template = TrainTemplate(
+            task=task,
+            variant=variant,
+            backbone=str(raw.get("backbone") or "yolov8n"),
+            img_size=int(raw.get("img_size") or 640),
+            epochs=int(raw["epochs"]) if raw.get("epochs") is not None else None,
+            batch_size=int(raw.get("batch_size") or 8),
+            lr=float(raw.get("lr") or 0.001),
+            augmentation=_augmentation_from_raw(raw.get("augmentation")),
+        )''')
+
+# 2. train_augment_actions.py → W57 版（复核前：无模板基底合成）
+Path("gui/pages/train/train_augment_actions.py").write_text('''"""训练模板/增强参数动作 Mixin（W57 FR-004——页面 ≤800 行守卫，动作外置）。
 
 对标 SKolpha TrainConfigs 的「任务级模板 + UI 参数覆盖」：模板下拉
 （configs/train_templates/，明文 YAML）选中回填表单；增强参数面板
@@ -9,7 +59,6 @@ _hint_augmentation_support 按引擎能力静默。
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
 
 from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QSpinBox, QWidget
 
@@ -28,9 +77,6 @@ class TrainAugmentActionsMixin:
         self._templates: dict[tuple[str, str], TrainTemplate] = load_templates(
             REPO_TEMPLATE_DIR
         )
-        # 复核 MEDIUM 修正：模板增强段消费——选中模板后，面板外字段
-        #（vflip/crop_scale/mean/std）以此为基底随行进 TrainConfig
-        self._template_augmentation: AugmentationConfig | None = None
         self.cmb_template = QComboBox(form_frame)
         self.cmb_template.addItem(tr("（无模板）"), None)
         for (task_value, variant) in sorted(self._templates):
@@ -40,15 +86,9 @@ class TrainAugmentActionsMixin:
         self.cmb_template.currentIndexChanged.connect(self._apply_template)
 
     def _apply_template(self, idx: int) -> None:
-        """选中模板 → 回填表单（任务/骨干/尺寸/批/学习率/增强面板）。
-
-        复核 MEDIUM 修正：增强段不再断链——可调字段进面板，面板外字段
-        （vflip/crop_scale/mean/std）存 _template_augmentation 随行合成；
-        占位项清空模板基底（全默认）。轮数模板给了才改。
-        """
+        """选中模板 → 回填表单（任务/骨干/尺寸/批/学习率；轮数模板给了才改）。"""
         key = self.cmb_template.itemData(idx)
         if key is None:
-            self._template_augmentation = None
             return
         template = self._templates.get(tuple(key))
         if template is None:
@@ -63,13 +103,6 @@ class TrainAugmentActionsMixin:
         self.spin_lr.setValue(template.lr)
         if template.epochs is not None:
             self.spin_epochs.setValue(template.epochs)
-        aug = template.augmentation
-        self._template_augmentation = aug
-        self.spin_aug_hflip.setValue(float(aug.hflip))
-        self.spin_aug_rotate.setValue(int(aug.rotate_max))
-        self.spin_aug_translate.setValue(float(aug.translate))
-        self.spin_aug_split.setValue(float(aug.split_ratio))
-        self.spin_aug_expansion.setValue(int(aug.data_expansion))
         self.status_changed.emit(tr("模板"), f"{key[0]}/{key[1]}")
 
     def _build_augmentation_rows(
@@ -105,10 +138,8 @@ class TrainAugmentActionsMixin:
         form.addRow(tr("数据扩充系数"), self.spin_aug_expansion)
 
     def _augmentation_from_form(self) -> AugmentationConfig:
-        """表单控件 + 模板基底合成（UI 覆盖可调字段；模板补面板外字段）。"""
-        base = self._template_augmentation or AugmentationConfig()
-        return replace(
-            base,
+        """表单增强控件 → AugmentationConfig（未列字段走默认）。"""
+        return AugmentationConfig(
             hflip=float(self.spin_aug_hflip.value()),
             rotate_max=int(self.spin_aug_rotate.value()),
             translate=float(self.spin_aug_translate.value()),
@@ -134,3 +165,33 @@ class TrainAugmentActionsMixin:
 
 
 __all__ = ["TrainAugmentActionsMixin"]
+''', encoding="utf-8")
+print("train_augment W57 version written")
+
+# 3. i18n → +W57 键块
+rep("gui/core/i18n.py",
+    '''    "已逐张落盘": "Incremental results saved:",''',
+    '''    "已逐张落盘": "Incremental results saved:",
+    # W57：训练模板体系（SKolpha 复刻 FR-004）
+    "训练模板": "Train Template",
+    "模板": "Template",
+    "（无模板）": "(none)",
+    "水平翻转概率": "H-Flip Prob",
+    "最大旋转角": "Max Rotation",
+    "平移比例": "Translate Ratio",
+    "训练占比": "Train Split",
+    "数据扩充系数": "Data Expansion",
+    "当前引擎忽略增强参数": "Current engine ignores augmentation params",''')
+
+# 4. w57 测试 → W57 版（去复核增补用例）
+for name, marker in [
+    ("tests/test_w57_train_templates.py", "\n\n@pytest.mark.unit\ndef test_load_templates_bad_numeric_value_skipped"),
+    ("tests/test_w57_train_ui.py", "\n\n@pytest.mark.unit\ndef test_template_augmentation_flows_into_config"),
+]:
+    p = Path(name)
+    s = p.read_text(encoding="utf-8")
+    if marker in s:
+        p.write_text(s[:s.index(marker)] + "\n", encoding="utf-8")
+        print("trimmed", name)
+
+print("C4 done")

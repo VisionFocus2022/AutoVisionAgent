@@ -32,7 +32,7 @@ class BatchModeActionsMixin:
         self.spin_batch_concurrency.setRange(1, 4)
         self.spin_batch_concurrency.setValue(1)
         self.spin_batch_concurrency.setToolTip(
-            tr("仅整批模式生效：并行渲染/产物写（需引擎支持批量推理）")
+            tr("整批模式生效：并行渲染/产物写（需引擎支持批量推理）")
         )
         h.addWidget(self.spin_batch_concurrency)
 
@@ -64,7 +64,10 @@ class BatchModeActionsMixin:
                 tr("请先在项目中训练模型或手动保存绑定"),
             )
             return
-        self._load_model_from(binding.model_file)
+        # 复核 LOW 修正：加载失败时状态栏已发失败原因——此处直接返回，
+        # 不再覆盖成功文案（旧实现无条件报「已从项目带入」）
+        if not self._load_model_from(binding.model_file):
+            return
         if binding.threshold is not None:
             self.spin_threshold.setValue(binding.threshold)
         self.status_changed.emit(

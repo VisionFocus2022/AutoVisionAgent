@@ -46,6 +46,13 @@ class ApiInferActionsMixin:
                 tr("请输入有效 endpoint"), tr("须以 http:// 或 https:// 开头")
             )
             return
+        # 复核 LOW 修正：与单张推理互斥（共享 _pending_single，两路并发
+        # 会互相覆盖结果）——单张进行中时诚实拒绝
+        if not self.btn_single.isEnabled():
+            self.status_changed.emit(
+                tr("推理进行中"), tr("请等待当前推理完成")
+            )
+            return
         path = pick_open_file(
             self, "选择图像",
             "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff)"
@@ -55,6 +62,7 @@ class ApiInferActionsMixin:
 
         self.btn_api_infer.setEnabled(False)
         self.btn_api_infer.setText(tr("推理中..."))
+        self.btn_single.setEnabled(False)  # 反向互斥（单张入口见此状态）
 
         def _work():
             # 调用期导入——monkeypatch 接缝（与页面引擎路径同惯例）
@@ -81,6 +89,7 @@ class ApiInferActionsMixin:
         """槽：API 推理完成（主线程）——复位按钮并复用单张完成链。"""
         self.btn_api_infer.setEnabled(True)
         self.btn_api_infer.setText(tr("API 推理"))
+        self.btn_single.setEnabled(True)
         self._single_done(basename, score)
 
     @Slot(str)
@@ -88,6 +97,7 @@ class ApiInferActionsMixin:
         """槽：API 推理失败（主线程）——复位按钮并诚实报错。"""
         self.btn_api_infer.setEnabled(True)
         self.btn_api_infer.setText(tr("API 推理"))
+        self.btn_single.setEnabled(True)
         self.status_changed.emit(tr("API 推理失败"), err[:60])
 
 

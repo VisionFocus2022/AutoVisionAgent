@@ -150,3 +150,26 @@ def test_legacy_preset_still_works(train_page):
     assert train_page.txt_backbone.text() == "yolov8s"
     assert train_page.spin_batch.value() == 16
 
+
+@pytest.mark.unit
+def test_template_augmentation_flows_into_config(train_page):
+    """复核 MEDIUM 修正：模板增强段不再断链——面板外字段（mean/std）随行进
+    TrainConfig，可调字段进面板。"""
+    combo = train_page.cmb_template
+    for i in range(combo.count()):
+        if combo.itemData(i) == ("pseg", "normal"):
+            combo.setCurrentIndex(i)
+            break
+    assert train_page.spin_aug_expansion.value() == 1  # 模板 data_expansion 进面板
+
+    cfg = train_page._build_config()
+    assert cfg.augmentation is not None
+    assert cfg.augmentation.data_expansion == 1
+    assert abs(cfg.augmentation.mean[0] - 0.2209) < 1e-4  # 面板外字段来自模板
+    assert cfg.augmentation.split_ratio == 0.8
+
+    # 切回占位 → 模板基底清空（全默认）
+    combo.setCurrentIndex(0)
+    cfg2 = train_page._build_config()
+    assert cfg2.augmentation is not None
+    assert cfg2.augmentation.mean == (0.485, 0.456, 0.406)

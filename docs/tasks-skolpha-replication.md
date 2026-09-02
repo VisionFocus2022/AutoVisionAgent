@@ -13,6 +13,35 @@
 - **可并行任务**: 波间**一律串行**（共享 gui/core/i18n.py、autovisionagent.spec、主门禁分母三冲突面）；波内 Task 8 ∥ Task 9（文件域不交：project/store+predict/label vs data_manage/label_tools，i18n 键已分块）
 - **验证环境**: `.venv/Scripts/python.exe -m pytest`（主门禁含 coverage fail-under=92）；ruff check；lite 派生 14 用例守卫
 
+> ✅ **2026-09-02 W56 批次完成**（Task 1-4 全过，门禁 4 经用户裁决「确认开工 W56」；D-1/D-2/D-3 按文档默认锁定）：
+> 主门禁 **1262 passed / 5 skipped / rc=0**（ruff 全仓 0 error，含 .workflow extend-exclude 卫生化）；
+> AC-001 锚点（枚举=7/工具栏=7/快捷键 C/O）+ AC-002（往返）+ AC-003（两模式+取消语义）波内达标；
+> 模板初值 9 任务码 203 参数入 `configs/train_templates/_source_dict.json`（Task 5 转正式 YAML 的草值）。
+> 偏差 5 条 + 挂死排查留痕见 `.workflow/skolpha-replication/deviations.md`；经验沉淀 EXP-20260902c。
+
+> ✅ **2026-09-02 W57 批次完成**（Task 5-7，用户指令「继续实施待办，按照默认顺序执行」）：
+> 11 份明文模板（9 任务码×normal + det small/large，初值取自解密产物换算）+ loader（容错/未知字段告告警/重复后到覆盖）
+> + AugmentationConfig 冻结 dataclass + TrainConfig.augmentation 可选段（None=旧行为）+ 训练页模板下拉回填/增强面板/诚实提示。
+> 门禁 **1281 passed / rc=0**；草值 _source_dict.json 转正后删除（明细留 .workflow 解密档）。
+> 守卫咬合实证：W20 i18n 完整性守卫拦下漏键「模板」→ 即补。
+
+> ✅ **2026-09-02 W58 批次完成**（Task 8-10）：
+> project/binding.py（ProjectBinding 四段/原子写/读侧全容错）+ store 创建即写默认 binding（transferType 按任务推导）
+> + 预测页「从项目带入/保存绑定」（读改写保留他段）+ label 页 transferType 联动（main.py 一行接线）
+> + **假设修正**：S_Tools 首批三件存量已实现（labeling/batch_tools.py，PRD 差距测绘 grep 中文按钮词未命中英文实现名）
+> → Task 9 调整为补缺（.bak 备份/删除致空日志警示/统计含面积分布）。
+> 门禁 **1298 passed / rc=0**；data_manage 页 800 行压线过守卫。
+
+> ✅ **2026-09-02 W59 批次完成**（Task 11-13）：
+> inference/api_client.py（multipart POST→boxes 契约/超时/非 200/缺键四分支/密钥 env>凭据文件且零日志回显）
+> + api_actions Mixin（endpoint 输入+API 推理，完成链复用 _single_done）+ .gitignore 凭据防呆（W23 同型）
+> + Task 12 守卫终态（FB-016 全集断言：枚举七成员/模板任务码全集；新模块覆盖率 87-100% 总 95%）+ code-reviewer 复核
+> + **AC-002 缺口修正**：W55 顶点编辑面扩展至 CUT_LINE（≥2 点）/OPERATION（角点拖拽改尺寸，拒插删点）
+> ——立项时 AC-002 假设 EDIT 全形态可用，实测仅多边形。
+> code-reviewer 复核（0C/1H/4M/5L）：HIGH+4MEDIUM+3LOW 全修（模板 loader 启动链收口/API 契约收口/模板增强段断链/keypoint 诚实跳过/统计容错/互斥与文案/原子写），2 LOW 记录；
+> 门禁终态 **1318 passed / 5 skipped / rc=0**；ruff 0 error；总检 grep 全净（0 调试残留/0 硬编码密钥）。
+> **发版窗留项**：exe 重打包+PYZ 守卫/lite 派生实测（零新依赖预期零增量）/UIA 回归（新切割线用例）——环境窗操作标 N/A 待发版；
+> AC-010（SKolpha 实机核对三处推断级语义，用户配合项 D-4）保持开放；NFR-001 并行吞吐计时断言未落（完整性+排序已验，记健康度待补）。
 
 ---
 

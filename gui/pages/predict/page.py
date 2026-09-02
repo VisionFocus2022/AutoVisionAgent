@@ -263,8 +263,8 @@ class PredictPage(ApiInferActionsMixin, BatchModeActionsMixin, VideoSuperActions
             return
         self._load_model_from(path)
 
-    def _load_model_from(self, path: str) -> None:
-        """从指定路径加载模型权重（W58-A：工程绑定「从项目带入」共用入口）。"""
+    def _load_model_from(self, path: str) -> bool:
+        """从指定路径加载模型权重（W58-A 带入共用入口；失败文案已发，调用方勿覆盖）。"""
         self._model_path = path
         task = self.cmb_task.currentData()
         try:
@@ -300,19 +300,19 @@ class PredictPage(ApiInferActionsMixin, BatchModeActionsMixin, VideoSuperActions
                 self._engine.load(path, device=_device)
             else:
                 self._engine = None
-                self.status_changed.emit(
-                    tr("引擎未注册"), task.value
-                )
+                self.status_changed.emit(tr("引擎未注册"), task.value)
                 self.lbl_model.setText(tr("引擎未注册"))
-                return
+                return False
             self.lbl_model.setText(os.path.basename(path))
             self.status_changed.emit(tr("模型已加载"), task.value)
+            return True
         except (RuntimeError, OSError, ValueError,
                 SupervisedEngineError) as exc:
             # W28 审计折入：坏 checkpoint 时引擎 load 抛 SupervisedEngineError
             # （AppError 子类）——旧元组漏收则逃出槽函数且引擎残留半加载态
             self.lbl_model.setText(tr("加载失败"))
             self.status_changed.emit(tr("模型加载失败"), str(exc)[:40])
+            return False
 
     def _threshold(self) -> float:
         """当前推理阈值（单张/批量共用，W28）。"""

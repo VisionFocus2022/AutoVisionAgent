@@ -126,12 +126,20 @@ def infer_remote(
             endpoint=endpoint,
         )
 
-    task = TaskType(str(payload.get("task", "det")))
-    boxes = tuple(
-        tuple(float(v) for v in box) for box in payload.get("boxes") or []
-    )
-    scores = tuple(float(s) for s in payload.get("scores") or [])
-    labels = tuple(str(lb) for lb in payload.get("labels") or [])
+    try:
+        task = TaskType(str(payload.get("task", "det")))
+        boxes = tuple(
+            tuple(float(v) for v in box) for box in payload.get("boxes") or []
+        )
+        scores = tuple(float(s) for s in payload.get("scores") or [])
+        labels = tuple(str(lb) for lb in payload.get("labels") or [])
+    except (TypeError, ValueError) as exc:
+        # 复核 MEDIUM 修正：契约值非法也收进 ApiInferError——裸异常会把
+        # 服务端响应片段漏进用户文案，且 TypeError 绕过页面 except 元组
+        raise ApiInferError(
+            f"远端响应契约不符（task/boxes/scores 值非法）: {endpoint}",
+            endpoint=endpoint,
+        ) from exc
     return DetectionResult(
         task=task,
         boxes=boxes,

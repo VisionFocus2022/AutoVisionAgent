@@ -42,6 +42,9 @@ class _Handler(BaseHTTPRequestHandler):
             time.sleep(1.5)
         if _Handler.mode == "badcontract":
             body = json.dumps({"foo": 1}).encode()
+        elif _Handler.mode == "badtask":
+            body = json.dumps({"boxes": [[1, 2, 3, 4]], "labels": ["x"],
+                               "scores": [0.5], "task": "notatask"}).encode()
         else:
             body = json.dumps({
                 "boxes": [[1.0, 2.0, 3.0, 4.0]],
@@ -238,3 +241,12 @@ def test_api_infer_success_reuses_single_done_chain(
     assert predict_page.table.rowCount() == 1
     assert predict_page.btn_api_infer.isEnabled()
 
+
+@pytest.mark.unit
+def test_infer_remote_bad_task_value_is_contract_error(api_server, png_path):
+    """复核 MEDIUM 修正：非法 task 值收进 ApiInferError（不再裸 ValueError）。"""
+    from inference.api_client import infer_remote
+
+    _Handler.mode = "badtask"
+    with pytest.raises(ApiInferError, match="契约不符"):
+        infer_remote(api_server, png_path)

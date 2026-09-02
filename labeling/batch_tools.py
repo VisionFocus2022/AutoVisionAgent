@@ -217,15 +217,20 @@ def label_data_statistics(json_dir: str) -> dict[str, dict[str, float]]:
         for s in doc.get("shapes", []):
             label = s.get("label", "unknown")
             entry = stats.setdefault(label, {"count": 0, "total_area": 0.0})
-            pts = [(float(p[0]), float(p[1])) for p in (s.get("points") or [])]
-            if s.get("shape_type") == "rectangle" and len(pts) >= 2:
-                (x1, y1), (x2, y2) = pts[0], pts[1]
-                area = abs(x2 - x1) * abs(y2 - y1)
-            else:
-                try:
+            # 复核 MEDIUM 修正：坏 points 不得击穿整次统计（一坏文件不
+            # 连坐）——转换与计算同入 try，失败按面积 0 计数
+            try:
+                pts = [
+                    (float(p[0]), float(p[1]))
+                    for p in (s.get("points") or [])
+                ]
+                if s.get("shape_type") == "rectangle" and len(pts) >= 2:
+                    (x1, y1), (x2, y2) = pts[0], pts[1]
+                    area: float = abs(x2 - x1) * abs(y2 - y1)
+                else:
                     area = polygon_area(pts)
-                except (TypeError, ValueError, IndexError):
-                    area = 0.0
+            except (TypeError, ValueError, IndexError):
+                area = 0.0
             entry["count"] += 1
             entry["total_area"] += float(area)
     for entry in stats.values():

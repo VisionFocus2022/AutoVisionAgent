@@ -159,3 +159,16 @@ def test_repo_templates_are_plaintext():
         text = f.read_text(encoding="utf-8")
         assert "gAAAAA" not in text, f"{f.name} 含 Fernet 密文形态"
 
+
+@pytest.mark.unit
+def test_load_templates_bad_numeric_value_skipped(tmp_path):
+    """复核 HIGH 修正：字段值非法（epochs: forever）只跳过该文件不炸启动链。"""
+    (tmp_path / "det_normal.yaml").write_text(
+        "task: det\nvariant: normal\nbackbone: yolov8n\n", encoding="utf-8"
+    )
+    (tmp_path / "cls_bad.yaml").write_text(
+        "task: cls\nvariant: normal\nbackbone: r18\nepochs: forever\n",
+        encoding="utf-8",
+    )
+    templates = load_templates(str(tmp_path))
+    assert set(templates) == {("det", "normal")}

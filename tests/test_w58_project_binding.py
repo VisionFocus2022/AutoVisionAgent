@@ -121,7 +121,7 @@ def test_predict_bring_from_project_fills_model_and_threshold(
     called = {}
     monkeypatch.setattr(
         predict_page, "_load_model_from",
-        lambda path: called.update(path=path),
+        lambda path: called.update(path=path) or True,
     )
     predict_page._bring_from_project()
     assert called.get("path") == str(model_file)

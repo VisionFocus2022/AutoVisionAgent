@@ -118,16 +118,27 @@ def load_templates(dir_path: str | Path) -> dict[tuple[str, str], TrainTemplate]
             )
             continue
         variant = str(raw.get("variant") or "normal")
-        template = TrainTemplate(
-            task=task,
-            variant=variant,
-            backbone=str(raw.get("backbone") or "yolov8n"),
-            img_size=int(raw.get("img_size") or 640),
-            epochs=int(raw["epochs"]) if raw.get("epochs") is not None else None,
-            batch_size=int(raw.get("batch_size") or 8),
-            lr=float(raw.get("lr") or 0.001),
-            augmentation=_augmentation_from_raw(raw.get("augmentation")),
-        )
+        try:
+            template = TrainTemplate(
+                task=task,
+                variant=variant,
+                backbone=str(raw.get("backbone") or "yolov8n"),
+                img_size=int(raw.get("img_size") or 640),
+                epochs=(
+                    int(raw["epochs"])
+                    if raw.get("epochs") is not None else None
+                ),
+                batch_size=int(raw.get("batch_size") or 8),
+                lr=float(raw.get("lr") or 0.001),
+                augmentation=_augmentation_from_raw(raw.get("augmentation")),
+            )
+        except (TypeError, ValueError) as exc:
+            # 复核 HIGH 修正：数值转换纳入逐文件保护——启动链（训练页
+            # 构建期同步调用）上坏值文件只跳过告警，不炸应用
+            logger.warning(
+                "训练模板字段值非法（跳过）: %s (%s)", path.name, exc
+            )
+            continue
         key = (task_value, variant)
         if key in templates:
             logger.warning("训练模板重复 (task=%s, variant=%s)：后者覆盖 %s",

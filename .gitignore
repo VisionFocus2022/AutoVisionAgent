@@ -83,3 +83,6 @@ configs/initial_credentials.txt
 
 # W59-A：API 推理凭据文件（env AVA_API_KEY 优先；勿提交）
 configs/api_key.txt
+
+# 会话本地工具配置（不提交）
+.claude/

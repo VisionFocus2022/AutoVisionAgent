@@ -11,9 +11,9 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QPainterPath,
     QPen,
     QPixmap,
-    QPainterPath,
     QPolygonF,
 )
 from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene

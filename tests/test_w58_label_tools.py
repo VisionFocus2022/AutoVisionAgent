@@ -94,3 +94,15 @@ def test_backup_failure_skips_rewrite(ann_dir, monkeypatch):
     doc = json.loads((ann_dir / "b.json").read_text(encoding="utf-8"))
     assert doc["shapes"][0]["label"] == "old"  # 原文未动
 
+
+@pytest.mark.unit
+def test_statistics_bad_points_do_not_break_run(ann_dir):
+    """复核 MEDIUM 修正：坏 points（单元素）按面积 0 计数，不击穿整次统计。"""
+    _write_labelme(ann_dir / "bad.json", [
+        {"label": "weird", "points": [[1.0]], "shape_type": "polygon",
+         "flags": {}},
+    ])
+    stats = label_data_statistics(str(ann_dir))
+    assert stats["weird"]["count"] == 1
+    assert stats["weird"]["total_area"] == 0.0
+    assert stats["crack"]["count"] == 2  # 其余文件不受连坐
