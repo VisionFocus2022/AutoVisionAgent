@@ -3,8 +3,11 @@
 Shape ↔ LabelMe 标注字典互转，格式对齐 ``evaluation/labelme_loader.py``（后者消费
 shape_type=="polygon" 的 points）。本模块：
 
-- POLYGON/BRUSH → shape_type "polygon"；RECTANGLE → "rectangle"；KEYPOINT → "point"。
-- 为保留画笔（brush）身份以支持精确往返，在每个 shape 字典附 ``"mode"`` 自定义键；
+- POLYGON → shape_type "polygon"；RECTANGLE/OPERATION → "rectangle"；
+  CUT_LINE → "linestrip"（labelme 原生折线形态，跨工具互操作——外部
+  工具写的 linestrip 读回 CUT_LINE；W56 对标 SKolpha cut_line_label/
+  operation_label）。
+- 为保留原始模式身份以支持精确往返，在每个 shape 字典附 ``"mode"`` 自定义键；
   既有 loader 忽略未知键，故向后兼容（零回归）。
 - 不内嵌 imageData（保持文件轻量；图像经 imagePath 引用，与 evaluation loader 一致）。
 """
@@ -29,6 +32,8 @@ LABELME_VERSION = "5.4.3"
 _MODE_TO_SHAPE_TYPE: dict[AnnotationMode, str] = {
     AnnotationMode.POLYGON: "polygon",
     AnnotationMode.RECTANGLE: "rectangle",
+    AnnotationMode.CUT_LINE: "linestrip",       # W56：切割线（labelme 原生形态）
+    AnnotationMode.OPERATION: "rectangle",      # W56：操作区域（矩形形态）
 }
 
 # LabelMe shape_type → Shape.mode（无 "mode" 自定义键时的推断回退）
@@ -36,6 +41,7 @@ _MODE_TO_SHAPE_TYPE: dict[AnnotationMode, str] = {
 _SHAPE_TYPE_TO_MODE: dict[str, AnnotationMode] = {
     "polygon": AnnotationMode.POLYGON,
     "rectangle": AnnotationMode.RECTANGLE,
+    "linestrip": AnnotationMode.CUT_LINE,       # W56：外部 linestrip 读为切割线
 }
 
 
@@ -48,8 +54,9 @@ def shape_to_labelme(shape: Shape) -> dict[str, Any]:
         raise InvalidShapeError(
             f"模式 {shape.mode.value} 暂不支持 LabelMe 导出", mode=shape.mode.value
         )
-    # 矩形只需两个对角点；多边形/画笔/关键点按原样
-    pts = tuple(shape.points[:2]) if shape.mode is AnnotationMode.RECTANGLE else shape.points
+    # 矩形/操作标注只需两个对角点；多边形/切割线按原样
+    _TWO_POINT_MODES = (AnnotationMode.RECTANGLE, AnnotationMode.OPERATION)
+    pts = tuple(shape.points[:2]) if shape.mode in _TWO_POINT_MODES else shape.points
     return {
         "label": shape.label,
         "points": [[float(x), float(y)] for x, y in pts],

@@ -48,6 +48,18 @@ _EN_US: dict[str, str] = {
     "工具": "Tools",
     "多边形": "Polygon",
     "矩形": "Rectangle",
+    # W56：工业标注形态（SKolpha 复刻 FR-001/002）
+    "切割线": "Cut Line",
+    "操作标注": "Operation",
+    # W56：批量预测模式（SKolpha 复刻 FR-003）
+    "批量模式": "Batch Mode",
+    "整批完成": "Full Batch",
+    "逐张即时": "Incremental",
+    "并发数": "Concurrency",
+    "仅整批模式生效：并行渲染/产物写（需引擎支持批量推理）": "Full-batch only: parallel post-processing (batch-infer engine required)",
+    "从项目带入": "Load From Project",
+    "工程绑定后启用（预测参数带入）": "Enabled after project binding (prediction params)",
+    "已逐张落盘": "Incremental results saved:",
 
     # ---- v5 P2-N3 补译（tr() 对账守卫收口：en_US 零中文残留） ----
     "提示": "Notice",

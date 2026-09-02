@@ -43,9 +43,12 @@ logger = logging.getLogger(__name__)
 
 # 模式定义：(mode, 按钮文本键, 快捷键)
 # 2026-09-01 极柱工作流裁剪：删 画笔P/关键点K/SAM笔刷B/SAM全图G（docs/prd-labeling-mode-prune.md）
+# W56 增工业两形态：切割线 C / 操作标注 O（docs/prd-skolpha-replication.md FR-001/002）
 _MODES = [
     (AnnotationMode.POLYGON, "多边形", "Q"),
     (AnnotationMode.RECTANGLE, "矩形", "R"),
+    (AnnotationMode.CUT_LINE, "切割线", "C"),
+    (AnnotationMode.OPERATION, "操作标注", "O"),
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
     (AnnotationMode.REGION_SAM, "SAM 区域", "J"),
     (AnnotationMode.EDIT, "编辑", "E"),
@@ -58,6 +61,7 @@ _SAM_MODES = frozenset({
 })
 _DRAW_MODES = _SAM_MODES | {
     AnnotationMode.POLYGON, AnnotationMode.RECTANGLE,
+    AnnotationMode.CUT_LINE, AnnotationMode.OPERATION,
     AnnotationMode.EDIT,
 }
 
@@ -656,6 +660,13 @@ class LabelPage(SamSessionMixin, LabelClipboardMixin, QWidget):
         )
 
     # ------------------------------ 标注模式 ------------------------------ #
+    def set_default_shape_mode(self, mode: AnnotationMode) -> None:
+        """工程 transferType 联动入口（W58-A 接线：Rect→矩形 / Polygon→多边形）。
+
+        W56 预留：函数先行，项目信号接线在工程绑定批（Task 8）。
+        """
+        self._apply_mode(mode)
+
     def _apply_mode(self, mode: AnnotationMode) -> None:
         self.controller.set_mode(mode)
         self._apply_label()  # 同步当前标签

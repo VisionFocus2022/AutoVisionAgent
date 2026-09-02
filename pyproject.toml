@@ -7,6 +7,9 @@ requires-python = ">=3.10"
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+# .workflow/ = 各波次过程产物（临时脚本/日志/取证留档），非 lintable 代码面
+# （W56：解密证据等以原文件名留档，不因扩展名误入 lint 分母）
+extend-exclude = [".workflow"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]

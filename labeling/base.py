@@ -18,10 +18,12 @@ DEFAULT_COLOR: RGBA = (52, 152, 219, 255)
 
 
 class AnnotationMode(Enum):
-    """支持的标注模式（2026-09-01 极柱工作流裁剪后保留集）。"""
+    """支持的标注模式（2026-09-01 极柱工作流裁剪；W56 增工业两形态）。"""
 
     POLYGON = "polygon"          # Q — 多边形标注
     RECTANGLE = "rectangle"      # R — 矩形标注
+    CUT_LINE = "cut_line"        # C — 切割线（W56：对标 SKolpha cut_line_label）
+    OPERATION = "operation"      # O — 操作标注（W56：对标 SKolpha operation_label）
     INTERACTIVE = "interactive"  # I — SAM 点标（点提示分割）
     REGION_SAM = "region_sam"    # J — SAM 矩形标（框选定区分割，W43：拖拽定区+点击分割）
     EDIT = "edit"                # E — 顶点编辑（W55：选中多边形→拖/加点/删点）
@@ -29,7 +31,9 @@ class AnnotationMode(Enum):
     @classmethod
     def manual_modes(cls):
         """返回手动标注模式（非 AI 辅助）。"""
-        return (cls.POLYGON, cls.RECTANGLE)
+        return (
+            cls.POLYGON, cls.RECTANGLE, cls.CUT_LINE, cls.OPERATION,
+        )
 
 
 @dataclass

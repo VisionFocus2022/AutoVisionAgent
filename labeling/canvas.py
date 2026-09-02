@@ -7,12 +7,13 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 
-from PySide6.QtCore import QPointF, QRectF, Signal
+from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
     QPen,
     QPixmap,
+    QPainterPath,
     QPolygonF,
 )
 from PySide6.QtWidgets import QGraphicsPixmapItem, QGraphicsScene
@@ -341,11 +342,21 @@ class AnnotationCanvas(QGraphicsScene):
         if not points:
             return
 
-        if shape.mode is AnnotationMode.RECTANGLE and len(points) >= 2:
+        if (shape.mode in (AnnotationMode.RECTANGLE, AnnotationMode.OPERATION)
+                and len(points) >= 2):
+            # W56：OPERATION（操作区域）与 RECTANGLE 同为两点对角矩形
             x1, y1 = points[0]
             x2, y2 = points[1]
             self.addRect(min(x1, x2), min(y1, y2),
                         abs(x2 - x1), abs(y2 - y1), pen, brush)
+        elif shape.mode is AnnotationMode.CUT_LINE and len(points) >= 2:
+            # W56 切割线：开放折线——QPolygonF 会自动闭合首尾，须走
+            # QPainterPath；虚线样式与区域类形态（填充面）视觉区分
+            path = QPainterPath(QPointF(points[0][0], points[0][1]))
+            for p in points[1:]:
+                path.lineTo(QPointF(p[0], p[1]))
+            pen.setStyle(Qt.DashLine)
+            self.addPath(path, pen)
         else:
             # 多边形 → QPolygonF（W14 P2-10：QPointF 静态导入，行为等价）
             poly = QPolygonF([QPointF(p[0], p[1]) for p in points])

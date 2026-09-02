@@ -33,6 +33,7 @@ from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.permissions import check_action  # W35：动作门控
 from gui.core.thread_bridge import invoke_main, ui_on_error
+from gui.pages.predict.batch_actions import BatchModeActionsMixin  # W56
 from gui.pages.predict.video_super_actions import VideoSuperActionsMixin  # W34
 from gui.pages.predict.workers import (
     batch_save_dir,
@@ -47,7 +48,7 @@ from inference.sv_bridge import render_result  # W33：批量叠加图（页面�
 logger = logging.getLogger(__name__)
 
 
-class PredictPage(VideoSuperActionsMixin, QWidget):
+class PredictPage(BatchModeActionsMixin, VideoSuperActionsMixin, QWidget):
     """推理页：加载模型 → 单张/批量推理 → 结果表 → 导出。"""
 
     status_changed = Signal(str, str)
@@ -146,6 +147,9 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         self.btn_video_super = QPushButton(tr("视频超分"), bar)
         self.btn_video_super.setProperty("tool", True)
         h.addWidget(self.btn_video_super)
+
+        # W56：批量模式/并发选项（FR-003，控件构建在 BatchModeActionsMixin）
+        self._add_batch_options(h, bar)
 
         self._btn_cancel_batch = QPushButton(tr("取消"), bar)
         self._btn_cancel_batch.setVisible(False)
@@ -438,6 +442,9 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
             threshold=self._threshold(), labels_filter=labels_filter,
             save_overlay=save_overlay,
             overlay_renderer=render_result if save_overlay else None,
+            mode=self.batch_mode_value(),
+            concurrency=self.batch_concurrency_value(),
+            images_dir=d,
         )
 
     def _batch_add_row(self, img_path: str, result: DetectionResult) -> None:
@@ -464,9 +471,15 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         self.table.setItem(row, 2, QTableWidgetItem(f"{score:.3f}"))
         self.table.setItem(row, 3, QTableWidgetItem(info))
 
-    @Slot(int, int, bool)
-    def _batch_done(self, count: int, total: int, cancelled: bool = False) -> None:
-        logger.info("批量推理完成: %d/%d (cancelled=%s)", count, total, cancelled)
+    @Slot(int, int, bool, str)
+    def _batch_done(
+        self, count: int, total: int, cancelled: bool = False,
+        mode: str = "batch",
+    ) -> None:
+        logger.info(
+            "批量推理完成: %d/%d (cancelled=%s, mode=%s)",
+            count, total, cancelled, mode,
+        )
         self.btn_batch.setEnabled(True)
         self.btn_batch.setText(tr("批量推理"))
         if hasattr(self, "_btn_cancel_batch"):
@@ -475,6 +488,13 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
             self._progress.setValue(0)
             self._progress.setVisible(False)
         if cancelled:
+            if mode == "incremental":
+                # W56：逐张模式取消时已处理部分已在盘上（滚动落盘承诺）——
+                # 文案必须与 batch 模式的「未落盘」区分，否则误导
+                self.status_changed.emit(
+                    tr("批量已取消"), tr("已逐张落盘") + f" {count}"
+                )
+                return
             # W28 审计折入：取消要有显式反馈——旧实现照常报"批量完成"并弹
             # 统计，用户误以为 batch_results.json 已落盘（按钮恢复≠用户知情）
             self.status_changed.emit(

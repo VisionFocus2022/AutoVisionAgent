@@ -5,6 +5,8 @@
 保留集（2026-09-01 极柱工作流裁剪）：手动 2 模式（POLYGON/RECTANGLE）
 + SAM 2 模式（INTERACTIVE 点标 / REGION_SAM 矩形标）。
 已删模式：画笔/关键点/SAM 笔刷/SAM 全图（历史见 RELEASES.md）。
+W56 增工业两形态：CUT_LINE 切割线 / OPERATION 操作标注
+（对标 SKolpha，docs/prd-skolpha-replication.md FR-001/002）。
 
 INTERACTIVE/REGION_SAM 的 make_labeler 默认返回「无适配器」实例——
 调用方需后续通过 set_adapter / set_image 注入依赖。
@@ -25,6 +27,8 @@ except ImportError:
     class AnnotationMode(Enum):
         POLYGON = "polygon"
         RECTANGLE = "rectangle"
+        CUT_LINE = "cut_line"
+        OPERATION = "operation"
         INTERACTIVE = "interactive"
         REGION_SAM = "region_sam"
         EDIT = "edit"
@@ -37,7 +41,9 @@ except ImportError:
 _LABELERS: dict = {}
 
 for _name, _module_path in [
+    ("CutLineLabeler", "labeling.modes.cut_line"),
     ("InteractiveLabeler", "labeling.modes.interactive"),
+    ("OperationLabeler", "labeling.modes.operation"),
     ("PolygonLabeler", "labeling.modes.polygon"),
     ("RectangleLabeler", "labeling.modes.rectangle"),
     ("RegionSamLabeler", "labeling.modes.region_sam"),
@@ -59,15 +65,23 @@ _MANUAL_FACTORIES = {}
 _MODE_LABELLER_MAP = {
     AnnotationMode.POLYGON: "PolygonLabeler",
     AnnotationMode.RECTANGLE: "RectangleLabeler",
+    AnnotationMode.CUT_LINE: "CutLineLabeler",
+    AnnotationMode.OPERATION: "OperationLabeler",
     AnnotationMode.INTERACTIVE: "InteractiveLabeler",
     AnnotationMode.REGION_SAM: "RegionSamLabeler",
 }
+
+# 手动模式集合（与 AnnotationMode.manual_modes 对齐：非 AI 辅助）
+_MANUAL_MODES = (
+    AnnotationMode.POLYGON, AnnotationMode.RECTANGLE,
+    AnnotationMode.CUT_LINE, AnnotationMode.OPERATION,
+)
 
 for _mode, _cls_name in _MODE_LABELLER_MAP.items():
     _cls = _LABELERS.get(_cls_name)
     if _cls is not None:
         _ALL_FACTORIES[_mode] = _cls
-        if _mode in (AnnotationMode.POLYGON, AnnotationMode.RECTANGLE):
+        if _mode in _MANUAL_MODES:
             _MANUAL_FACTORIES[_mode] = _cls
 
 
