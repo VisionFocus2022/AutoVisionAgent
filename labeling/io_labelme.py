@@ -28,16 +28,14 @@ LABELME_VERSION = "5.4.3"
 # Shape.mode → LabelMe shape_type
 _MODE_TO_SHAPE_TYPE: dict[AnnotationMode, str] = {
     AnnotationMode.POLYGON: "polygon",
-    AnnotationMode.BRUSH: "polygon",   # 画笔落盘为多边形（与既有 loader 兼容）
     AnnotationMode.RECTANGLE: "rectangle",
-    AnnotationMode.KEYPOINT: "point",
 }
 
 # LabelMe shape_type → Shape.mode（无 "mode" 自定义键时的推断回退）
+# （"point" 形态随关键点模式移除——旧 point 数据走未知形态路径，诚实不支持）
 _SHAPE_TYPE_TO_MODE: dict[str, AnnotationMode] = {
     "polygon": AnnotationMode.POLYGON,
     "rectangle": AnnotationMode.RECTANGLE,
-    "point": AnnotationMode.KEYPOINT,
 }
 
 

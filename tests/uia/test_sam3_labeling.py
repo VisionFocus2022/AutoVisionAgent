@@ -12,8 +12,8 @@ transformers/Sam3Adapter（重打包波次后放开）；权重缺失自动 skip
 路由）；JSON/状态不符类为 deterministic。
 
 用例：
-  1. test_sam3_three_modes_polygon_flow  交互式/SAM 区域/SAM 笔刷一图流
-  2. test_sam3_auto_concept_flow         「SAM 全图」概念分割（label=概念词）
+  1. test_sam3_two_modes_polygon_flow  交互式/SAM 区域一图流
+  （原「SAM 笔刷」「SAM 全图」用例随 2026-09-01 模式裁剪移除）
   3. test_sam3_invalid_weights_honest    伪权重目录 → 「SAM 加载失败」诚实路径
 
 运行（机器空闲时）::
@@ -337,10 +337,10 @@ def _save_and_read_json(win, labels_dir: Path, name: str) -> dict:
 # ================================ 用例 ================================ #
 
 
-def test_sam3_three_modes_polygon_flow(
+def test_sam3_two_modes_polygon_flow(
     sam3_weights_env, ava_app, pole_subset_dir, workspace_dir
 ):
-    """交互式点击 / SAM 区域（拖矩形+区域内点击）/ SAM 笔刷（拖划）→ 三多边形 JSON 铁证。"""
+    """交互式点击 / SAM 区域（拖矩形+区域内点击）→ 两多边形 JSON 铁证。"""
     win = ava_app
     _ensure_logged_in(win)
     _open_label_folder(win, pole_subset_dir)
@@ -383,25 +383,11 @@ def test_sam3_three_modes_polygon_flow(
     else:
         pytest.fail(f"SAM 区域分割未产出多边形（base={base}，最后='{_last_status(win)}'）")
 
-    # -- 3) SAM 笔刷：拖划=前景笔划 → Return 提交 --
-    assert click_button(win, "SAM 笔刷", T_NAV), "未找到'SAM 笔刷'按钮（find timeout）"
-    time.sleep(1.0)
-    base = _shape_count(win)
-    for attempt in range(2):
-        draw_rectangle_on_canvas(win, 0.42, 0.5, 0.62, 0.52)  # 水平拖划=一条笔划
-        time.sleep(4.0)
-        _canvas_commit(win)
-        if _wait_count_increase(win, base, timeout=6.0):
-            break
-        logger.info("SAM 笔刷尝试 %d 未提交，状态: '%s'", attempt + 1, _last_status(win))
-    else:
-        pytest.fail(f"SAM 笔刷未产出多边形（base={base}，最后='{_last_status(win)}'）")
-
-    # -- 铁证：三种模式的多边形落盘 --
+    # -- 铁证：两种模式的多边形落盘 --
     doc = _save_and_read_json(win, workspace_dir / "labels", "sam3_modes.json")
     shapes = doc.get("shapes", [])
-    assert len(shapes) >= 3, (
-        f"三模式合计应 ≥3 shapes，实际 {len(shapes)}: {[s.get('shape_type') for s in shapes]}"
+    assert len(shapes) >= 2, (
+        f"两模式合计应 ≥2 shapes，实际 {len(shapes)}: {[s.get('shape_type') for s in shapes]}"
     )
     assert all(s.get("shape_type") == "polygon" for s in shapes), (
         f"SAM 模式产物应全为 polygon: {[s.get('shape_type') for s in shapes]}"
@@ -411,46 +397,8 @@ def test_sam3_three_modes_polygon_flow(
     )
     assert (doc.get("imagePath") or "").endswith(".bmp"), \
         f"imagePath 应指向极柱 bmp，实际: {doc.get('imagePath')}"
-    logger.info("SAM3 三模式铁证通过: %d polygons, imagePath=%s",
+    logger.info("SAM3 两模式铁证通过: %d polygons, imagePath=%s",
                 len(shapes), doc.get("imagePath"))
-
-
-def test_sam3_auto_concept_flow(
-    sam3_weights_env, ava_app, pole_subset_dir, workspace_dir
-):
-    """「SAM 全图」概念分割：label='hole'（极柱域实测有效词）→ 点击 → drain → JSON 铁证。"""
-    win = ava_app
-    _ensure_logged_in(win)
-    _open_label_folder(win, pole_subset_dir)
-    _set_label_edit(win, "hole")
-
-    assert click_button(win, "SAM 全图", T_NAV), "未找到'SAM 全图'按钮（find timeout）"
-    status = wait_status(win, "自动标注就绪", T_LOAD)
-    assert status is not None, (
-        f"SAM3 未就绪（等 '自动标注就绪' 超时，最后='{_last_status(win)}'）"
-    )
-    base = _shape_count(win)
-    # 点击触发全图概念前向（UI 同步阻塞 2-6s 属预期——1600² PCS）
-    assert _canvas_click(win, 0.5, 0.5), "画布单击失败（find timeout）"
-    time.sleep(T_INFER)
-    # Return drain：controller.handle_commit 对 AUTO 逐个取队列
-    _canvas_commit(win)
-    _canvas_commit(win)
-    increased = _wait_count_increase(win, base, timeout=10.0)
-    assert increased, (
-        f"概念分割未产出形状（label='hole'，base={base}，最后='{_last_status(win)}'）"
-    )
-
-    doc = _save_and_read_json(win, workspace_dir / "labels", "sam3_auto.json")
-    shapes = doc.get("shapes", [])
-    assert len(shapes) >= 1, f"概念分割应 ≥1 shape，实际 {len(shapes)}"
-    assert all(s.get("shape_type") == "polygon" for s in shapes), (
-        f"概念分割产物应为 polygon: {[s.get('shape_type') for s in shapes]}"
-    )
-    assert all(s.get("label") == "hole" for s in shapes), (
-        f"label 应为概念词 'hole': {[s.get('label') for s in shapes]}"
-    )
-    logger.info("SAM3 概念分割铁证通过: %d instances(label=hole)", len(shapes))
 
 
 def test_sam3_invalid_weights_honest_failure(sam3_fake_env, ava_app, pole_subset_dir):

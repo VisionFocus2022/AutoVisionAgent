@@ -437,20 +437,6 @@ class TestGridAmgDetector:
         ) == 4
 
 
-class TestZeroShapePromptI18n:
-    """AC-005：0 形状降级提示 zh/en 键对偶（tr() 字面量守卫由
-    test_w20 承担，此处钉住两个新键确实成对入字典）。"""
-
-    def test_ac005_degradation_keys_paired(self):
-        from gui.core.i18n import _EN_US
-
-        for key in (
-            "SAM 全图零分割",
-            "未分出标注：可改用区域/点击模式，或输入概念词",
-        ):
-            assert key in _EN_US, f"en_US 缺键: {key}"
-
-
 class TestToShapes:
     def test_batch_points(self):
         adapter, _ = _make_adapter()

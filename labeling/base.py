@@ -18,22 +18,18 @@ DEFAULT_COLOR: RGBA = (52, 152, 219, 255)
 
 
 class AnnotationMode(Enum):
-    """支持的标注模式（对标 SKolpha Q/R/P/K/W/I）。"""
+    """支持的标注模式（2026-09-01 极柱工作流裁剪后保留集）。"""
 
     POLYGON = "polygon"          # Q — 多边形标注
     RECTANGLE = "rectangle"      # R — 矩形标注
-    BRUSH = "brush"              # P — 画笔标注
-    KEYPOINT = "keypoint"        # K — 关键点标注
-    AUTO = "auto"                # W — AI 自动标注
-    INTERACTIVE = "interactive"  # I — SAM 交互式标注
-    REGION_SAM = "region_sam"    # J — SAM 区域分割（W43：拖拽定区+点击分割）
-    SAM_BRUSH = "sam_brush"      # B — SAM 笔刷精修（W44：笔划点提示+logits 迭代）
+    INTERACTIVE = "interactive"  # I — SAM 点标（点提示分割）
+    REGION_SAM = "region_sam"    # J — SAM 矩形标（框选定区分割，W43：拖拽定区+点击分割）
     EDIT = "edit"                # E — 顶点编辑（W55：选中多边形→拖/加点/删点）
 
     @classmethod
     def manual_modes(cls):
         """返回手动标注模式（非 AI 辅助）。"""
-        return (cls.POLYGON, cls.RECTANGLE, cls.BRUSH, cls.KEYPOINT)
+        return (cls.POLYGON, cls.RECTANGLE)
 
 
 @dataclass

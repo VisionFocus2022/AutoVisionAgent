@@ -98,14 +98,10 @@ a = Analysis(
         "labeling.sam3_adapter",
         "labeling.batch_tools",
         "labeling.io_labelme",
-        "labeling.modes.auto",
         "labeling.modes.interactive",
         "labeling.modes.polygon",
         "labeling.modes.rectangle",
-        "labeling.modes.brush",
-        "labeling.modes.keypoint",
         "labeling.modes.region_sam",
-        "labeling.modes.brush_sam",
         # 分发器
         "industrial_vision_platform.vision_dispatcher",
         # W5: supervision 标注优化（渲染/导出；函数内惰性导入，显式列出防漏打包）

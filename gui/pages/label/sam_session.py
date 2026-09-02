@@ -206,32 +206,11 @@ class SamSessionMixin:
 
     @Slot()
     def _sam_attach(self) -> None:
-        """槽：预热完成（主线程）——按当前模式注入。
+        """槽：预热完成（主线程）——为 SAM 模式（INTERACTIVE/REGION_SAM）注入 adapter。
 
-        W44·C：AUTO 模式注入 AMG detector（全图自动分割 + IOU 阈值过滤）；
-        其余 SAM 模式（INTERACTIVE/REGION_SAM/SAM_BRUSH）注入 adapter。
+        （AUTO/AMG 通道随 SAM 全图模式移除，2026-09-01；适配器
+        build_amg_detector 库 API 保留供批量流程复用。）
         """
-        from labeling.base import AnnotationMode
-
-        mode = self.controller.mode
-        if mode is AnnotationMode.AUTO:
-            # W55：空标签=网格盒全覆盖（无概念词也可分割，FR-001）；
-            # 非空=概念词走既有文本通道
-            label = self.label_input.text().strip()
-            detector = self._sam_adapter.build_amg_detector(label=label)
-
-            def _on_auto_result(count: int) -> None:
-                if count <= 0:
-                    self.status_changed.emit(
-                        tr("SAM 全图零分割"),
-                        tr("未分出标注：可改用区域/点击模式，或输入概念词"),
-                    )
-
-            if self.controller.attach_detector(
-                detector, self._pending_sam_image, on_result=_on_auto_result
-            ):
-                self.status_changed.emit(tr("SAM 已加载"), tr("自动标注就绪"))
-            return
         if self.controller.attach_interactive(
             self._sam_adapter, self._pending_sam_image
         ):

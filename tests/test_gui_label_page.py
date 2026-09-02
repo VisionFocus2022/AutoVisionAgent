@@ -450,7 +450,7 @@ def test_run_ai_prelabel_no_det_engine_returns_empty_without_dispatcher(
 
     import industrial_vision_platform.vision_dispatcher as disp_mod
 
-    # 用调用记录器而非"抛异常哨兵"——AutoLabeler.run 会吞 Exception，
+    # 用调用记录器而非"抛异常哨兵"——被测路径会吞 Exception，
     # 抛哨兵无法证明未调用（W18 实测：原 RED 波次被吞掉静默通过）
     calls = []
     monkeypatch.setattr(disp_mod, "get_dispatcher", lambda: calls.append(1))
@@ -602,3 +602,15 @@ def test_edit_mode_wired_and_list_canvas_selection_sync(label_page):
     # 列表取消 → 画布清选中
     label_page.shape_list.setCurrentRow(-1)
     assert label_page.canvas.selected_index is None
+
+
+@pytest.mark.unit
+def test_mode_shortcuts_unique():
+    """模式快捷键不得与页内翻页/预标注键冲突（A=上一张 D=下一张 W=AI 预标注）。
+
+    自 test_sam_auto_entry.py 移入（AUTO 模式删除后原文件裁撤，此为通用守卫）。
+    """
+    from gui.pages.label.page import _MODES
+
+    keys = [k for _m, _t, k in _MODES] + ["A", "D", "W", "Space"]
+    assert len(keys) == len(set(keys)), f"快捷键冲突: {sorted(keys)}"

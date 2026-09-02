@@ -48,7 +48,7 @@ def _public_py_modules(directory: Path) -> set:
 def _parse_mode_modules(source: str) -> set:
     """从 labeling/modes/__init__.py 提取动态导入的模块名。
 
-    形态：for _name, _module_path in [("AutoLabeler", "labeling.modes.auto"), ...]
+    形态：for _name, _module_path in [("PolygonLabeler", "labeling.modes.polygon"), ...]
     """
     names = set()
     for node in ast.walk(ast.parse(source)):

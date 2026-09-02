@@ -1,19 +1,18 @@
-"""SAM 交互式 / AI 自动预标注模式单元测试（FR-C2/C3，T-M2-03）。
+"""SAM 交互式（点标）模式单元测试（FR-C2/C3，T-M2-03）。
 
 覆盖：
-- make_labeler 工厂：AUTO/INTERACTIVE 不再抛 NotImplementedError
+- make_labeler 工厂：INTERACTIVE 可构造
 - InteractiveLabeler：Mock SamAdapter 点击→多边形→commit 闭环
-- AutoLabeler：Mock detector 批量推理→commit 逐个返回队列
-- 优雅降级：无 adapter/detector 时不崩溃
+- 优雅降级：无 adapter 时不崩溃
 - 工厂参数传递 + 属性注入
+（AUTO/SAM 全图模式已随 2026-09-01 模式裁剪移除。）
 """
 from __future__ import annotations
 
 import pytest
 
-from labeling.base import AnnotationMode, Shape
+from labeling.base import AnnotationMode
 from labeling.modes import make_labeler
-from labeling.modes.auto import AutoLabeler
 from labeling.modes.interactive import InteractiveLabeler
 
 pytestmark = pytest.mark.unit
@@ -24,18 +23,13 @@ pytestmark = pytest.mark.unit
 # =====================================================================
 
 class TestFactoryRegistration:
-    """make_labeler 能构造 AUTO / INTERACTIVE 模式。"""
+    """make_labeler 能构造 INTERACTIVE 模式。"""
 
     def test_make_interactive(self) -> None:
         labeler = make_labeler(AnnotationMode.INTERACTIVE, "scratch")
         assert isinstance(labeler, InteractiveLabeler)
         assert labeler.mode is AnnotationMode.INTERACTIVE
         assert labeler.label == "scratch"
-
-    def test_make_auto(self) -> None:
-        labeler = make_labeler(AnnotationMode.AUTO, "defect")
-        assert isinstance(labeler, AutoLabeler)
-        assert labeler.mode is AnnotationMode.AUTO
 
     def test_make_interactive_with_adapter_kwarg(self) -> None:
         """通过 **options 传入 sam_adapter。"""
@@ -45,7 +39,7 @@ class TestFactoryRegistration:
         assert isinstance(labeler, InteractiveLabeler)
 
     def test_manual_modes_still_work(self) -> None:
-        """手动 4 模式不受影响。"""
+        """手动模式（POLYGON/RECTANGLE）不受影响。"""
         for mode in AnnotationMode.manual_modes():
             labeler = make_labeler(mode, "test")
             assert labeler.mode is mode
@@ -181,157 +175,6 @@ class TestInteractiveLabeler:
 
 
 # =====================================================================
-# AutoLabeler 测试
-# =====================================================================
-
-class TestAutoLabeler:
-    """AutoLabeler：批量推理 → commit 逐个返回。"""
-
-    @staticmethod
-    def _fake_detector(image: object) -> list[Shape]:
-        """模拟检测器：返回 3 个矩形。"""
-        return [
-            Shape(
-                mode=AnnotationMode.RECTANGLE,
-                points=((10 * i, 10 * i), (10 * i + 20, 10 * i + 20)),
-                label="defect",
-            )
-            for i in range(3)
-        ]
-
-    def test_run_populates_queue(self) -> None:
-        labeler = AutoLabeler(
-            "defect", detector=self._fake_detector, image="fake_img"
-        )
-        count = labeler.run()
-        assert count == 3
-        assert labeler.pending_count == 3
-
-    def test_commit_drains_queue(self) -> None:
-        labeler = AutoLabeler(
-            "defect", detector=self._fake_detector, image="fake_img"
-        )
-        labeler.run()
-        shapes = []
-        while labeler.pending_count > 0:
-            s = labeler.commit()
-            assert s is not None
-            shapes.append(s)
-        assert len(shapes) == 3
-        # 队列空后 commit 返回 None
-        assert labeler.commit() is None
-
-    def test_on_press_triggers_run(self) -> None:
-        labeler = AutoLabeler(
-            "defect", detector=self._fake_detector, image="fake_img"
-        )
-        labeler.on_press((0, 0))
-        assert labeler.pending_count == 3
-
-    def test_no_detector_no_crash(self) -> None:
-        labeler = AutoLabeler("defect")  # 无 detector
-        assert labeler.run() == 0
-        labeler.on_press((0, 0))
-        assert labeler.pending_count == 0
-        assert labeler.commit() is None
-
-    def test_no_image_no_crash(self) -> None:
-        labeler = AutoLabeler("defect", detector=self._fake_detector)  # 无 image
-        assert labeler.run() == 0
-
-    def test_detector_exception_swallowed(self) -> None:
-        def bad_detector(img: object) -> list[Shape]:
-            raise RuntimeError("model not loaded")
-
-        labeler = AutoLabeler("x", detector=bad_detector, image="img")
-        assert labeler.run() == 0
-
-    def test_reset_clears_queue(self) -> None:
-        labeler = AutoLabeler(
-            "defect", detector=self._fake_detector, image="fake_img"
-        )
-        labeler.run()
-        assert labeler.pending_count > 0
-        labeler.reset()
-        assert labeler.pending_count == 0
-
-    def test_set_detector_and_image(self) -> None:
-        labeler = AutoLabeler("defect")
-        labeler.set_detector(self._fake_detector)
-        labeler.set_image("img")
-        count = labeler.run()
-        assert count == 3
-
-    def test_shapes_have_correct_label(self) -> None:
-        labeler = AutoLabeler("my_defect", detector=self._fake_detector, image="img")
-        labeler.run()
-        shape = labeler.commit()
-        assert shape is not None
-        # detector 返回的 Shape 自带 label，AutoLabeler 不覆盖
-        assert shape.label == "defect"
-
-    # ------------------ W55：结果回调（FR-002 诚实降级的领域接缝） ------------------ #
-
-    def test_result_hook_called_with_count(self) -> None:
-        """真实执行后以 Shape 数回调（页面据此发 0 形状降级提示）。"""
-        labeler = AutoLabeler(
-            "defect", detector=self._fake_detector, image="img"
-        )
-        got: list[int] = []
-        labeler.set_result_hook(got.append)
-        labeler.run()
-        assert got == [3]
-
-    def test_result_hook_fires_on_zero_shapes(self) -> None:
-        """detector 返回空列表 → 回调收 0（AC-005 领域面）。"""
-        labeler = AutoLabeler("defect", detector=lambda img: [], image="img")
-        got: list[int] = []
-        labeler.set_result_hook(got.append)
-        assert labeler.run() == 0
-        assert got == [0]
-
-    def test_result_hook_fires_on_detector_exception(self) -> None:
-        """detector 抛异常 → 回调收 0（异常路径同样是 0 形状事实）。"""
-        def bad(img: object) -> list[Shape]:
-            raise RuntimeError("boom")
-
-        labeler = AutoLabeler("x", detector=bad, image="img")
-        got: list[int] = []
-        labeler.set_result_hook(got.append)
-        assert labeler.run() == 0
-        assert got == [0]
-
-    def test_result_hook_not_fired_without_execution(self) -> None:
-        """detector/image 缺位（未装配）不回调——非执行不算 0 形状。"""
-        labeler = AutoLabeler("defect")  # 无 detector
-        got: list[int] = []
-        labeler.set_result_hook(got.append)
-        assert labeler.run() == 0
-        assert got == []
-
-    def test_result_hook_exception_swallowed(self) -> None:
-        """回调自身异常不反噬标注主流程。"""
-        def bad_hook(count: int) -> None:
-            raise RuntimeError("hook boom")
-
-        labeler = AutoLabeler(
-            "defect", detector=self._fake_detector, image="img"
-        )
-        labeler.set_result_hook(bad_hook)
-        assert labeler.run() == 3
-
-    def test_result_hook_clearable(self) -> None:
-        labeler = AutoLabeler(
-            "defect", detector=self._fake_detector, image="img"
-        )
-        got: list[int] = []
-        labeler.set_result_hook(got.append)
-        labeler.set_result_hook(None)
-        labeler.run()
-        assert got == []
-
-
-# =====================================================================
 # 集成：工厂 + 属性注入
 # =====================================================================
 
@@ -349,13 +192,3 @@ class TestFactoryInjection:
         labeler.set_adapter(FakeSamAdapter([(0, 0), (10, 0), (10, 10)]))
         labeler.on_press((5, 5))
         assert labeler.preview() is not None
-
-    def test_auto_inject_after_creation(self) -> None:
-        labeler = make_labeler(AnnotationMode.AUTO, "defect")
-        assert isinstance(labeler, AutoLabeler)
-        # 初始无 detector → run 返回 0
-        assert labeler.run() == 0
-        # 注入后可用
-        labeler.set_image("img")
-        labeler.set_detector(TestAutoLabeler._fake_detector)
-        assert labeler.run() == 3

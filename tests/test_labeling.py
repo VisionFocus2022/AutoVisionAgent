@@ -1,6 +1,6 @@
 """labeling 子系统单元测试（FR-C1/C4/C5）。
 
-覆盖：纯几何工具、4 手动模式 to_shape、LabelMe JSON 往返、画布撤销/重做、
+覆盖：纯几何工具、保留模式 to_shape、LabelMe JSON 往返、画布撤销/重做、
 控制器事件分发→形状提交。Qt 相关用例在 offscreen 模式下运行。
 """
 import os
@@ -116,14 +116,6 @@ def test_rectangle_mode_normalizes_and_drops_tiny():
 
 
 @pytest.mark.unit
-def test_keypoint_mode_single_point():
-    lab = make_labeler(AnnotationMode.KEYPOINT, "kp")
-    lab.on_press((25, 25))
-    sh = lab.on_release((25, 25))
-    assert sh is not None and sh.points == ((25, 25),)
-
-
-@pytest.mark.unit
 def test_polygon_mode_commit_closes():
     lab = make_labeler(AnnotationMode.POLYGON, "crack")
     for pt in [(0, 0), (50, 0), (50, 50), (0, 50)]:
@@ -146,43 +138,6 @@ def test_polygon_mode_snap_to_first_point():
 
 
 @pytest.mark.unit
-def test_brush_mode_simplifies_stroke():
-    lab = make_labeler(
-        AnnotationMode.BRUSH, "mask", sample_distance=2, simplify_epsilon=3
-    )
-    # 真实画笔：沿方形闭合轨迹高密度采样（共线直线会被丢弃，故用闭合环）
-    corners = [(0.0, 0.0), (40.0, 0.0), (40.0, 40.0), (0.0, 40.0)]
-    loop = corners + [corners[0]]
-    raw = []
-    for a, b in zip(loop, loop[1:], strict=False):  # 错位一格=闭合边序列
-        for i in range(10):
-            raw.append((a[0] + (b[0] - a[0]) * i / 10,
-                        a[1] + (b[1] - a[1]) * i / 10))
-    lab.on_press(raw[0])
-    for q in raw[1:]:
-        lab.on_move(q)
-    sh = lab.on_release(raw[-1])
-    assert sh is not None
-    assert sh.mode is AnnotationMode.BRUSH
-    # 高密度采样应被简化为少量角点（≥3 且远少于原始采样）
-    assert len(sh.points) >= 3
-    assert len(sh.points) < len(raw)
-
-
-@pytest.mark.unit
-def test_brush_mode_degenerate_line_dropped():
-    # 完全共线的直线笔触 → 简化为 2 点 < 3 → 丢弃（不构成区域）
-    lab = make_labeler(
-        AnnotationMode.BRUSH, "mask", sample_distance=2, simplify_epsilon=3
-    )
-    raw = [(float(x), 10.0) for x in range(0, 100, 2)]
-    lab.on_press(raw[0])
-    for q in raw[1:]:
-        lab.on_move(q)
-    assert lab.on_release(raw[-1]) is None
-
-
-@pytest.mark.unit
 def test_polygon_preview_rubber_band():
     lab = make_labeler(AnnotationMode.POLYGON, "d")
     lab.on_press((0, 0))
@@ -194,12 +149,9 @@ def test_polygon_preview_rubber_band():
 
 
 @pytest.mark.unit
-def test_factory_supports_m2_modes():
-    """AUTO/INTERACTIVE 模式在 M2 (T-M2-03 SAM) 已实装。"""
-    from labeling.modes.auto import AutoLabeler
+def test_factory_supports_interactive_mode():
+    """INTERACTIVE 模式（SAM 点标）经工厂可构造（T-M2-03 实装）。"""
     from labeling.modes.interactive import InteractiveLabeler
-    auto = make_labeler(AnnotationMode.AUTO, "d")
-    assert isinstance(auto, AutoLabeler)
     inter = make_labeler(AnnotationMode.INTERACTIVE, "d")
     assert isinstance(inter, InteractiveLabeler)
 
@@ -209,12 +161,8 @@ def test_factory_supports_m2_modes():
 def test_shape_to_labelme_shape_types():
     rect = Shape(AnnotationMode.RECTANGLE, ((10, 10), (110, 60)), label="r")
     poly = Shape(AnnotationMode.POLYGON, ((0, 0), (1, 0), (1, 1)), label="p")
-    kp = Shape(AnnotationMode.KEYPOINT, ((5, 5),), label="k")
-    brush = Shape(AnnotationMode.BRUSH, ((0, 0), (5, 1), (10, 0), (10, 10)), label="b")
     assert shape_to_labelme(rect)["shape_type"] == "rectangle"
     assert shape_to_labelme(poly)["shape_type"] == "polygon"
-    assert shape_to_labelme(kp)["shape_type"] == "point"
-    assert shape_to_labelme(brush)["shape_type"] == "polygon"
 
 
 @pytest.mark.unit
@@ -227,19 +175,13 @@ def test_labelme_round_trip_preserves_mode_label_points():
             label="scratch",
             group_id=3,
         ),
-        Shape(AnnotationMode.KEYPOINT, ((25, 25),), label="kp"),
-        Shape(
-            AnnotationMode.BRUSH,
-            ((5, 5), (20, 6), (40, 5), (40, 20)),
-            label="mask",
-        ),
     ]
     doc = shapes_to_labelme(shapes, "demo.jpg", 480, 640)
     back = labelme_to_shapes(doc)
-    assert [s.mode for s in back] == [s.mode for s in shapes]  # 含 brush 身份
+    assert [s.mode for s in back] == [s.mode for s in shapes]
     assert [s.label for s in back] == [s.label for s in shapes]
     assert back[0].points == shapes[0].points
-    assert back[2].points == shapes[2].points
+    assert back[1].points == shapes[1].points
     assert back[1].group_id == 3
 
 
@@ -286,7 +228,7 @@ def test_canvas_undo_redo(qapp):
     c = AnnotationCanvas()
     c.set_blank(200, 200)
     s1 = Shape(AnnotationMode.RECTANGLE, ((1, 1), (2, 2)), label="a")
-    s2 = Shape(AnnotationMode.KEYPOINT, ((5, 5),), label="b")
+    s2 = Shape(AnnotationMode.RECTANGLE, ((5, 5), (8, 8)), label="b")
 
     c.add_shape(s1)
     c.add_shape(s2)
@@ -326,16 +268,16 @@ def test_canvas_replace_all_undoable(qapp):
     c = AnnotationCanvas()
     c.add_shape(Shape(AnnotationMode.RECTANGLE, ((1, 1), (2, 2)), label="a"))
     c.replace_all(
-        (Shape(AnnotationMode.KEYPOINT, ((9, 9),), label="b"),)
+        (Shape(AnnotationMode.RECTANGLE, ((9, 9), (12, 12)), label="b"),)
     )
-    assert len(c.shapes) == 1 and c.shapes[0].mode is AnnotationMode.KEYPOINT
+    assert len(c.shapes) == 1 and c.shapes[0].mode is AnnotationMode.RECTANGLE
     assert c.undo()
     assert c.shapes[0].mode is AnnotationMode.RECTANGLE
 
 
 # ============================== 控制器 e2e ============================== #
 @pytest.mark.unit
-def test_controller_rectangle_then_keypoint(qapp):
+def test_controller_rectangle_then_second_shape(qapp):
     c = AnnotationCanvas()
     c.set_blank(200, 200)
     ctrl = AnnotationController(c, mode=AnnotationMode.RECTANGLE, label="crack")
@@ -345,12 +287,12 @@ def test_controller_rectangle_then_keypoint(qapp):
     assert len(c.shapes) == 1
     assert c.shapes[0].mode is AnnotationMode.RECTANGLE
 
-    ctrl.set_mode(AnnotationMode.KEYPOINT)
-    ctrl.set_label("kp")
+    ctrl.set_mode(AnnotationMode.RECTANGLE)
+    ctrl.set_label("second")
     ctrl.handle_press((30, 30))
-    ctrl.handle_release((30, 30))
+    ctrl.handle_release((60, 60))
     assert len(c.shapes) == 2
-    assert c.shapes[1].label == "kp"
+    assert c.shapes[1].label == "second"
 
 
 @pytest.mark.unit

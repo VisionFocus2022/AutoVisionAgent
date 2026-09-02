@@ -3,7 +3,7 @@
 覆盖：on_mouse_press/move/release 三事件分发（含右键提交、无 view /
 无 labeler 早退）、_to_scene_point 真坐标转换（缩放 + 滚动条偏移下的
 精确映射）、set_mode 的 labeler 复用/重建/非法模式降级、handle_commit
-的 if 分支（AutoLabeler 队列）与 while 清空分支（逐个返回队列）、
+的 if 分支（单形状提交）与 while 清空分支（逐个返回队列）、
 cancel、attach_interactive 三态。全部离屏运行。
 """
 from __future__ import annotations
@@ -211,30 +211,6 @@ def test_handle_api_with_none_labeler_noop(qapp):
 
 
 # ============================== handle_commit ============================== #
-@pytest.mark.unit
-def test_handle_commit_auto_labeler_queue_if_branch(qapp):
-    """AUTO 模式：commit 逐个返回队列形状（if 分支），队列空后再 commit
-    走 while 清空分支并立即 break。"""
-    canvas = _canvas()
-    ctrl = AnnotationController(canvas, mode=AnnotationMode.AUTO, label="ai")
-    ctrl._labeler.set_detector(
-        lambda img: [
-            Shape(AnnotationMode.RECTANGLE, ((0, 0), (5, 5)), label="ai"),
-            Shape(AnnotationMode.KEYPOINT, ((1, 1),), label="ai"),
-        ]
-    )
-    ctrl._labeler.set_image(object())
-    ctrl.handle_press((1.0, 1.0))  # on_press 触发 run → 队列 2 个
-    assert ctrl._labeler.pending_count == 2
-
-    ctrl.handle_commit()  # if 分支提交第 1 个
-    ctrl.handle_commit()  # if 分支提交第 2 个
-    ctrl.handle_commit()  # 首个 commit None → while → None → break
-    assert ctrl._labeler.pending_count == 0
-    assert len(canvas.shapes) == 2
-    assert [s.label for s in canvas.shapes] == ["ai", "ai"]
-
-
 class _ScriptedLabeler:
     """脚本化标注器：按预设序列返回 commit() 结果，其余方法无操作。"""
 
@@ -272,7 +248,7 @@ def test_handle_commit_while_loop_drains_multiple_shapes(qapp):
         [
             None,  # 首个 commit None → 进入 while
             Shape(AnnotationMode.RECTANGLE, ((0, 0), (1, 1)), label="q1"),
-            Shape(AnnotationMode.KEYPOINT, ((2, 2),), label="q2"),
+            Shape(AnnotationMode.RECTANGLE, ((2, 2), (3, 3)), label="q2"),
             None,  # 队列耗尽 → break
         ]
     )
@@ -280,7 +256,29 @@ def test_handle_commit_while_loop_drains_multiple_shapes(qapp):
     assert len(canvas.shapes) == 2
     assert canvas.shapes[0].label == "q1"
     assert canvas.shapes[1].label == "q2"
-    assert canvas.shapes[1].mode is AnnotationMode.KEYPOINT
+    assert canvas.shapes[1].mode is AnnotationMode.RECTANGLE
+
+
+@pytest.mark.unit
+def test_handle_commit_if_branch_one_shape_per_call(qapp):
+    """commit 返回形状时走 if 分支——一次调用提交一个，不进 while 循环。
+
+    （原 AUTO 队列等价覆盖：模式删除后改用脚本化标注器钉住同一分支。）
+    """
+    canvas = _canvas()
+    ctrl = AnnotationController(canvas, mode=AnnotationMode.POLYGON, label="d")
+    ctrl._labeler = _ScriptedLabeler(
+        [
+            Shape(AnnotationMode.RECTANGLE, ((0, 0), (5, 5)), label="a1"),
+            Shape(AnnotationMode.RECTANGLE, ((1, 1), (6, 6)), label="a2"),
+            None,
+        ]
+    )
+    ctrl.handle_commit()
+    assert len(canvas.shapes) == 1
+    assert canvas.shapes[0].label == "a1"
+    ctrl.handle_commit()
+    assert len(canvas.shapes) == 2
 
 
 # ============================== cancel ============================== #

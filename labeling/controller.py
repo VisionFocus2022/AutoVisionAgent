@@ -118,7 +118,7 @@ class AnnotationController:
             return
         if event.button() == Qt.LeftButton and self._labeler is not None:
             self._labeler.on_press(pt)
-            # 关键点/矩形/画笔在 release 时完成，检查是否有即时结果
+            # 矩形在 release 时完成，检查是否有即时结果
             shape = self._labeler.preview()
             self._canvas._redraw()
             if shape:
@@ -306,12 +306,8 @@ class AnnotationController:
             是否注入成功。
         """
         # W43：REGION_SAM 同享 SAM 注入通道（INTERACTIVE 行为不变）
-        # W46·B：SAM_BRUSH 补齐——W44 建模式时漏加，笔刷在 GUI 装配链
-        # 永远拿不到 adapter（单测直接注 set_adapter 不经此路，UIA 真窗
-        # 测试擒获；BrushSamLabeler 有 set_adapter/set_image 同契约）
         _SAM_ATTACH_MODES = (
             AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM,
-            AnnotationMode.SAM_BRUSH,
         )
         if self._mode not in _SAM_ATTACH_MODES or self._labeler is None:
             return False
@@ -320,24 +316,6 @@ class AnnotationController:
         self._labeler.set_adapter(adapter)
         if image is not None:
             self._labeler.set_image(image)
-        return True
-
-    def attach_detector(self, detector, image=None, on_result=None) -> bool:
-        """为 AUTO 模式注入检测回调与当前帧（W44·C：SAM AMG 接入通道）。
-
-        仅在当前模式为 AUTO 且标注器支持 set_detector 时生效；
-        on_result（W55 · FR-002）：透传到 AutoLabeler 结果回调，
-        0 形状时页面据此发诚实降级提示（None=不接）。
-        """
-        if self._mode is not AnnotationMode.AUTO or self._labeler is None:
-            return False
-        if not hasattr(self._labeler, "set_detector"):
-            return False
-        self._labeler.set_detector(detector)
-        if image is not None:
-            self._labeler.set_image(image)
-        if on_result is not None and hasattr(self._labeler, "set_result_hook"):
-            self._labeler.set_result_hook(on_result)
         return True
 
     def _commit_shape(self, shape: Shape) -> None:

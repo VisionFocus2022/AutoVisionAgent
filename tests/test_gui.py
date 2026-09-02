@@ -101,9 +101,9 @@ def test_label_list_refresh(label_page):
     label_page._apply_mode(AnnotationMode.RECTANGLE)
     label_page.controller.handle_press((10, 10))
     label_page.controller.handle_release((60, 60))
-    label_page._apply_mode(AnnotationMode.KEYPOINT)
+    label_page._apply_mode(AnnotationMode.RECTANGLE)
     label_page.controller.handle_press((30, 30))
-    label_page.controller.handle_release((30, 30))
+    label_page.controller.handle_release((70, 70))
     assert label_page.shape_list.count() == 2
 
 

@@ -42,29 +42,22 @@ from labeling.controller import AnnotationController
 logger = logging.getLogger(__name__)
 
 # 模式定义：(mode, 按钮文本键, 快捷键)
+# 2026-09-01 极柱工作流裁剪：删 画笔P/关键点K/SAM笔刷B/SAM全图G（docs/prd-labeling-mode-prune.md）
 _MODES = [
     (AnnotationMode.POLYGON, "多边形", "Q"),
     (AnnotationMode.RECTANGLE, "矩形", "R"),
-    (AnnotationMode.BRUSH, "画笔", "P"),
-    (AnnotationMode.KEYPOINT, "关键点", "K"),
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
     (AnnotationMode.REGION_SAM, "SAM 区域", "J"),
-    (AnnotationMode.SAM_BRUSH, "SAM 笔刷", "B"),
     (AnnotationMode.EDIT, "编辑", "E"),
-    # W46·B：补 W44 AUTO/AMG 通道缺失的 UI 入口（此前 _sam_attach 的
-    # AUTO 分支无按钮可达=死路）——SAM3 后端下 label 输入框即概念提示词
-    (AnnotationMode.AUTO, "SAM 全图", "G"),
 ]
 
-# W44：SAM 系模式集合——触发 _ensure_sam 注入（含 AUTO 走 AMG detector）；
+# W44：SAM 系模式集合——触发 _ensure_sam 注入；
 # 绘制模式集合=SAM 系+手动系（规模守卫触发抽取，v6 P3 棘轮语义）
 _SAM_MODES = frozenset({
     AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM,
-    AnnotationMode.SAM_BRUSH, AnnotationMode.AUTO,
 })
 _DRAW_MODES = _SAM_MODES | {
     AnnotationMode.POLYGON, AnnotationMode.RECTANGLE,
-    AnnotationMode.BRUSH, AnnotationMode.KEYPOINT,
     AnnotationMode.EDIT,
 }
 

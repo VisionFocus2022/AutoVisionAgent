@@ -2,11 +2,12 @@
 
 按 AnnotationMode 解析到具体 ILabeler 实现。
 
-手动 4 模式（POLYGON/RECTANGLE/BRUSH/KEYPOINT）：T-M1-09 实装。
-AI 2 模式（AUTO/INTERACTIVE）：T-M2-03 SAM 适配器实装。
+保留集（2026-09-01 极柱工作流裁剪）：手动 2 模式（POLYGON/RECTANGLE）
++ SAM 2 模式（INTERACTIVE 点标 / REGION_SAM 矩形标）。
+已删模式：画笔/关键点/SAM 笔刷/SAM 全图（历史见 RELEASES.md）。
 
-AUTO/INTERACTIVE 的 make_labeler 默认返回「无适配器」实例——
-调用方需后续通过 set_adapter / set_detector / set_image 注入依赖。
+INTERACTIVE/REGION_SAM 的 make_labeler 默认返回「无适配器」实例——
+调用方需后续通过 set_adapter / set_image 注入依赖。
 """
 from __future__ import annotations
 
@@ -24,10 +25,9 @@ except ImportError:
     class AnnotationMode(Enum):
         POLYGON = "polygon"
         RECTANGLE = "rectangle"
-        BRUSH = "brush"
-        KEYPOINT = "keypoint"
-        AUTO = "auto"
         INTERACTIVE = "interactive"
+        REGION_SAM = "region_sam"
+        EDIT = "edit"
     RGBA = tuple[int, int, int, int]
     DEFAULT_COLOR = (52, 152, 219, 255)
     class ILabeler:  # type: ignore[no-redef]
@@ -37,14 +37,10 @@ except ImportError:
 _LABELERS: dict = {}
 
 for _name, _module_path in [
-    ("AutoLabeler", "labeling.modes.auto"),
-    ("BrushLabeler", "labeling.modes.brush"),
     ("InteractiveLabeler", "labeling.modes.interactive"),
-    ("KeypointLabeler", "labeling.modes.keypoint"),
     ("PolygonLabeler", "labeling.modes.polygon"),
     ("RectangleLabeler", "labeling.modes.rectangle"),
     ("RegionSamLabeler", "labeling.modes.region_sam"),
-    ("BrushSamLabeler", "labeling.modes.brush_sam"),
 ]:
     try:
         import importlib
@@ -63,20 +59,15 @@ _MANUAL_FACTORIES = {}
 _MODE_LABELLER_MAP = {
     AnnotationMode.POLYGON: "PolygonLabeler",
     AnnotationMode.RECTANGLE: "RectangleLabeler",
-    AnnotationMode.BRUSH: "BrushLabeler",
-    AnnotationMode.KEYPOINT: "KeypointLabeler",
-    AnnotationMode.AUTO: "AutoLabeler",
     AnnotationMode.INTERACTIVE: "InteractiveLabeler",
     AnnotationMode.REGION_SAM: "RegionSamLabeler",
-    AnnotationMode.SAM_BRUSH: "BrushSamLabeler",
 }
 
 for _mode, _cls_name in _MODE_LABELLER_MAP.items():
     _cls = _LABELERS.get(_cls_name)
     if _cls is not None:
         _ALL_FACTORIES[_mode] = _cls
-        if _mode in (AnnotationMode.POLYGON, AnnotationMode.RECTANGLE,
-                     AnnotationMode.BRUSH, AnnotationMode.KEYPOINT):
+        if _mode in (AnnotationMode.POLYGON, AnnotationMode.RECTANGLE):
             _MANUAL_FACTORIES[_mode] = _cls
 
 
@@ -94,7 +85,6 @@ def make_labeler(
         color: 描边色 RGBA。
         **options: 模式专属参数（如 close_threshold / simplify_epsilon）。
             INTERACTIVE 模式：sam_adapter, image（可选，后续可注入）。
-            AUTO 模式：detector, image（可选，后续可注入）。
 
     Returns:
         标注器实例；EDIT 模式返回 None（W55：编辑模式无标注器，鼠标

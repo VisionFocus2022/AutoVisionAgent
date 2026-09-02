@@ -48,36 +48,6 @@ _EN_US: dict[str, str] = {
     "工具": "Tools",
     "多边形": "Polygon",
     "矩形": "Rectangle",
-    "画笔": "Brush",
-    "关键点": "Keypoint",
-    "撤销": "Undo",
-    "重做": "Redo",
-    "删除": "Delete",
-    "清空": "Clear",
-    "保存标注": "Save Annotations",
-    "标签列表": "Label List",
-    "当前标签": "Current Label",
-    "添加标签": "Add Label",
-    "打开图像": "Open Image",
-    "打开文件夹": "Open Folder",
-    "上一张": "Previous",
-    "下一张": "Next",
-    "图像列表": "Image List",
-    "已加载": "Loaded",
-    "无图像": "No Images",
-    "未选择图像": "No image loaded",
-    "已保存": "Saved",
-    "已撤销": "Undone",
-    "已重做": "Redone",
-    "标注数": "Shapes",
-    "零检出（未生成标注）": "No detections (no annotations generated)",
-    "批量预标注": "Batch Prelabel",
-    "批量预标注中": "Batch prelabeling...",
-    "批量预标注完成": "Batch Prelabel Complete",
-    "批量预标注已取消": "Batch Prelabel Cancelled",
-    "AI预标注不可用": "AI prelabel unavailable",
-    "请先在推理页加载 DET 模型": "Load a DET model on the Predict page first",
-    "选择批量预标注目录": "Select batch prelabel directory",
 
     # ---- v5 P2-N3 补译（tr() 对账守卫收口：en_US 零中文残留） ----
     "提示": "Notice",
@@ -106,15 +76,7 @@ _EN_US: dict[str, str] = {
     "编辑": "Edit",  # W55：顶点编辑模式
     # ---- W43：SAM 区域分割（模式标签经变量键传入，顺手补直译） ----
     "SAM 区域": "SAM Region",
-    "SAM 笔刷": "SAM Brush",
-    "SAM 全图": "SAM Full-Image",
-    "自动标注就绪": "Auto-annotation ready",
     "拖拽划定区域，区域内点击分割": "Drag to set region, click inside to segment",
-
-    # ---- W55：SAM 全图零分割诚实降级提示 ----
-    "SAM 全图零分割": "SAM full-image: nothing segmented",
-    "未分出标注：可改用区域/点击模式，或输入概念词":
-        "No shapes produced; try region/click mode or type a concept word",
 
     # ---- v6 P2-5 补译（守卫扩单引号口径后补齐，W38；版本对比对话框） ----
     "旧": "Old",

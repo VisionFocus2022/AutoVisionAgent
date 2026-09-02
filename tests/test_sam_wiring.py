@@ -145,15 +145,14 @@ def test_controller_attach_interactive_only_in_interactive_mode(qapp):
 
 @pytest.mark.unit
 def test_controller_attach_interactive_covers_sam_modes(qapp):
-    """attach_interactive：SAM 三模式（INTERACTIVE/REGION_SAM/SAM_BRUSH）全通。
+    """attach_interactive：SAM 双模式（INTERACTIVE/REGION_SAM）全通。
 
-    W46·B 回归守卫：W44 建 SAM_BRUSH 时漏加白名单——笔刷在 GUI 装配链
-    拿不到 adapter（UIA 真窗擒获）；POLYGON 仍拒绝（不误注入手动模式）。
+    POLYGON 仍拒绝（不误注入手动模式）。
     """
     from labeling.canvas import AnnotationCanvas
     from labeling.controller import AnnotationController
 
-    for mode in (AnnotationMode.REGION_SAM, AnnotationMode.SAM_BRUSH):
+    for mode in (AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM):
         c = AnnotationCanvas()
         ctrl = AnnotationController(c, mode=mode, label="d")
         ok = ctrl.attach_interactive(
