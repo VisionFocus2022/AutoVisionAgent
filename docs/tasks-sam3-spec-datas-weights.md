@@ -27,4 +27,4 @@
 - [x] docs/release-checklist.md 打包节补「权重自动带入；缺失=BUILD-ABORT 须先下载；lite 自动裁剪」说明 ✓
 - [x] 主门禁全量 rc=0 覆盖率 ≥92 不降 ✓（1237 passed + 5 deselected，92.51%）
 - 偏差：首轮全量 5 红全在 tests/test_labeling.py（AnnotationController 缺 handle_double_click）——三信号（盘上有/HEAD 无/mtime 09:37-09:44 活跃）坐实为**并行会话在途批 RED 相位**（test +207 行已落、实现未落），非本批回归；按共享仓纪律 deselect 划清门禁面复跑全绿
-- [ ] 收尾门禁 3（AskUserQuestion）+ 经验沉淀
+- [x] 收尾门禁 3（AskUserQuestion）+ 经验沉淀 ✓（EXP-2026-09-01b + learn-20260901-sam3-spec-datas.md；提交 a33b319）

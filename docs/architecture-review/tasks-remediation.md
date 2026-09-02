@@ -7,7 +7,7 @@
 
 ## 任务列表
 
-### Task 1: 基线确认与 skip/缺口取证（FR-004/008 前置 · 只读）
+### Task 1: ✅ 基线确认与 skip/缺口取证（FR-004/008 前置 · 只读）——2026-09-01 完成
 - **步骤**:
   1. 主门禁全量跑：`.venv/Scripts/python.exe -m pytest > gate-baseline.log 2>&1; echo RC=$?`——确认 1222 passed / 5 skipped / 92.87% 量级仍真，记录为改动前基线
   2. `pytest -rs` 枚举 5 个 skip 原因（预期含 lite 守卫族），逐项归因留档（回填本文件表格）
@@ -15,7 +15,7 @@
 - **涉及文件**: 无生产码改动（只读 + 新增分析文档）
 - **验证**: 门禁 rc=0 且与基线数字一致；skip 归因表与缺口 top 表落档
 
-### Task 2: 打包防呆收尾验收 + 提交（FR-001 · AVA-R1）
+### Task 2: ✅ 打包防呆收尾验收 + 提交（FR-001 · AVA-R1）——2026-09-01 完成
 - **步骤**:
   1. **反测**（TDD 判定即验收）：用系统 python（或任一非 `.venv` 解释器，如 `python -m PyInstaller autovisionagent.spec --noconfirm`）→ 预期 <5s `[BUILD-ABORT]` 非零退出、信息含 `.venv`（AC-001）
   2. 核对工作区 `R01-module-build.md` +2 行登记段完整（AC-002 素材；提交后以 `git show HEAD:...` 终验）
@@ -109,3 +109,32 @@
 - [x] **验证可行**〔可执行判定〕: 每任务有命令或可判定预期（<5s / rc=0 / <2GiB / ≥93.5% / grep 实证）
 - [x] **AC 覆盖**〔可执行判定〕: AC-001..015 均有归属任务（T2→001/002；T3→003/004/005；T4→006/007；T5→008/009；T6→010/011；T7→012/013；T8→014；T9→全部终验+015）
 - [x] **末位验证任务**〔流程事件〕: Task 9 集成验证 + 清账回填存在
+
+---
+
+## 执行进度回填
+
+### 2026-09-01 · Task 1 + Task 2 完成（用户指令：先 1 后 2；.NET 问询项已获答案）
+
+**Task 1 结果**（证据：`.workflow/ava-remediation/gate-baseline-20260901.log` + [coverage-gap-analysis.md](coverage-gap-analysis.md)）：
+- 基线：**1222 passed / 5 skipped / 92.87%（668/9369）/ RC=0 / 90.62s**——与审查报告一致，假设 2（spec 不进分母）成立
+- 5 skip 归因完成：全部为设计内 opt-in/环境门控（真权重冒烟×2、已装依赖×2、训练流水线×1），**无 lite 守卫——审查推测证伪**；AC-007 口径修正为"归因留档"（见 coverage-gap-analysis.md §2）
+- 缺口分布：gui 260 + labeling 142 = 60%；补测量化目标 miss 668→≤609（净补 ≥59 条）；首补池 sam_session(63)+vision_dataset(28)+supervised_exporter(28)+label/page(25)+batch_tools(25)+geometry(25)=194 条
+- 顺手实测双产物体积（§4）：lite **1.980GiB 达标**（余量 20.6MiB）；完整 dist **7.588GiB**
+
+**Task 2 结果**（证据：`.workflow/ava-remediation/guard-negative-test.log`）：
+- 反测（AC-001）：hermes-agent venv（**08-24 事故同款解释器**）跑 `python -m PyInstaller autovisionagent.spec` → **RC=1 / 564ms / [BUILD-ABORT]×1 / .venv×5**——达标
+- AC-002：`git show HEAD` 核实 R01 含机械防呆登记、spec 含 BUILD-ABORT×2（提交 5b94a48）
+- 回归：test_w26_spec_packaging + test_dynamic_import_guard = 14 passed
+- 正测（AC-001 正向半）：08-31 完整 dist 即 .venv 产物（旁证）；完整重打包合并 Task 7 后于 Task 9
+
+**偏差记录（4 条 · 均因并行会话在计划落盘后先行推进）**：
+1. **P1-1 提交已由并行会话完成**（5b94a48，含 spec 防呆 + R01 登记 + 审查四件套落档）——Task 2 收窄为验收，未新增提交
+2. **P1-2 大部分已由并行会话完成**：3269a3b 更正 ci.yml 注释（AC-005 ✓）；分支已推**双远端**且指针=cd91e7d（AC-003 ✓，git ls-remote 实证）；剩余=CI 首跑结果确认（cd91e7d 注记"待人工确认"）→ Task 3 收窄为"查 CI 运行记录+留档"
+3. **AVA-R3 证伪**：审查查错目录名（`dist-lite/` vs 真实 `dist/AutoVisionAgent-lite/`）；产物存在（08-31 派生）+ 守卫 14 passed → Task 4 收窄为"体积留档+发版检查单 lite 硬核销项"，无需重建
+4. **AVA-R5 阈值失效**：完整 dist 实测 7.588GiB（>拟设 7GiB）→ AC-010 阈值重定（建议 8.5GiB 或待 Task 6 构成分析后定）
+5. 工作区存在 **85 个旧 docs 文件删除态**（未 staged，非本任务所为）——不触碰、不提交、不还原，待用户处置
+
+**Task 9 问询项已获答案（用户 2026-09-01）**：**.NET 客户端有生产消费方**——Task 9 第 5 步问询免做，直接回填审查 §4 未知表第 5 行。
+
+**下一步**（待用户指令）：Task 3（收窄版：CI 首跑确认）→ Task 4（收窄版）∥ Task 5 ∥ Task 7 → Task 6 → Task 8 → Task 9。

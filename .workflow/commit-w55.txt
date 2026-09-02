@@ -1,0 +1,23 @@
+feat: W55 SAM3 权重 spec datas 纳入——构建自动带权重，废除手动 robocopy 权宜态
+
+四 FR 落地（PRD: docs/prd-sam3-spec-datas-weights.md，L2 三门禁全过）：
+- FR-001 datas 纳入：autovisionagent.spec datas 加 ("weights/sam3","weights/sam3")，
+  落 _internal/weights/sam3 与 sam_session 约定发现目录逐字吻合，运行时零改动
+- FR-002 缺失防呆：spec 头部 BUILD-ABORT（model.safetensors/config/processor_config
+  三件齐查），缺权重秒级硬失败+ModelScope 下载指引，防静默残废 exe（AVA-R1 同型）
+- FR-003 lite 同步裁剪：make_lite_dist 裁剪清单加 weights/sam3（CPU-only + 2GiB
+  硬预算；easyocr 同语义，marker 留档 3.21GiB 裁剪量）
+- FR-004 AST 守卫防回退：test_w26 增 datas 守卫（datas 是拼接形态，按收集字面
+  tuple 口径，不照搬 excludes 纯字面量断言）
+
+实测留档：
+- 全量重打包 290s，dist 权重 cmp 字节级相同（3,439,938,512B）
+- 防呆可逆验证：缺权重 TRUE_EXIT=1（spec 评估阶段退出，dist 未波及）
+- UIA exe 实跑 test_sam3_auto_discovery_no_env 57.6s 绿（无 env 直接就绪）
+- lite 假树 15/15；主门禁 1237 绿/覆盖率 92.51%（5 deselect=并行会话在途批
+  RED 相位，三信号归因非本批回归，详见 tasks 文档偏差记录）
+- 偏差：首跑被残留 exe 实例句柄拦（WinError 32，taskkill 清场即通）；
+  打包时长 +约 1 分钟（3.4G 复制），full dist 4.4G→约 7.6G
+
+运维点解除：重打包后不再手动复制权重；release-checklist 打包节已更新。
+经验沉淀：EXP-2026-09-01b（datas 守卫口径/残留实例清场/RED 相位归因）。
