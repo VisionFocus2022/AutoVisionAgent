@@ -235,12 +235,12 @@ def test_controller_cut_line_flow(qapp):
     assert shapes[0].label == "cut"
 
 
-# ============================== EDIT 模式边界 ============================== #
+# ============================== EDIT 模式顶点微调（W59 扩展） ============================== #
 
 
 @pytest.mark.unit
-def test_edit_mode_rejects_cut_line_vertex_edit(qapp):
-    """W55 顶点编辑仅多边形——切割线选中后 move_vertex 拒绝（边界留档）。"""
+def test_edit_mode_supports_cut_line_vertex_edit(qapp):
+    """W59（AC-002）：切割线选中后顶点可拖拽微调；下限保 2 点。"""
     canvas = AnnotationCanvas()
     canvas.set_blank(200, 200)
     canvas.add_shape(
@@ -248,7 +248,29 @@ def test_edit_mode_rejects_cut_line_vertex_edit(qapp):
         points=[(10.0, 10.0), (60.0, 20.0), (100.0, 80.0)],
     )
     canvas.select_shape(0)
-    assert canvas.move_vertex(0, (5.0, 5.0)) is False
+    assert canvas.move_vertex(1, (55.0, 25.0)) is True
+    assert canvas.shapes[0].points[1] == (55.0, 25.0)
+
+    # 2 点折线拒绝删点（下限）；删 1 点先成功
+    assert canvas.remove_vertex(0) is True
+    assert len(canvas.shapes[0].points) == 2
+    assert canvas.remove_vertex(0) is False
+
+
+@pytest.mark.unit
+def test_edit_mode_operation_corner_drag(qapp):
+    """W59（AC-002）：操作区域角点拖拽=改尺寸；插点/删点拒绝（两点语义）。"""
+    canvas = AnnotationCanvas()
+    canvas.set_blank(200, 200)
+    canvas.add_shape(
+        mode=AnnotationMode.OPERATION, label="op",
+        points=[(10.0, 10.0), (60.0, 80.0)],
+    )
+    canvas.select_shape(0)
+    assert canvas.move_vertex(1, (90.0, 120.0)) is True
+    assert canvas.shapes[0].points[1] == (90.0, 120.0)
+    assert canvas.insert_vertex(1, (50.0, 50.0)) is False
+    assert canvas.remove_vertex(0) is False
 
 
 # ============================== 页面接线 ============================== #

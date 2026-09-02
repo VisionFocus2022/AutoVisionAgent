@@ -224,14 +224,22 @@ class AnnotationCanvas(QGraphicsScene):
             self.selection_changed.emit(-1)
 
     def _editable_polygon(self) -> tuple[int, Shape] | None:
-        """当前选中且为可编辑 POLYGON 的 (索引, 形状)；否则 None。"""
+        """当前选中且可顶点编辑的 (索引, 形状)；否则 None。
+
+        W59（AC-002）：可编辑面扩展——POLYGON（≥3 点，闭合语义）/
+        CUT_LINE（≥2 点，开放折线）/ OPERATION（2 点，矩形角点=改尺寸）。
+        """
         idx = self._selected_index
         if idx is None or not 0 <= idx < len(self._shapes):
             return None
         shape = self._shapes[idx]
-        if shape.mode is not AnnotationMode.POLYGON or len(shape.points) < 3:
-            return None
-        return idx, shape
+        if shape.mode is AnnotationMode.POLYGON and len(shape.points) >= 3:
+            return idx, shape
+        if shape.mode is AnnotationMode.CUT_LINE and len(shape.points) >= 2:
+            return idx, shape
+        if shape.mode is AnnotationMode.OPERATION and len(shape.points) == 2:
+            return idx, shape
+        return None
 
     def begin_vertex_edit(self) -> None:
         """顶点编辑快照——拖动开始时调用，使一次拖动=一步 undo。"""
@@ -251,8 +259,12 @@ class AnnotationCanvas(QGraphicsScene):
         if not 0 <= vertex_idx < len(pts):
             return False
         n = len(pts)
-        # 闭合判定须在改点前（首点被改后与收尾副本必然不等）
-        closed = n >= 4 and pts[0] == pts[-1]
+        # 闭合判定须在改点前（首点被改后与收尾副本必然不等）；闭合同步
+        # 仅多边形语义（W59：折线/矩形无首尾闭合副本）
+        closed = (
+            shape.mode is AnnotationMode.POLYGON
+            and n >= 4 and pts[0] == pts[-1]
+        )
         pts[vertex_idx] = (float(pt[0]), float(pt[1]))
         if closed:
             if vertex_idx == 0:
@@ -264,11 +276,16 @@ class AnnotationCanvas(QGraphicsScene):
         return True
 
     def insert_vertex(self, pos: int, pt) -> bool:
-        """在选中多边形 pos 处插入顶点（一步 undo）。"""
+        """在选中形状 pos 处插入顶点（一步 undo）。
+
+        W59：OPERATION 拒绝插点（矩形保持两点语义——角点拖拽即改尺寸）。
+        """
         got = self._editable_polygon()
         if got is None:
             return False
         idx, shape = got
+        if shape.mode is AnnotationMode.OPERATION:
+            return False
         pts = list(shape.points)
         pos = max(0, min(pos, len(pts)))
         pts.insert(pos, (float(pt[0]), float(pt[1])))
@@ -279,18 +296,30 @@ class AnnotationCanvas(QGraphicsScene):
         return True
 
     def remove_vertex(self, vertex_idx: int) -> bool:
-        """删除选中多边形顶点（一步 undo）；删除后不足 3 点则拒绝。
+        """删除选中形状顶点（一步 undo）。
 
-        闭合多边形删除首/尾顶点=删同一逻辑顶点，两份副本一并移除
-        （剩余须 ≥3 点：闭合 4 点三角形拒绝删端点）。
+        下限：POLYGON 剩余 ≥3 点；CUT_LINE 剩余 ≥2 点（W59）；OPERATION
+        拒绝删点（矩形不能只剩一角）。闭合多边形删除首/尾顶点=删同一
+        逻辑顶点，两份副本一并移除。
         """
         got = self._editable_polygon()
         if got is None:
             return False
         idx, shape = got
+        if shape.mode is AnnotationMode.OPERATION:
+            return False
         pts = list(shape.points)
         if not 0 <= vertex_idx < len(pts):
             return False
+        if shape.mode is AnnotationMode.CUT_LINE:
+            if len(pts) <= 2:
+                return False
+            self._save_state()
+            pts.pop(vertex_idx)
+            self._replace_points(idx, pts)
+            self._redraw()
+            self.shapes_changed.emit(self.shapes)
+            return True
         n = len(pts)
         closed = n >= 4 and pts[0] == pts[-1]
         if closed and vertex_idx in (0, n - 1):
@@ -361,8 +390,12 @@ class AnnotationCanvas(QGraphicsScene):
             # 多边形 → QPolygonF（W14 P2-10：QPointF 静态导入，行为等价）
             poly = QPolygonF([QPointF(p[0], p[1]) for p in points])
             self.addPolygon(poly, pen, brush)
-            if selected and shape.mode is AnnotationMode.POLYGON:
+            if selected and shape.mode in (
+                AnnotationMode.POLYGON, AnnotationMode.CUT_LINE,
+                AnnotationMode.OPERATION,
+            ):
                 # W55 顶点手柄：白边蓝心小方块，命中半径同 VERTEX_HIT_RADIUS 量级
+                # W59：手柄面扩至折线/操作角点（拖拽即微调/改尺寸）
                 hp = QPen(QColor(255, 255, 255), 1)
                 hb = QBrush(QColor(52, 152, 219, 255))
                 for pt in points:

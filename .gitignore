@@ -80,3 +80,6 @@ _i18n_report.txt
 _missing_keys.txt
 .benchmarks/
 configs/initial_credentials.txt
+
+# W59-A：API 推理凭据文件（env AVA_API_KEY 优先；勿提交）
+configs/api_key.txt

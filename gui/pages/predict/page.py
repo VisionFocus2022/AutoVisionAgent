@@ -33,6 +33,7 @@ from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.permissions import check_action  # W35：动作门控
 from gui.core.thread_bridge import invoke_main, ui_on_error
+from gui.pages.predict.api_actions import ApiInferActionsMixin  # W59
 from gui.pages.predict.batch_actions import BatchModeActionsMixin  # W56
 from gui.pages.predict.video_super_actions import VideoSuperActionsMixin  # W34
 from gui.pages.predict.workers import (
@@ -48,7 +49,7 @@ from inference.sv_bridge import render_result  # W33：批量叠加图（页面�
 logger = logging.getLogger(__name__)
 
 
-class PredictPage(BatchModeActionsMixin, VideoSuperActionsMixin, QWidget):
+class PredictPage(ApiInferActionsMixin, BatchModeActionsMixin, VideoSuperActionsMixin, QWidget):
     """推理页：加载模型 → 单张/批量推理 → 结果表 → 导出。"""
 
     status_changed = Signal(str, str)
@@ -150,6 +151,8 @@ class PredictPage(BatchModeActionsMixin, VideoSuperActionsMixin, QWidget):
 
         # W56：批量模式/并发选项（FR-003，控件构建在 BatchModeActionsMixin）
         self._add_batch_options(h, bar)
+        # W59：API 推理源（FR-007，控件构建在 ApiInferActionsMixin）
+        self._add_api_source(h, bar)
 
         self._btn_cancel_batch = QPushButton(tr("取消"), bar)
         self._btn_cancel_batch.setVisible(False)

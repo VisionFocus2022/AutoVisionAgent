@@ -223,9 +223,15 @@ class AnnotationController:
         if idx is None:
             return None
         shape = self._canvas.shapes[idx]
-        if shape.mode is not AnnotationMode.POLYGON or len(shape.points) < 3:
-            return None
-        return shape
+        # W59（AC-002）：顶点编辑面与 canvas._editable_polygon 同口径
+        # （POLYGON≥3 / CUT_LINE≥2 / OPERATION=2 点矩形角点）
+        if shape.mode is AnnotationMode.POLYGON and len(shape.points) >= 3:
+            return shape
+        if shape.mode is AnnotationMode.CUT_LINE and len(shape.points) >= 2:
+            return shape
+        if shape.mode is AnnotationMode.OPERATION and len(shape.points) == 2:
+            return shape
+        return None
 
     def _edit_press_left(self, pt: Point) -> None:
         """编辑模式左键：命中顶点→开始拖动；命中形状→选中；空白→取消。"""

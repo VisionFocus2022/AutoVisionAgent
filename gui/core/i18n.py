@@ -76,6 +76,12 @@ _EN_US: dict[str, str] = {
     "训练占比": "Train Split",
     "数据扩充系数": "Data Expansion",
     "当前引擎忽略增强参数": "Current engine ignores augmentation params",
+    # W59：API 推理源（SKolpha 复刻 FR-007）
+    "API endpoint（http://…）": "API endpoint (http://…)",
+    "API 推理": "API Infer",
+    "请输入有效 endpoint": "Enter a valid endpoint",
+    "须以 http:// 或 https:// 开头": "Must start with http:// or https://",
+    "API 推理失败": "API inference failed",
 
     # ---- v5 P2-N3 补译（tr() 对账守卫收口：en_US 零中文残留） ----
     "提示": "Notice",

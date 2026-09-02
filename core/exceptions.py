@@ -43,6 +43,22 @@ class UnsupportedTaskError(SupervisedEngineError):
         )
 
 
+class ApiInferError(AppError):
+    """远端 API 推理失败（W59-A——endpoint 无效/超时/非 200/契约不符）。
+
+    message 面向用户（含 endpoint 与状态码，供状态栏与日志定位）；
+    endpoint 属性供调用方区分目标。
+    """
+
+    def __init__(self, message: str = "", *, endpoint: str = "") -> None:
+        super().__init__(message)
+        self.endpoint = endpoint
+
+    @property
+    def details(self) -> dict:
+        return {"endpoint": self.endpoint} if self.endpoint else {}
+
+
 # ============================== 导出异常 ============================== #
 
 class ModelExportError(AppError):
