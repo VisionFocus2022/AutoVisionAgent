@@ -581,7 +581,7 @@ class DataManagePage(QWidget):
         if not stats:
             self.status_changed.emit(tr("无标注数据"), "!")
             return
-        text = "\n".join(f"{k}: {v}" for k, v in stats.items())
+        text = "\n".join(f"{k}: {v['count']} ·均{v['avg_area']:.0f}px²" for k, v in stats.items())
         self.lbl_classes.setText(text)
         self.status_changed.emit(tr("标注统计"), f"{len(stats)} {tr('个类别')}")
 

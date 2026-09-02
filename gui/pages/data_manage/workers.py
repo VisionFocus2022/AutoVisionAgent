@@ -135,8 +135,8 @@ def delete_labels(ann_dir: str, labels: list[str]) -> int:
     return batch_delete_labels(ann_dir, labels)
 
 
-def label_statistics(ann_dir: str) -> dict[str, int]:
-    """标注数据统计（各类别数量分布）。"""
+def label_statistics(ann_dir: str) -> dict[str, dict[str, float]]:
+    """标注数据统计（各类别数量 + 尺寸分布：count/total_area/avg_area）。"""
     from labeling.batch_tools import label_data_statistics
 
     return label_data_statistics(ann_dir)

@@ -187,6 +187,7 @@ def build_window() -> MainWindow:
     # ---- 项目打开 → 通知工作页 ----
     project_page.project_opened.connect(data_page.set_project_dir)
     project_page.project_opened.connect(predict_page.set_project_dir)
+    project_page.project_opened.connect(label_page.set_project_dir)  # W58-A
 
     # ---- 项目打开 → 刷新仪表盘统计 ----
     def _refresh_home_stats(project_dir: str) -> None:

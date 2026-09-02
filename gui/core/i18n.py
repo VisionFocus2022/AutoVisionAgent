@@ -58,7 +58,13 @@ _EN_US: dict[str, str] = {
     "并发数": "Concurrency",
     "仅整批模式生效：并行渲染/产物写（需引擎支持批量推理）": "Full-batch only: parallel post-processing (batch-infer engine required)",
     "从项目带入": "Load From Project",
-    "工程绑定后启用（预测参数带入）": "Enabled after project binding (prediction params)",
+    # W58：工程绑定三段（SKolpha 复刻 FR-005）
+    "保存绑定": "Save Binding",
+    "工程未绑定模型": "Project has no model binding",
+    "请先在项目中训练模型或手动保存绑定": "Train a model in the project or save a binding first",
+    "已从项目带入": "Loaded from project",
+    "已保存绑定": "Binding saved",
+    "保存绑定失败": "Failed to save binding",
     "已逐张落盘": "Incremental results saved:",
     # W57：训练模板体系（SKolpha 复刻 FR-004）
     "训练模板": "Train Template",

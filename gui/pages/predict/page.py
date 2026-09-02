@@ -251,13 +251,17 @@ class PredictPage(BatchModeActionsMixin, VideoSuperActionsMixin, QWidget):
             self._models_dir = models
 
     def _load_model(self) -> None:
-        """加载模型权重。"""
+        """加载模型权重（对话框入口）。"""
         path = pick_open_file(
             self, "选择模型权重",
             "Weights (*.pt *.pth *.onnx *.ckpt)"
         )
         if not path:
             return
+        self._load_model_from(path)
+
+    def _load_model_from(self, path: str) -> None:
+        """从指定路径加载模型权重（W58-A：工程绑定「从项目带入」共用入口）。"""
         self._model_path = path
         task = self.cmb_task.currentData()
         try:

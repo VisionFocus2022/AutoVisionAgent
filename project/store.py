@@ -70,6 +70,19 @@ class FileSystemProjectStore:
         except OSError:
             _logger.warning("项目元数据写入失败: %s", meta_path)
 
+        # W58-A：创建即写默认工程绑定（transferType 按任务推导 + dataPath）
+        from project.binding import ProjectBinding, default_transfer_type, write_binding
+        try:
+            write_binding(
+                layout.root,
+                ProjectBinding(
+                    transfer_type=default_transfer_type(task),
+                    data_path=layout.root,
+                ),
+            )
+        except OSError:
+            _logger.warning("项目绑定写入失败: %s", layout.root)
+
         return pid, layout
 
     # ============================== 列出 ============================== #

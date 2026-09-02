@@ -38,6 +38,7 @@ from gui.widgets.thumbnail_loader import ThumbnailTask
 from labeling import AnnotationMode, save_labelme
 from labeling.canvas import AnnotationCanvas
 from labeling.controller import AnnotationController
+from project.binding import read_binding  # W58-A：transferType 联动
 
 logger = logging.getLogger(__name__)
 
@@ -660,6 +661,19 @@ class LabelPage(SamSessionMixin, LabelClipboardMixin, QWidget):
         )
 
     # ------------------------------ 标注模式 ------------------------------ #
+    @Slot(str)
+    def set_project_dir(self, path: str) -> None:
+        """项目打开联动（W58-A）：transferType → 默认标注形态。
+
+        binding.json 缺失/无 transferType = 不干预（保持当前模式）。
+        """
+        self._project_dir: str | None = path
+        binding = read_binding(path)
+        if binding.transfer_type == "Rect":
+            self.set_default_shape_mode(AnnotationMode.RECTANGLE)
+        elif binding.transfer_type == "Polygon":
+            self.set_default_shape_mode(AnnotationMode.POLYGON)
+
     def set_default_shape_mode(self, mode: AnnotationMode) -> None:
         """工程 transferType 联动入口（W58-A 接线：Rect→矩形 / Polygon→多边形）。
 

@@ -277,7 +277,8 @@ def test_workers_replace_and_delete_and_stats(ann_fixture):
     assert doc["shapes"][0]["label"] == "new"
 
     stats = workers.label_statistics(str(ann_dir))
-    assert stats.get("crack") == 1 and stats.get("new") == 1
+    assert stats.get("crack", {}).get("count") == 1
+    assert stats.get("new", {}).get("count") == 1
 
     assert workers.delete_labels(str(ann_dir), ["new"]) == 1
     doc = json.loads((ann_dir / "b.json").read_text(encoding="utf-8"))

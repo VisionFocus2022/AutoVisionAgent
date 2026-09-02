@@ -36,12 +36,58 @@ class BatchModeActionsMixin:
         )
         h.addWidget(self.spin_batch_concurrency)
 
-        # W58-A（工程绑定）接线位：predictionParams{modelFile, threshold} 带入
+        # W58-A（工程绑定 FR-005）：带入 predictionParams{modelFile, threshold}
+        # 按钮常启——无项目时点击走「请先选择项目」诚实报错（不玩 MRO 遮蔽）
         self.btn_from_project = QPushButton(tr("从项目带入"), bar)
         self.btn_from_project.setProperty("tool", True)
-        self.btn_from_project.setEnabled(False)
-        self.btn_from_project.setToolTip(tr("工程绑定后启用（预测参数带入）"))
+        self.btn_from_project.clicked.connect(self._bring_from_project)
         h.addWidget(self.btn_from_project)
+
+        self.btn_save_binding = QPushButton(tr("保存绑定"), bar)
+        self.btn_save_binding.setProperty("tool", True)
+        self.btn_save_binding.clicked.connect(self._save_binding)
+        h.addWidget(self.btn_save_binding)
+
+    def _bring_from_project(self) -> None:
+        """从项目绑定带入模型与阈值（predictionParams 对标）。"""
+        import os as _os
+
+        from project.binding import read_binding
+
+        if not self._project_dir:
+            self.status_changed.emit(tr("请先选择项目"), "!")
+            return
+        binding = read_binding(self._project_dir)
+        if not binding.model_file or not _os.path.exists(binding.model_file):
+            self.status_changed.emit(
+                tr("工程未绑定模型"),
+                tr("请先在项目中训练模型或手动保存绑定"),
+            )
+            return
+        self._load_model_from(binding.model_file)
+        if binding.threshold is not None:
+            self.spin_threshold.setValue(binding.threshold)
+        self.status_changed.emit(
+            tr("已从项目带入"), _os.path.basename(binding.model_file)
+        )
+
+    def _save_binding(self) -> None:
+        """把当前模型+阈值存入项目绑定（读改写保留 transferType/dataPath）。"""
+        from project.binding import update_binding
+
+        if not self._project_dir:
+            self.status_changed.emit(tr("请先选择项目"), "!")
+            return
+        try:
+            update_binding(
+                self._project_dir,
+                model_file=self._model_path or "",
+                threshold=self._threshold(),
+            )
+        except OSError as exc:
+            self.status_changed.emit(tr("保存绑定失败"), str(exc)[:40])
+            return
+        self.status_changed.emit(tr("已保存绑定"), self._project_dir[-40:])
 
     def batch_mode_value(self) -> str:
         """当前批量模式（"batch" | "incremental"）。"""

@@ -137,10 +137,30 @@ def cut_labelme_json(
     return results
 
 
+def _backup_file(path: str) -> bool:
+    """改写前备份原文件为 <name>.json.bak（W58-B：防误操作回滚通道）。
+
+    直写（非原子）——.bak 是尽力而为的回滚件：写失败/中断时主文件
+    未动（备份在改写**之前**发生），且不与主写的 os.replace 纪律
+    互踩（atomic 测试按主写计数）。失败 → False，调用方跳过该文件
+    改写——宁可不动，不无备份地改。
+    """
+    try:
+        with open(path, "rb") as src:
+            payload = src.read()
+        with open(path + ".bak", "wb") as dst:
+            dst.write(payload)
+        return True
+    except OSError:
+        logger.warning("标注备份失败（跳过该文件改写）: %s", path, exc_info=True)
+        return False
+
+
 def batch_replace_label(
     json_dir: str,
     old_label: str,
     new_label: str,
+    backup: bool = True,
 ) -> int:
     """批量替换标注 JSON 中的标签名。
 
@@ -148,6 +168,7 @@ def batch_replace_label(
         json_dir: 标注文件目录。
         old_label: 旧标签名。
         new_label: 新标签名。
+        backup: 改写前生成 .bak 备份（默认开；备份失败该文件跳过）。
 
     Returns:
         修改的文件数。
@@ -168,21 +189,22 @@ def batch_replace_label(
                 s["label"] = new_label
                 changed = True
         if changed:
+            if backup and not _backup_file(path):
+                continue
             atomic_write_json(path, doc)
             count += 1
     return count
 
 
-def label_data_statistics(json_dir: str) -> dict[str, int]:
-    """统计标注数据中各类别的数量分布。
+def label_data_statistics(json_dir: str) -> dict[str, dict[str, float]]:
+    """统计标注数据：各类别数量与尺寸分布（W58-B：count/total_area/avg_area）。
 
-    Args:
-        json_dir: 标注文件目录。
-
-    Returns:
-        {label_name: count} 字典，按数量降序。
+    面积口径：rectangle=宽×高；其余形态（polygon/linestrip）按鞋带公式
+    （linestrip 面积仅供参考）。按数量降序。
     """
-    stats: dict[str, int] = {}
+    from labeling.geometry import polygon_area
+
+    stats: dict[str, dict[str, float]] = {}
     for f in os.listdir(json_dir):
         if not f.endswith(".json"):
             continue
@@ -194,23 +216,39 @@ def label_data_statistics(json_dir: str) -> dict[str, int]:
             continue
         for s in doc.get("shapes", []):
             label = s.get("label", "unknown")
-            stats[label] = stats.get(label, 0) + 1
-    # 按数量降序排序
-    return dict(sorted(stats.items(), key=lambda x: -x[1]))
+            entry = stats.setdefault(label, {"count": 0, "total_area": 0.0})
+            pts = [(float(p[0]), float(p[1])) for p in (s.get("points") or [])]
+            if s.get("shape_type") == "rectangle" and len(pts) >= 2:
+                (x1, y1), (x2, y2) = pts[0], pts[1]
+                area = abs(x2 - x1) * abs(y2 - y1)
+            else:
+                try:
+                    area = polygon_area(pts)
+                except (TypeError, ValueError, IndexError):
+                    area = 0.0
+            entry["count"] += 1
+            entry["total_area"] += float(area)
+    for entry in stats.values():
+        entry["avg_area"] = (
+            entry["total_area"] / entry["count"] if entry["count"] else 0.0
+        )
+    return dict(sorted(stats.items(), key=lambda kv: -kv[1]["count"]))
 
 
 def batch_delete_labels(
     json_dir: str,
     labels_to_delete: list[str],
+    backup: bool = True,
 ) -> int:
     """批量删除指定标签名的标注。
 
     Args:
         json_dir: 标注文件目录。
         labels_to_delete: 要删除的标签名列表。
+        backup: 改写前生成 .bak 备份（默认开；备份失败该文件跳过）。
 
     Returns:
-        修改的文件数。
+        修改的文件数。删除致 shapes=[] 的文件另发 WARNING（可追溯）。
     """
     delete_set = set(labels_to_delete)
     count = 0
@@ -229,7 +267,11 @@ def batch_delete_labels(
             if s.get("label") not in delete_set
         ]
         if len(doc["shapes"]) != original_len:
+            if backup and not _backup_file(path):
+                continue
             atomic_write_json(path, doc)
+            if not doc["shapes"]:
+                logger.warning("删除后标注文件 shapes 为空: %s", path)
             count += 1
     return count
 
