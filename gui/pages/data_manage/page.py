@@ -341,9 +341,16 @@ class DataManagePage(QWidget):
         if not path:
             return
         self._image_dir = path
-        ann = os.path.join(os.path.dirname(path), "annotations")
-        if os.path.isdir(ann):
-            self._annotations_dir = ann
+        # ANN-1: 两级探测标注目录（子目录→父目录 annotations/）；不命中显式置
+        # None——_get_ann_dir 回退图像目录，兼容 LabelMe 同目录混放约定。
+        self._annotations_dir = None
+        for _cand in (
+            os.path.join(path, "annotations"),
+            os.path.join(os.path.dirname(path), "annotations"),
+        ):
+            if os.path.isdir(_cand):
+                self._annotations_dir = _cand
+                break
         self._refresh()
         self.status_changed.emit(
             tr("已选择目录"), path.replace("\\", "/").split("/")[-1]
@@ -508,13 +515,11 @@ class DataManagePage(QWidget):
             more.setFlags(Qt.NoItemFlags)
             self.thumb_list.addItem(more)
 
-        # 统计已标注数
-        ann_count = 0
-        if self._annotations_dir and os.path.isdir(self._annotations_dir):
-            ann_count = len([
-                f for f in os.listdir(self._annotations_dir)
-                if f.endswith(".json")
-            ])
+        # ANN-1: 统计已标注数——按图像同名 .json 匹配（纯函数在 workers）
+        ann_dir = self._annotations_dir if (
+            self._annotations_dir and os.path.isdir(self._annotations_dir)
+        ) else None
+        ann_count = _dm_workers.count_annotated(images, ann_dir)
 
         self._update_stats(len(images), ann_count, {})
         self.status_changed.emit(tr("就绪"), f"{len(images)} {tr('张')}")

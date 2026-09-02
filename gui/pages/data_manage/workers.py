@@ -142,6 +142,22 @@ def label_statistics(ann_dir: str) -> dict[str, int]:
     return label_data_statistics(ann_dir)
 
 
+def count_annotated(images: list[str], ann_dir: str | None) -> int:
+    """ANN-1: 按同名 .json 匹配统计已标注图像数。
+
+    匹配优先级：图像同目录同名 .json > 集中标注目录同名 .json，
+    兼容 LabelMe 同目录混放与 annotations/ 集中两种约定。
+    """
+    count = 0
+    for img in images:
+        stem = os.path.splitext(img)[0]
+        if os.path.exists(stem + ".json") or ann_dir and os.path.exists(
+            os.path.join(ann_dir, os.path.basename(stem) + ".json")
+        ):
+            count += 1
+    return count
+
+
 def flip_annotations(ann_dir: str, mode: str) -> int:
     """翻转标注坐标（从 JSON 读真实图像尺寸，缺尺寸跳过），返回成功数。"""
     from labeling.batch_tools import flip_image_annotation
