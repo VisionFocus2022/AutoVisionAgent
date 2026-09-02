@@ -32,6 +32,7 @@ from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.permissions import check_action  # W39：动作门控（v6 P2-6 漏网收口）
 from gui.core.thread_bridge import invoke_main, ui_on_error
+from gui.pages.data_manage.tools_actions import LabelToolsMixin  # W60
 from gui.pages.data_manage.version_compare import version_diff_text  # W39·v6 P3：规模守卫抽取
 from gui.widgets.file_dialog import pick_directory
 from gui.widgets.thumbnail_loader import ThumbnailTask
@@ -46,6 +47,7 @@ _OP_TITLES = {
     "delete": "删除完成",
     "flip": "翻转完成",
     "cut": "切割完成",
+    "suffix": "尾缀完成",
     "export": "导出完成",
     # W19（v3 第三波 FR-4.2）：版本管理入口
     "snapshot": "快照完成",
@@ -75,7 +77,7 @@ def _natural_key(path: str) -> tuple:
     return (dir_key, name_key)
 
 
-class DataManagePage(QWidget):
+class DataManagePage(LabelToolsMixin, QWidget):
     """数据管理页：导入图像 → 浏览缩略图 → 划分数据集 → 查看统计。"""
 
     status_changed = Signal(str, str)  # (text, accent) → 主壳状态栏
@@ -207,6 +209,9 @@ class DataManagePage(QWidget):
         h.addWidget(self.btn_flip)
         self.btn_cut = QPushButton(tr("切割标注"), bar)
         h.addWidget(self.btn_cut)
+
+        # W60：S_Tools 次批（裁剪/尾缀/清洗，控件在 LabelToolsMixin）
+        self._add_extra_tool_buttons(bar, h)
 
         # W5-T2: 训练集导出（LabelMe→YOLO/COCO，补齐标注→训练断链）
         self.cmb_export_fmt = QComboBox(bar)
@@ -544,95 +549,6 @@ class DataManagePage(QWidget):
             self.lbl_classes.setText(tr("无数据"))
 
     # ============================== 标注批量工具 ============================== #
-    def _get_ann_dir(self) -> str | None:
-        """获取标注目录（优先 annotations/，否则用图像目录）。"""
-        d = self._annotations_dir or self._image_dir
-        if not d or not os.path.isdir(d):
-            self.status_changed.emit(tr("请先选择目录"), "!")
-            return None
-        return d
-
-    def _tool_statistics(self) -> None:
-        """标注数据统计：各类别数量分布（W3-T3: worker 线程扫描）。"""
-        d = self._get_ann_dir()
-        if not d:
-            return
-        from gui.pages.data_manage import workers
-        self.btn_stat.setEnabled(False)
-
-        def _work():
-            try:
-                stats = workers.label_statistics(d)
-            except (OSError, ValueError, RuntimeError) as exc:
-                invoke_main(self, "_op_failed", "stats", str(exc))
-                return
-            invoke_main(self, "_stats_done", stats if stats else {})
-
-        # W15-J2（P2-1 批次 A）：同上，经 jobs 统一调度；W17 on_error 兜底
-        run_job(
-            _work, name="data_manage.stats",
-            on_error=ui_on_error(self, "_op_failed", "stats"),
-        )
-
-    @Slot(dict)
-    def _stats_done(self, stats: dict) -> None:
-        """槽：统计完成（主线程）。"""
-        self.btn_stat.setEnabled(True)
-        if not stats:
-            self.status_changed.emit(tr("无标注数据"), "!")
-            return
-        text = "\n".join(f"{k}: {v['count']} ·均{v['avg_area']:.0f}px²" for k, v in stats.items())
-        self.lbl_classes.setText(text)
-        self.status_changed.emit(tr("标注统计"), f"{len(stats)} {tr('个类别')}")
-
-    def _tool_replace_label(self) -> None:
-        """批量替换标签名（W3-T3: worker 线程执行）。"""
-        denied = check_action("data_manage.batch_label_edit")
-        if denied:
-            self.status_changed.emit(denied, "!")
-            return
-        d = self._get_ann_dir()
-        if not d:
-            return
-        from PySide6.QtWidgets import QInputDialog
-        old_label, ok = QInputDialog.getText(self, tr("替换标签"), tr("旧标签名:"))
-        if not ok or not old_label:
-            return
-        new_label, ok = QInputDialog.getText(self, tr("替换标签"), tr("新标签名:"))
-        if not ok or not new_label:
-            return
-        from gui.pages.data_manage import workers
-
-        self._run_worker(
-            "replace",
-            lambda: workers.replace_labels(d, old_label, new_label),
-            lambda n: f"{n} {tr('个文件')}",
-        )
-
-    def _tool_delete_labels(self) -> None:
-        """批量删除指定标签名的标注（W3-T3: worker 线程执行）。"""
-        denied = check_action("data_manage.batch_label_edit")
-        if denied:
-            self.status_changed.emit(denied, "!")
-            return
-        d = self._get_ann_dir()
-        if not d:
-            return
-        from PySide6.QtWidgets import QInputDialog
-        text, ok = QInputDialog.getText(
-            self, tr("删除标签"), tr("要删除的标签名（逗号分隔）:")
-        )
-        if not ok or not text:
-            return
-        labels = [s.strip() for s in text.split(",") if s.strip()]
-        from gui.pages.data_manage import workers
-
-        self._run_worker(
-            "delete",
-            lambda: workers.delete_labels(d, labels),
-            lambda n: f"{n} {tr('个文件')}",
-        )
-
     def _tool_flip_annotation(self) -> None:
         """翻转标注坐标（配合图像翻转）（W3-T3: worker 线程执行）。"""
         denied = check_action("data_manage.batch_label_edit")

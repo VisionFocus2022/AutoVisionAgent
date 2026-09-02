@@ -316,10 +316,171 @@ def flip_image_annotation(
     return True
 
 
+
+
+# ============================== W60：S_Tools 次批（FR-008） ============================== #
+
+
+def crop_dataset(
+    image_dir: str,
+    tile_w: int = 640,
+    tile_h: int = 640,
+    ann_dir: str | None = None,
+) -> tuple[int, int]:
+    """裁剪数据集：图像+标注配对瓦片切割（W60——补 cut_annotations 缺失的图像侧）。
+
+    输出 {image_dir}/tiles/{stem}_{tx}_{ty}.jpg + 同名 .json（json 仅含
+    与瓦片相交的 shape，cut_labelme_json 语义）。json 配对查找：图像同
+    目录 > 集中标注目录；无标注图像也切（纯数据集裁剪）。
+
+    Returns:
+        (图像瓦片数, 标注瓦片数)。
+    """
+    from core.constants import IMG_EXTS
+    from core.image_io import imread_unicode, imwrite_unicode
+
+    out_dir = os.path.join(image_dir, "tiles")
+    os.makedirs(out_dir, exist_ok=True)
+    img_tiles = json_tiles = 0
+    for f in sorted(os.listdir(image_dir)):
+        if not f.lower().endswith(IMG_EXTS):
+            continue
+        stem, _ = os.path.splitext(f)
+        json_path = None
+        same_dir = os.path.join(image_dir, stem + ".json")
+        if os.path.exists(same_dir):
+            json_path = same_dir
+        elif ann_dir:
+            central = os.path.join(ann_dir, stem + ".json")
+            if os.path.exists(central):
+                json_path = central
+        img = imread_unicode(os.path.join(image_dir, f))
+        if img is None:
+            logger.warning("图像读取失败（跳过切割）: %s", f)
+            continue
+        if json_path:
+            try:
+                json_tiles += len(
+                    cut_labelme_json(json_path, tile_w, tile_h, out_dir)
+                )
+            except (json.JSONDecodeError, OSError, KeyError, ValueError):
+                logger.warning("标注切割失败（跳过）: %s", json_path)
+        h, w = img.shape[:2]
+        for ty in range(0, h, tile_h):
+            for tx in range(0, w, tile_w):
+                tile = img[ty:ty + tile_h, tx:tx + tile_w]
+                if tile.size == 0:
+                    continue
+                if imwrite_unicode(
+                    os.path.join(out_dir, f"{stem}_{tx}_{ty}"), tile,
+                    ext=".jpg",
+                ):
+                    img_tiles += 1
+    return img_tiles, json_tiles
+
+
+def rename_image_suffix(image_dir: str, old_ext: str, new_ext: str) -> int:
+    """照片尾缀修改：批量改图像扩展名（同名 .json 标注不受影响）。
+
+    大小写不敏感匹配旧后缀；目标名已存在时跳过（不覆盖）。
+    """
+    old_ext = old_ext.strip()
+    new_ext = new_ext.strip()
+    old_ext = old_ext if old_ext.startswith(".") else "." + old_ext
+    new_ext = new_ext if new_ext.startswith(".") else "." + new_ext
+    if old_ext == new_ext:
+        return 0  # 完全相同才拒绝——.JPG→.jpg 大小写归一是正当用例
+    count = 0
+    for f in sorted(os.listdir(image_dir)):
+        name, ext = os.path.splitext(f)
+        if ext.lower() != old_ext.lower():
+            continue
+        target = os.path.join(image_dir, name + new_ext)
+        # Windows 大小写不敏感盘上 .JPG→.jpg 是同文件改大小写——
+        # 豁免自身冲突，仅真异名冲突才跳过
+        same_file = (name + new_ext).lower() == f.lower()
+        if not same_file and os.path.exists(target):
+            logger.warning("目标已存在（跳过重命名）: %s", target)
+            continue
+        try:
+            os.replace(os.path.join(image_dir, f), target)
+            count += 1
+        except OSError:
+            logger.warning("重命名失败（跳过）: %s", f, exc_info=True)
+    return count
+
+
+def clean_dataset(
+    image_dir: str,
+    ann_dir: str | None = None,
+    quarantine: str | None = None,
+) -> dict:
+    """数据清洗：坏图（零字节/不可解码）与孤立标注扫描。
+
+    Args:
+        image_dir: 图像目录。
+        ann_dir: 集中标注目录（None=只扫图像目录内同放 json 的孤立态）。
+        quarantine: 隔离子目录名（None=仅报告不动文件；给名则把坏件移入
+            {image_dir}/{quarantine}/——可逆隔离，不做硬删除）。
+
+    Returns:
+        {"corrupt": n, "orphan_json": n, "moved": n}。
+    """
+    from core.constants import IMG_EXTS
+    from core.image_io import imread_unicode
+
+    report = {"corrupt": 0, "orphan_json": 0, "moved": 0}
+    bad_files: list[str] = []
+    for f in sorted(os.listdir(image_dir)):
+        p = os.path.join(image_dir, f)
+        if not os.path.isfile(p) or not f.lower().endswith(IMG_EXTS):
+            continue
+        bad = os.path.getsize(p) == 0
+        if not bad:
+            try:
+                bad = imread_unicode(p) is None
+            except (OSError, ValueError):
+                bad = True
+        if bad:
+            report["corrupt"] += 1
+            bad_files.append(p)
+
+    orphan_files: list[str] = []
+    img_stems = {
+        os.path.splitext(f)[0] for f in os.listdir(image_dir)
+        if f.lower().endswith(IMG_EXTS)
+    }
+    scan_dirs = [image_dir]
+    if ann_dir and os.path.isdir(ann_dir):
+        scan_dirs.append(ann_dir)
+    for d in scan_dirs:
+        for f in sorted(os.listdir(d)):
+            if not f.endswith(".json"):
+                continue
+            if os.path.splitext(f)[0] in img_stems:
+                continue
+            report["orphan_json"] += 1
+            orphan_files.append(os.path.join(d, f))
+
+    if quarantine:
+        qdir = os.path.join(image_dir, quarantine)
+        os.makedirs(qdir, exist_ok=True)
+        for p in bad_files + orphan_files:
+            try:
+                os.replace(p, os.path.join(qdir, os.path.basename(p)))
+                report["moved"] += 1
+            except OSError:
+                logger.warning("隔离移动失败（跳过）: %s", p, exc_info=True)
+    return report
+
+
 __all__ = [
     "cut_labelme_json",
+    "crop_dataset",
+    "clean_dataset",
     "batch_replace_label",
     "label_data_statistics",
     "batch_delete_labels",
     "flip_image_annotation",
+    "rename_image_suffix",
 ]

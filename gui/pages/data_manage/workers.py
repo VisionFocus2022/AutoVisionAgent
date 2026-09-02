@@ -198,8 +198,34 @@ def cut_annotations(ann_dir: str, tile_w: int, tile_h: int) -> int:
     return total
 
 
+def crop_dataset(image_dir: str, tile_w: int, tile_h: int,
+                 ann_dir: str | None = None) -> tuple[int, int]:
+    """裁剪数据集（W60：图像+标注配对瓦片）。"""
+    from labeling.batch_tools import crop_dataset as _crop
+
+    return _crop(image_dir, tile_w=tile_w, tile_h=tile_h, ann_dir=ann_dir)
+
+
+def rename_image_suffix(image_dir: str, old_ext: str, new_ext: str) -> int:
+    """照片尾缀修改（W60）。"""
+    from labeling.batch_tools import rename_image_suffix as _rename
+
+    return _rename(image_dir, old_ext, new_ext)
+
+
+def clean_dataset(image_dir: str, ann_dir: str | None = None,
+                  quarantine: str | None = None) -> dict:
+    """数据清洗（W60：坏图/孤立标注扫描与隔离）。"""
+    from labeling.batch_tools import clean_dataset as _clean
+
+    return _clean(image_dir, ann_dir=ann_dir, quarantine=quarantine)
+
+
 __all__ = [
     "import_images",
+    "clean_dataset",
+    "crop_dataset",
+    "rename_image_suffix",
     "split_dataset",
     "replace_labels",
     "delete_labels",

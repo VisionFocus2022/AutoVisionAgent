@@ -252,6 +252,12 @@ def test_data_manage_batch_tools_denied(qapp, monkeypatch):
         dm_mod, "check_action",
         lambda action: "无权限执行该操作",
     )
+    # W60：统计/替换/删除已抽至 LabelToolsMixin——门控符号双模块补丁
+    from gui.pages.data_manage import tools_actions as dm_tools_mod
+    monkeypatch.setattr(
+        dm_tools_mod, "check_action",
+        lambda action: "无权限执行该操作",
+    )
     page = DataManagePage()
     page._msgs = []
     page.status_changed.connect(lambda t, a: page._msgs.append((t, a)))
