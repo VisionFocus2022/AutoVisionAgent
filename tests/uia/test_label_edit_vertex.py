@@ -3,9 +3,9 @@
 被测链路：多边形绘制 → 编辑模式选中（顶点手柄）→ 拖动顶点 → 保存
 LabelMe JSON 对比铁证（编辑前后仅被拖顶点变化）。
 
-模式：**仅源码模式**（AVA_UIA_SOURCE=python）——exe 产物不含本批
-代码，重打包后可放开。单图目录（规避保存后自动切图 R3-14 的跨图
-shapes 干扰）。
+模式：默认 exe 模式（W61 重打包后产物已含 W55 代码，按本文件原注
+「重打包后可放开」解除仅源码守卫；AVA_UIA_SOURCE=python 亦可）。
+单图目录（规避保存后自动切图 R3-14 的跨图 shapes 干扰）。
 
 断言口径（沿用套件规约）：状态栏文本 + 磁盘 JSON 铁证；无截图断言。
 
@@ -58,11 +58,6 @@ logger = logging.getLogger(__name__)
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-if os.environ.get("AVA_UIA_SOURCE", "exe").lower() != "python":
-    pytest.skip(
-        "编辑模式 UIA 用例需源码模式（exe 产物未含 W55 代码，重打包后可放开）",
-        allow_module_level=True,
-    )
 
 T_NAV = float(os.environ.get("AVA_UIA_T_NAV", "20"))
 T_GENERIC = 20.0

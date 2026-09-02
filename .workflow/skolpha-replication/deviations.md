@@ -76,3 +76,20 @@
 
 ## W60 门禁记录
 - 首跑 1 failed（W35 门控测试挂点在页面模块符号，Mixin 抽取后不命中）→ 补双模块补丁后 **1324 passed / 5 skipped / rc=0**
+
+
+---
+
+# W61 发版窗批偏差记录（2026-09-02）
+
+| # | 偏差 | 类型 | 处置 |
+|---|------|------|------|
+| D-18 | benchmark 首跑挂死=_show_stats 模态坑**二犯**（首版只替换 QMessageBox.information 类方法，函数内局部导入+实例构造不命中）——W56 EXP-20260902c 已记录的同一条，改为模块属性级替换后 0.96x 通过 | 同坑二犯（EXP 留档） | 教训升级：绕模态的脚本/测试一律直接抄 w28 接缝原式 |
+| D-19 | UIA 2/23 挂（full_workflow deploy / cut_line）四轮取证=输入注入环境归因：ToDesk×2+8 钩子族进程在场，raw SendInput 间歇被吞。OS 级证据：deploy（无模态+按钮 enabled+点击已发+handler 零日志）/ cut_line（控制器打点左键 3 达右键 0 达；Return 等价路径同挂=注入介质非语义）。断言零修改；cut_line 提交改 Return 键（等价既定快捷键） | 环境归因（冷知识⑦家族） | 待空闲窗复跑收绿；生产码零改 |
+| D-20 | CI test job 自 08-31 全红（含先于本程序的 88f1fb5）——失败步=pytest 覆盖率门禁步；注记无测试名；本地 CI 差仿真（无 weights/user_settings）嫌疑文件 134 绿未复现 | 基建既有红非本程序引入 | 留档待 owner PAT/网络窗日志级取证 |
+| D-21 | test_label_edit_vertex 解除仅源码守卫（其自注「重打包后可放开」，exe 已含 W55 代码）；test_full_workflow deploy 失败分支加现场取证（模态/按钮态/状态，不参与断言） | 测试基建更新 | 守卫语义按自注兑现 |
+| D-22 | 版本 bump 2.2.0 首改漏 README/settings 两处——W38 四向一致性守卫门禁逮住后补齐 | 守卫咬合实证 | 四处（含 RELEASES）同步 |
+
+## W61 门禁记录
+- 主门禁：首跑 1 failed（版本守卫）→ 补齐后 **1324 passed / 5 skipped / rc=0**；ruff 0 error
+- UIA：23 收集 → 21 绿 2 挂（D-19 环境归因，待空闲窗复跑）

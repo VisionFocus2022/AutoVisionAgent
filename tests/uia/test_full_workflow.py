@@ -323,6 +323,29 @@ def _step_deploy(win, model_path: Path, out_dir: Path) -> None:
     triggered = wait_any_status(
         win, ["导出进行中", "部署失败", "导出完成", "导出失败"], T_DEPLOY
     )
+    if triggered is None:
+        # W61 现场取证：模态残留 / 导出按钮态 / 编辑框值（诊断专用，不参与断言）
+        import uiautomation as _diag_ua
+
+        _modal = [
+            w.Name for w in _diag_ua.GetRootControl().GetChildren()
+            if w.ControlTypeName == "WindowControl"
+            and (w.ClassName == "#32770" or "对话框" in (w.Name or ""))
+        ]
+        _btn = find_control_by_name(
+            win, "导出", ["ButtonControl", "CheckBoxControl"], timeout=3
+        )
+        _btn_state = (
+            repr(_btn.Name), _btn.IsEnabled,
+            tuple(getattr(_btn.BoundingRectangle, a) for a in ("left", "top", "right", "bottom")),
+        ) if _btn is not None else None
+        _model_val = getattr(
+            find_control_by_name(win, "browse_edit", None, timeout=1), "Name", "?"
+        )
+        logger.warning(
+            "部署未触发现场: 模态窗口=%s 导出按钮=%s 最后状态=%r",
+            _modal, _btn_state, _last_status(win),
+        )
     assert triggered is not None, (
         f"部署未触发：状态栏无任何导出链路状态，最后='{_last_status(win)}'"
     )
