@@ -1,0 +1,11 @@
+task: det
+variant: small
+backbone: yolov8s
+img_size: 320
+batch_size: 16
+lr: 0.002
+augmentation:
+  hflip: 0.5
+  rotate_max: 10
+  translate: 0.1
+  split_ratio: 0.8

@@ -62,6 +62,31 @@ class DetectionResult:
 
 
 @dataclass(frozen=True)
+class AugmentationConfig:
+    """数据增强配置（W57/FR-004——对标 SKolpha my_* 增强参数面）。
+
+    来源映射（SKolpha pseg normal v1.4 解密值）：hflip←my_random_flip_ratio
+    0.5 / rotate_max←my_max_rotate_angle 10 / translate←my_max_translate_offset
+    64px÷640≈0.1 / split_ratio←my_endSplitData 0.8 / data_expansion←
+    my_data_expansion（系数，上限 10）。mean/std 为 0-1 归一化口径
+    （SKolpha 0-255 口径：56.32/61.42 → pseg 模板内换算）。
+
+    消费方现状：引擎 train_epoch 尚未消费——UI 侧诚实提示
+    「当前引擎忽略增强参数」（PRD FR-004 规则）。
+    """
+
+    hflip: float = 0.5
+    vflip: float = 0.0
+    rotate_max: int = 10
+    translate: float = 0.1
+    crop_scale: tuple[float, float] = (0.8, 1.2)
+    mean: tuple[float, float, float] = (0.485, 0.456, 0.406)
+    std: tuple[float, float, float] = (0.229, 0.224, 0.225)
+    split_ratio: float = 0.8   # 训练/验证划分比例（0-1 开区间）
+    data_expansion: int = 0    # 数据扩充系数（0=不扩充，SKolpha 上限 10）
+
+
+@dataclass(frozen=True)
 class TrainConfig:
     """训练配置（不可变）。"""
 
@@ -86,6 +111,8 @@ class TrainConfig:
     # R5-11: checkpoint 可配置
     checkpoint_every: int = 5            # 每 N epoch 保存 checkpoint
     max_checkpoints: int = 3             # 滚动保留最近 N 个 checkpoint
+    # W57/FR-004: 数据增强段（模板/UI 注入；None=旧行为，消费方零影响）
+    augmentation: AugmentationConfig | None = None
 
 
 @dataclass

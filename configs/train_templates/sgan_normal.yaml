@@ -1,0 +1,8 @@
+# 缺陷生成——AVA sgan_blend 为贴图融合（推理-only，无训练循环）：
+# 本模板作占位登记（任务码覆盖完整性），字段不被训练页消费。
+task: sgan
+variant: normal
+backbone: "-"
+img_size: 640
+batch_size: 8
+lr: 0.001

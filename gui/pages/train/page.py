@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from core.interfaces_supervised import TaskType, TrainConfig
 from gui.core.i18n import tr
 from gui.core.tasks_ui import populate_task_combo
+from gui.pages.train.train_augment_actions import TrainAugmentActionsMixin  # W57
 from gui.pages.train.worker import TrainWorker
 from gui.widgets.loss_chart import LossChartWidget
 from models.supervised.amp_preflight import amp_preflight
@@ -63,7 +64,7 @@ _TRAIN_PRESETS = {
 }
 
 
-class TrainPage(QWidget):
+class TrainPage(TrainAugmentActionsMixin, QWidget):
     """训练配置与执行页。"""
 
     status_changed = Signal(str, str)
@@ -141,6 +142,9 @@ class TrainPage(QWidget):
         form.addRow(tr("预设"), self.cmb_preset)
         self.cmb_preset.currentIndexChanged.connect(self._apply_preset)
 
+        # W57：任务级训练模板（configs/train_templates/，比预设多任务维度）
+        self._build_template_row(form_frame, form)
+
         self.cmb_task = QComboBox(form_frame)
         # W1: 下拉与引擎注册表实况对齐——全 9 项，缺引擎标"模拟"（首项保持 DET，兼容 UIA 默认）
         # W32：OCR 推理-only（无训练语义）——训练页不列
@@ -214,6 +218,9 @@ class TrainPage(QWidget):
         self.spin_workers.setValue(4)
         form.addRow(tr("加载线程"), self.spin_workers)
 
+        # W57：数据增强行（AugmentationConfig 可调子集）
+        self._build_augmentation_rows(form_frame, form)
+
     def _build_chart_panel(self) -> QVBoxLayout:
         """右侧训练曲线图 + 日志区。"""
         right = QVBoxLayout()
@@ -274,6 +281,8 @@ class TrainPage(QWidget):
             warmup_epochs=self.spin_warmup.value(),
             amp=self.chk_amp.isChecked(),
             workers=self.spin_workers.value(),
+            # W57/FR-004：增强段（模板/面板注入；引擎消费方接入前仅记录）
+            augmentation=self._augmentation_from_form(),
         )
 
     def _start_training(self) -> None:
@@ -284,6 +293,8 @@ class TrainPage(QWidget):
             return
 
         cfg = self._build_config()
+        # W57：增强段诚实提示（引擎消费方接入前——PRD FR-004 规则）
+        self._hint_augmentation_support(cfg)
         # W31 AMP 预检：cuda 侧 fp16 前向+反向有限性探针；失败=警告+回退
         # FP32（cpu/lite 静默跳过，不随包 checkamp.pt 资产）
         if cfg.amp:

@@ -60,6 +60,16 @@ _EN_US: dict[str, str] = {
     "从项目带入": "Load From Project",
     "工程绑定后启用（预测参数带入）": "Enabled after project binding (prediction params)",
     "已逐张落盘": "Incremental results saved:",
+    # W57：训练模板体系（SKolpha 复刻 FR-004）
+    "训练模板": "Train Template",
+    "模板": "Template",
+    "（无模板）": "(none)",
+    "水平翻转概率": "H-Flip Prob",
+    "最大旋转角": "Max Rotation",
+    "平移比例": "Translate Ratio",
+    "训练占比": "Train Split",
+    "数据扩充系数": "Data Expansion",
+    "当前引擎忽略增强参数": "Current engine ignores augmentation params",
 
     # ---- v5 P2-N3 补译（tr() 对账守卫收口：en_US 零中文残留） ----
     "提示": "Notice",

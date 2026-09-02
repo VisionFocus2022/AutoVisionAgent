@@ -1,0 +1,14 @@
+# SKolpha 对应：01_s_pseg_normal_v1.4.py（mm 系，23 个 my_* 参数）
+task: pseg
+variant: normal
+backbone: yolov8n-seg
+img_size: 640        # my_img_scale (1024, 640)
+batch_size: 8        # SKolpha my_samples_per_gpu=2（mm ResNet 骨干口径）
+augmentation:
+  hflip: 0.5         # my_random_flip_ratio
+  rotate_max: 10     # my_max_rotate_angle（my_rotate_prob 0.5 由引擎自定）
+  translate: 0.1     # my_max_translate_offset 64px / 640
+  mean: [0.2209, 0.2209, 0.2209]   # my_mean 56.32（0-255）/ 255
+  std: [0.2410, 0.2410, 0.2410]    # my_std 61.42（0-255）/ 255
+  split_ratio: 0.8   # my_endSplitData
+  data_expansion: 1  # my_data_expansion

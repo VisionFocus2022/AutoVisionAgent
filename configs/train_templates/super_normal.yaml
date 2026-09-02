@@ -1,0 +1,8 @@
+# 超分——AVA super_cv2 为 EDSR 推理-only（权重来自预训练 pb）：
+# 本模板作占位登记；SKolpha 对应 01_s_super_normal_v1.0.py 有训练模板。
+task: super
+variant: normal
+backbone: edsr
+img_size: 640
+batch_size: 8
+lr: 0.001

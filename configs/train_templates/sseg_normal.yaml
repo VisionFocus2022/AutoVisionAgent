@@ -1,0 +1,14 @@
+# SKolpha 对应：01_s_sseg_normal_v1.0.py（mmseg）
+task: sseg
+variant: normal
+backbone: unet_resnet18
+img_size: 640        # my_img_scale (1024, 640)
+batch_size: 8        # SKolpha my_samples_per_gpu=2
+augmentation:
+  hflip: 0.5
+  rotate_max: 10
+  translate: 0.1
+  mean: [0.2209, 0.2209, 0.2209]   # my_mean 56.32（0-255）/ 255
+  std: [0.2410, 0.2410, 0.2410]    # my_std 61.42（0-255）/ 255
+  split_ratio: 0.8   # my_endSplitData
+  data_expansion: 1  # my_data_expansion（SKolpha 注：上限 10）

@@ -1,0 +1,18 @@
+# 任务级训练模板（W57——对标 SKolpha TrainConfigs 明文模板体系，不加密）
+# 初值来源：SKolpha 3.3.2 解密 TrainConfigs（增强参数经 pseg normal v1.4 换算）
+task: det
+variant: normal
+backbone: yolov8n
+img_size: 640
+batch_size: 8
+lr: 0.001
+augmentation:
+  hflip: 0.5        # SKolpha my_random_flip_ratio
+  vflip: 0.0
+  rotate_max: 10     # my_max_rotate_angle
+  translate: 0.1     # my_max_translate_offset 64px / 640
+  crop_scale: [0.8, 1.2]
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225]
+  split_ratio: 0.8   # my_endSplitData
+  data_expansion: 0  # my_data_expansion（系数，上限 10）
