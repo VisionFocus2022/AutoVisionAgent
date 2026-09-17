@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import base64
 import os
-import threading
 
 import pytest
 
@@ -31,32 +30,6 @@ PNG_1PX = base64.b64decode(
 def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
-
-
-class FakeThread:
-    """threading.Thread 替身：记录创建并同步执行 target。"""
-
-    created = []
-
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._target = target
-        self._args = args
-        self._kwargs = kwargs or {}
-        FakeThread.created.append(self)
-
-    def start(self):
-        if self._target is not None:
-            self._target(*self._args, **self._kwargs)
-
-    def join(self, timeout=None):
-        return None
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    FakeThread.created = []
-    monkeypatch.setattr(threading, "Thread", FakeThread)
-    return FakeThread
 
 
 # ============================== data_manage ============================== #

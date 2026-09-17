@@ -27,7 +27,7 @@ def get_current_user() -> str:
 
 
 def reset_current_user() -> None:
-    """重置为默认（测试隔离/登出用）。"""
+    """重置为默认（测试隔离用；登出暂缓见 docs/adr/0004-defer-logout.md）。"""
     set_current_user("system")
 
 
@@ -46,7 +46,7 @@ def get_current_role() -> str | None:
 
 
 def reset_current_role() -> None:
-    """重置角色（测试隔离/登出用）。"""
+    """重置角色（测试隔离用；登出暂缓见 ADR 0004）。"""
     set_current_role(None)
 
 

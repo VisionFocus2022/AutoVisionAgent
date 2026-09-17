@@ -39,7 +39,8 @@ python -m venv .venv
 
 ## 架构文档
 
-- 权威版（v4）：[docs/AutoVisionAgent-架构解析与优化方案-v5.md](docs/AutoVisionAgent-架构解析与优化方案-v5.md)
-- 历史版（v3）：[docs/AutoVisionAgent-架构解析与优化方案-v3.md](docs/AutoVisionAgent-架构解析与优化方案-v3.md)
+- 权威版（v7，回归轮 R4）：[docs/AutoVisionAgent-架构解析与优化方案-v7.md](docs/AutoVisionAgent-架构解析与优化方案-v7.md)
+- 实施规划（v7 ③，W55-W57）：[docs/AutoVisionAgent-实施规划-v7.md](docs/AutoVisionAgent-实施规划-v7.md)
+- 历史版（v3~v6）：[v6](docs/AutoVisionAgent-架构解析与优化方案-v6.md) | [v5](docs/AutoVisionAgent-架构解析与优化方案-v5.md) | [v4](docs/AutoVisionAgent-架构解析与优化方案-v4.md) | [v3](docs/AutoVisionAgent-架构解析与优化方案-v3.md)
 - 历史版（v2）：[docs/AutoVisionAgent-架构解析与优化方案-v2.md](docs/AutoVisionAgent-架构解析与优化方案-v2.md)
 - 历史版（v1）：[docs/AutoVisionAgent-架构解析与优化方案.md](docs/AutoVisionAgent-架构解析与优化方案.md)

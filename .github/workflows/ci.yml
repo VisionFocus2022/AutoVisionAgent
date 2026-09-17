@@ -1,5 +1,5 @@
-# CI（架构审查 P2-26 落地；W18 v3 P2-4 升级）——与本地 .venv 构建方式一致的全量门禁。
-# 本工作流待 git remote 接入后首次生效（v3 P2-4）：本仓当前无 git 远程，推送后生效。
+# CI（架构审查 P2-26 落地；W18 v3 P2-4 升级；W56·v7 P2-2 增补 lint job）
+# ——与本地 .venv 构建方式一致的全量门禁；gitee/github 双远程已接入。
 #
 # 说明：
 # - requirements.lock.txt 第 1 行已含 --extra-index-url cu121 索引（W12 P1-6 落地）；
@@ -10,6 +10,10 @@
 # - dotnet-test job：windows-latest 自带 .NET 8 SDK（无需 setup-dotnet）；
 #   dotnet test serving/dotnet_client 与本地 cd serving/dotnet_client 后
 #   dotnet test 等效（该目录恰含一个 csproj，Tests/ 子目录同在其中）。
+# - lint job（W56·v7 P2-2）：ruff 棘轮与 .qoder 命名规约的机器兜底——
+#   此前 check-gate.sh 纯本地人工执行；ruff 基线=0 时违规即 exit 非 0，
+#   与本地 scripts/check-gate.sh 第 2/3 段同口径（本地脚本另有 PYTHON
+#   参数化，可在 CI 用 PYTHON=python 复用）。
 name: CI
 
 on:
@@ -17,6 +21,27 @@ on:
   pull_request:
 
 jobs:
+  # W56·v7 P2-2：轻量 lint job——不装 torch 大依赖，秒级反馈
+  lint:
+    runs-on: windows-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v5
+
+      - name: 安装 Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: ruff 棘轮（基线 0，违规即红）
+        run: |
+          python -m pip install ruff
+          python -m ruff check . --output-format=concise
+
+      - name: .qoder 命名规约（R00，与本地 check-naming.sh 同口径）
+        shell: bash
+        run: bash scripts/check-naming.sh
+
   # python 门禁 job：lock 钉 torch==2.5.1+cu121——换 cpu 索引装不出带 +cu121
   # 本地标签的轮子（须同步把 lock 的 torch/torchvision 行改成 PyPI 版本号才行），
   # 故保留 cu121 索引；cu121 轮子下载较大（约 2.5GB，最大耗时项），已开

@@ -7,18 +7,25 @@
 
 用法：
     .venv/Scripts/python.exe scripts/convert_labelme_to_yoloseg.py \
-        [--data E:/学习项目/极柱外观检标注图] [--out dataset_yoloseg]
+        [--data 极柱标注目录] [--out dataset_yoloseg]
+
+    --data 默认取 AVA_POLE_DATA 环境变量，未设时为仓外同级目录
+    （极柱外观检标注图）——W57·v7 P2-3 去绝对路径，换机可用。
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = REPO_ROOT / "weights" / "sam3-pole-ft" / "manifest.json"
+# W57·v7 P2-3：数据根可移植化（原 E:/ 绝对路径硬编码）
+DEFAULT_DATA = Path(os.environ.get(
+    "AVA_POLE_DATA", str(REPO_ROOT.parent / "极柱外观检标注图")))
 
 DEFECT_LABELS = {"YS", "ZW", "TJYS", "HS"}
 N_CLASSES = 1
@@ -152,8 +159,7 @@ def convert(data_dir: Path, out_dir: Path, manifest: Path) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="LabelMe → YOLO-seg 转换（W50）")
-    parser.add_argument("--data", type=Path,
-                        default=Path(r"E:/学习项目/极柱外观检标注图"))
+    parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
     parser.add_argument("--out", type=Path, default=REPO_ROOT / "dataset_yoloseg")
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     args = parser.parse_args(argv)

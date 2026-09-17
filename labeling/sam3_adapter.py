@@ -86,6 +86,24 @@ class Sam3Adapter:
         model.eval()
         self._model, self._processor, self._device = model, processor, device
 
+    def unload(self) -> None:
+        """释放模型与缓存（W56·v7 P2-1，与 SamAdapter 同契约）。
+
+        幂等；释放后 loaded=False、图像缓存清空，可重新 load；
+        cuda 显存缓存归还驱动（SAM3 真机 VRAM 4.05GB 的卸载通道）。
+        """
+        self._model = None
+        self._processor = None
+        self._cached_image_hash = None
+        self._cached_image_ref = None
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass
+
     @property
     def loaded(self) -> bool:
         return self._model is not None and self._processor is not None
@@ -292,6 +310,14 @@ class Sam3Adapter:
         命中。分数高≠命中 GT——以 scripts/eval_sam3_accuracy.py 复测。
         """
         text = (label or "").strip() or "defect"
+        # W57·v7 P3-4：参数域守卫——同名参数两后端语义分叉（SAM3 文本概念
+        # 实例分数阈值默认 0.3 / SAM1 AMG pred_iou 默认 0.88），[0,1] 越界
+        # 拒收（离谱值静默截断所有实例=静默失败）
+        if not 0.0 <= iou_thresh <= 1.0:
+            raise ValueError(
+                f"iou_thresh 需在 [0,1]（got {iou_thresh}）——SAM3 语义："
+                "文本概念实例分数过滤阈值（实测校准 0.3）"
+            )
 
         def _detector(image):
             masks, scores = self._run_instances(image, text=text)

@@ -93,26 +93,49 @@ class RegionSamLabeler(AbstractLabeler):
             return None
 
         # 单击：区域内 → 分割；区域外/未定区域 → 忽略
-        if self._box is None or self._adapter is None or self._image is None:
+        # W55·v7 P2-4：SAM 未就绪（adapter/image 缺）与「未定区域/区域外」
+        # 分流——前者提示操作员，后者是正常交互静默忽略
+        if self._adapter is None or self._image is None:
+            self._notify("warn", "SAM 未就绪（未加载权重或预热中）")
+            return None
+        if self._box is None:
             return None
         x1, y1, x2, y2 = self._box
         if not (x1 <= pt[0] <= x2 and y1 <= pt[1] <= y2):
+            return None
+        if self._async_channel is not None:
+            # W56·v7 P1-3：worker 线程推理；忙时页面已提示
+            self._async_channel.submit(
+                lambda: self._adapter.predict_point_in_box(
+                    self._image, pt, self._box
+                ),
+                "press",
+            )
             return None
         try:
             poly = self._adapter.predict_point_in_box(
                 self._image, pt, self._box
             )
-        except Exception:  # noqa: BLE001 — SAM 推理异常不炸画布
+        except Exception as exc:  # noqa: BLE001 — SAM 推理异常不炸画布
             _logger.exception("SAM 区域分割预测失败")
+            self._notify("error", f"SAM 区域分割预测失败: {exc}")
             return None
+        self._accept_poly(poly)
+        return None
+
+    def _accept_poly(self, poly) -> None:
         if len(poly) >= 3:
             self._pending = Shape(
                 mode=AnnotationMode.POLYGON,
-                points=tuple(poly),
+                points=tuple((float(p[0]), float(p[1])) for p in poly),
                 label=self.label,
                 color=self._color,
             )
-        return None
+
+    def deliver(self, tag: str, payload) -> None:
+        """异步推理结果回投（主线程，W56·v7 P1-3；payload 为点列表）。"""
+        if tag == "press":
+            self._accept_poly(payload)
 
     def preview(self) -> Shape | None:
         """pending 优先；拖拽/已定区域回矩形预览。"""

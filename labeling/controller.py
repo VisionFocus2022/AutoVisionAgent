@@ -35,9 +35,13 @@ class AnnotationController:
     ) -> None:
         self._canvas = canvas
         self._mode: AnnotationMode = mode
-        self._label: str = label
+        self._label = label
         self._labeler = None
         self._view: QGraphicsView | None = None
+        # W55·v7 P2-4：标注器反馈回调（页面注入），模式切换后自动续注
+        self._feedback_cb = None
+        # W56·v7 P1-3：异步推理通道（页面注入），模式切换后自动续注
+        self._async_channel = None
         self._make_labeler()
 
     # ============================== 模式/标签 ============================== #
@@ -71,6 +75,35 @@ class AnnotationController:
         except (ValueError, TypeError):
             _logger.warning("标注器 %s 构造失败", self._mode)
             self._labeler = None
+            return
+        if self._feedback_cb is not None:
+            self._labeler.set_feedback_callback(self._feedback_cb)
+        if self._async_channel is not None:
+            self._labeler.set_async_channel(self._async_channel)
+
+    def set_feedback_callback(self, cb) -> None:
+        """注入标注器状态反馈回调（W55·v7 P2-4）。
+
+        cb(kind, msg)：kind ∈ error/warn/info。注入后模式切换重建的
+        labeler 经 _make_labeler 自动续注。
+        """
+        self._feedback_cb = cb
+        if self._labeler is not None:
+            self._labeler.set_feedback_callback(cb)
+
+    def set_async_channel(self, channel) -> None:
+        """注入异步推理通道（W56·v7 P1-3），模式切换后自动续注。"""
+        self._async_channel = channel
+        if self._labeler is not None:
+            self._labeler.set_async_channel(channel)
+
+    def refresh_preview(self) -> None:
+        """重绘当前标注器预览（W56·v7 P1-3：异步结果回投后由页面调用）。"""
+        self._canvas._redraw()
+        if self._labeler is not None:
+            shape = self._labeler.preview()
+            if shape:
+                self._draw_preview(shape)
 
     # ============================== 安装 ============================== #
     def install(self, view: QGraphicsView) -> None:
@@ -188,6 +221,16 @@ class AnnotationController:
         if self._labeler is not None:
             self._labeler.reset()
         self._canvas._redraw()
+
+    def invalidate_image(self) -> None:
+        """换图时使标注器当前帧失效（W55·v7 P1-2）。
+
+        新帧预热完成前，SAM 类预测一律 no-op（各 labeler 既有的
+        ``_image is None`` 守卫）——新图坐标不得进旧图模型（静默
+        错标通道）。手动模式不持帧引用（无 set_image），无操作。
+        """
+        if self._labeler is not None and hasattr(self._labeler, "set_image"):
+            self._labeler.set_image(None)
 
     def attach_interactive(self, adapter, image=None) -> bool:
         """为交互式模式注入 SAM 适配器与当前帧（W4-T3 / P2-6）。

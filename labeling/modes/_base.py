@@ -5,6 +5,8 @@ on_press / on_move / on_release / preview / commit。
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from labeling.base import (
     DEFAULT_COLOR,
     RGBA,
@@ -41,6 +43,38 @@ class AbstractLabeler(ILabeler):
         self._points: list[Point] = []
         self._cursor: Point | None = None
         self._active: bool = False
+        # W55·v7 P2-4：操作员感知通道（error 推理失败 / warn 未就绪 /
+        # info 零产出），由页面经 controller 注入、转发状态栏
+        self._feedback: Callable[[str, str], None] | None = None
+        # W56·v7 P1-3：异步推理通道（页面注入；None=同步回退——单测与
+        # 非 GUI 消费面保持同步语义）
+        self._async_channel = None
+
+    def set_feedback_callback(
+        self, cb: Callable[[str, str], None] | None
+    ) -> None:
+        """注入/清除状态反馈回调（kind, msg）。"""
+        self._feedback = cb
+
+    def set_async_channel(self, channel) -> None:
+        """注入/清除异步推理通道（W56·v7 P1-3）。
+
+        channel.submit(fn, tag) -> bool：True=受理（结果经 deliver(tag,
+        payload) 回投主线程）；False=通道忙（页面已提示，调用方静默返回）。
+        None（默认）= 无通道，调用方走同步推理回退（单测/脚本消费面）。
+        """
+        self._async_channel = channel
+
+    def _notify(self, kind: str, msg: str) -> None:
+        """发射反馈——通道自身故障不得反噬标注主流程。"""
+        if self._feedback is None:
+            return
+        try:
+            self._feedback(kind, msg)
+        except Exception:  # noqa: BLE001
+            import logging as _log
+
+            _log.getLogger(__name__).exception("标注器反馈回调异常")
 
     # ---- 公共辅助 ---- #
     @property

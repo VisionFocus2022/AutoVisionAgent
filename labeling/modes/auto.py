@@ -61,18 +61,43 @@ class AutoLabeler(AbstractLabeler):
 
     # ---- 批量推理 ---- #
     def run(self) -> int:
-        """触发全图推理，返回检出的 Shape 数量。"""
+        """触发全图推理，返回检出的 Shape 数量。
+
+        W55·v7 P2-4：失败返回 **-1** 哨兵（与零检出 0 区分——对齐 DET
+        批量预标注「零检出/失败」分流的仓内先例）；两类结果均经反馈通道
+        提示操作员（error/info）。
+        W56·v7 P1-3：注入异步通道后返回 **-2**（受理中，结果经
+        deliver("auto", shapes) 回投）；忙时返回 0（页面已提示）。
+        """
         if self._detector is None or self._image is None:
+            self._notify("warn", "SAM 未就绪（未加载权重或预热中）")
+            return 0
+        if self._async_channel is not None:
+            if self._async_channel.submit(
+                lambda: self._detector(self._image), "auto"
+            ):
+                return -2
             return 0
         try:
             shapes = self._detector(self._image)
-        except Exception:
+        except Exception as exc:
             import logging as _log
             _log.getLogger(__name__).exception("自动检测器推理失败")
-            return 0
-        self._queue = shapes
-        self._active = True
+            self._notify("error", f"SAM 自动检测失败: {exc}")
+            return -1
+        self._accept_shapes(shapes)
         return len(self._queue)
+
+    def _accept_shapes(self, shapes) -> None:
+        self._queue = list(shapes)
+        self._active = True
+        if not shapes:
+            self._notify("info", "未检出目标")
+
+    def deliver(self, tag: str, payload) -> None:
+        """异步推理结果回投（主线程，W56·v7 P1-3；payload 为 Shape 列表）。"""
+        if tag == "auto":
+            self._accept_shapes(payload)
 
     @property
     def pending_count(self) -> int:

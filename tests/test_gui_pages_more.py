@@ -9,7 +9,6 @@ from __future__ import annotations
 import csv
 import json
 import os
-import threading
 
 import pytest
 
@@ -25,25 +24,6 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
-
-
-class FakeThread:
-    created = []
-
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._t, self._a, self._k = target, args, kwargs or {}
-        FakeThread.created.append(self)
-
-    def start(self):
-        if self._t:
-            self._t(*self._a, **self._k)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    FakeThread.created = []
-    monkeypatch.setattr(threading, "Thread", FakeThread)
-    return FakeThread
 
 
 # ============================== settings 页 ============================== #

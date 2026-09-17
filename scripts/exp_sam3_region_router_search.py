@@ -21,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-REPO_ROOT = Path(r"E:/学习项目/视觉大模型")
+REPO_ROOT = Path(__file__).resolve().parents[1]  # W57·v7 P2-3：仓相对锚（原 E:/ 绝对路径不可移植）
 SRC = REPO_ROOT / "weights/sam3-pole-ft/router_diag_w54.json"
 MARGINS = (0, 8, 16, 64)
 

@@ -481,6 +481,27 @@ _EN_US: dict[str, str] = {
     "跳过": "skipped",
     "YOLO 格式": "YOLO",
     "COCO 格式": "COCO",
+
+    # ---- W55 新增（标注器反馈通道，v7 P2-4） ----
+    # 注：「推理失败」「提示」字典已有键（F601 实测拦截重复追加），复用；
+    # 「未检出目标」为 labeler 层 _notify 载荷（不经 tr），W57 反向死键
+    # 守卫上线时识别为投机键删除
+    "SAM 未就绪": "SAM not ready",
+
+    # ---- W56 新增（SAM 状态机，v7 P2-5/P1-3） ----
+    # 注：「推理中」字典已有键（F601 拦截重复追加），复用
+    "SAM 处理中": "SAM busy",
+    "请稍候": "Please wait",
+    "自动分割中": "Auto-segmenting",
+
+    # ---- W56 新增（SAM 卸载通道，v7 P2-1） ----
+    "卸载 SAM": "Unload SAM",
+    "SAM 已卸载": "SAM unloaded",
+
+    # ---- W57 新增（SAM3 能力差异提示，v7 P3-6） ----
+    "SAM3 后端不支持负点击与笔刷迭代精修": (
+        "SAM3 backend: no negative-click or brush-iterate refinement"
+    ),
 }
 
 

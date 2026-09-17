@@ -16,7 +16,6 @@ import base64
 import json
 import logging
 import os
-import threading
 import time
 from pathlib import Path
 
@@ -42,27 +41,6 @@ PNG_1PX = base64.b64decode(
 def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
-
-
-class FakeThread:
-    """threading.Thread 替身：记录创建并同步执行 target（沿用全仓接缝）。"""
-
-    created = []
-
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._target, self._args, self._kwargs = target, args, kwargs or {}
-        FakeThread.created.append(self)
-
-    def start(self):
-        if self._target is not None:
-            self._target(*self._args, **self._kwargs)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    FakeThread.created = []
-    monkeypatch.setattr(threading, "Thread", FakeThread)
-    return FakeThread
 
 
 class _FakeMsgBox:

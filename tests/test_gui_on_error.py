@@ -10,7 +10,6 @@
 from __future__ import annotations
 
 import os
-import threading
 from pathlib import Path
 
 import pytest
@@ -33,27 +32,6 @@ _PAGES = [
     ("deploy", "gui.pages.deploy.page"),
     ("flaw_gen", "gui.pages.flaw_gen.page"),
 ]
-
-
-class FakeThread:
-    """threading.Thread 替身：记录创建并同步执行 target（沿用全仓接缝）。"""
-
-    created = []
-
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._target, self._args, self._kwargs = target, args, kwargs or {}
-        FakeThread.created.append(self)
-
-    def start(self):
-        if self._target is not None:
-            self._target(*self._args, **self._kwargs)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    FakeThread.created = []
-    monkeypatch.setattr(threading, "Thread", FakeThread)
-    return FakeThread
 
 
 @pytest.fixture(scope="session")

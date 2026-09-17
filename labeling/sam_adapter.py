@@ -54,6 +54,23 @@ class SamAdapter:
         sam.to(device=device)
         self._predictor = SamPredictor(sam)
 
+    def unload(self) -> None:
+        """释放模型与缓存（W56·v7 P2-1）。
+
+        幂等（未加载无操作）；释放后 loaded=False、嵌入/图像缓存清空，
+        可重新 load。cuda 显存缓存一并归还驱动（VRAM 挂进程的卸载通道）。
+        """
+        self._predictor = None
+        self._cached_image_hash = None
+        self._cached_image_ref = None
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except ImportError:
+            pass  # 无 torch 环境（纯桩测试）同样可卸
+
     @property
     def loaded(self) -> bool:
         return self._predictor is not None
@@ -227,6 +244,14 @@ class SamAdapter:
         import cv2
         from segment_anything import SamAutomaticMaskGenerator
 
+        # W57·v7 P3-4：参数域守卫（与 Sam3Adapter 同口径；语义注记——本家
+        # pred_iou_thresh 为 AMG 预测 IOU 阈值默认 0.88，SAM3 同名参数为
+        # 实例分数阈值默认 0.3，勿互换默认值）
+        if not 0.0 <= iou_thresh <= 1.0:
+            raise ValueError(
+                f"iou_thresh 需在 [0,1]（got {iou_thresh}）——SAM1 语义："
+                "AMG pred_iou_thresh（对标原品默认 0.88）"
+            )
         gen = SamAutomaticMaskGenerator(
             self._predictor.model,
             pred_iou_thresh=iou_thresh,

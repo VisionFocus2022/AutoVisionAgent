@@ -84,12 +84,17 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 
 # ============================== W39·v6 P3-16：FakeThread 单源收敛 ============================== #
 # 原 21 个测试文件逐字复制此类与夹具（gui/core/jobs.py:20 记载接缝约束）；
-# 本处为唯一定义，各文件本地副本已删，夹具经 pytest 自动发现生效。
+# W39 当期宣称「各文件本地副本已删」与事实不符——v7 审查证伪：17 个存量
+# 文件仍有本地副本且形态漂移（_t/_a/_k 变体）。W57·v7 P3-2 清偿全部存量，
+# 本处恢复唯一真源；created 追踪为收敛前部分副本的既有行为，一并收编。
 
 
 class FakeThread:
+    created: list[FakeThread] = []
+
     def __init__(self, target=None, args=(), kwargs=None, daemon=None):
         self._target, self._args, self._kwargs = target, args, kwargs or {}
+        FakeThread.created.append(self)
 
     def start(self):
         if self._target is not None:
@@ -98,4 +103,6 @@ class FakeThread:
 
 @pytest.fixture
 def fake_threads(monkeypatch):
+    FakeThread.created = []
     monkeypatch.setattr(threading, "Thread", FakeThread)
+    return FakeThread

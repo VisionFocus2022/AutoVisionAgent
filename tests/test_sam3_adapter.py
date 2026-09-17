@@ -277,7 +277,18 @@ class TestResolveSam3ModelDir:
     def test_env_valid_dir(self, tmp_path):
         from gui.pages.label.sam_session import resolve_sam3_model_dir
 
+        # W57·v7 P3-5：env 分支与对话框分支同口径双文件校验——有效目录
+        # 须含 config.json + model.safetensors（坏 env 立即回落，不再
+        # 延迟一个加载周期才诚实报错）
+        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+        (tmp_path / "model.safetensors").write_bytes(b"x")
         assert resolve_sam3_model_dir(str(tmp_path), None) == str(tmp_path)
+
+    def test_env_dir_missing_config_falls_back(self, tmp_path):
+        """W57·v7 P3-5：env 指向存在但缺 config.json 的目录 → None 回落。"""
+        from gui.pages.label.sam_session import resolve_sam3_model_dir
+
+        assert resolve_sam3_model_dir(str(tmp_path), None) is None
 
     def test_env_invalid_falls_back(self, tmp_path):
         from gui.pages.label.sam_session import resolve_sam3_model_dir

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import sys
 import time
@@ -31,7 +32,8 @@ import numpy as np
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DATA = Path(r"E:/学习项目/极柱外观检标注图")
+DEFAULT_DATA = Path(os.environ.get("AVA_POLE_DATA",
+                str(REPO_ROOT.parent / "极柱外观检标注图")))  # W57·v7 P2-3：可移植+env 覆盖
 DEFAULT_BASE = REPO_ROOT / "weights" / "sam3"
 DEFAULT_OUT = REPO_ROOT / "weights" / "sam3-pole-ft"
 

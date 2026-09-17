@@ -163,6 +163,8 @@ class LabelPage(SamSessionMixin, QWidget):
         self.controller = AnnotationController(
             self.canvas, mode=AnnotationMode.POLYGON, label="defect"
         )
+        # W55·v7 P2-4：标注器反馈 → 状态栏（推理失败/未就绪/零产出）
+        self.controller.set_feedback_callback(self._on_labeler_feedback)
         self._image_path: str | None = None
         self._mode_btns: dict[AnnotationMode, QPushButton] = {}
 
@@ -180,7 +182,8 @@ class LabelPage(SamSessionMixin, QWidget):
 
         # W4-T3 (P2-6): SAM 交互式标注接线状态
         self._sam_adapter = None
-        self._sam_busy = False
+        # W56·v7 P2-5：SAM 状态机，_sam_busy 为 mixin 只读兼容属性
+        self._sam_state = "idle"
         self._pending_sam_image = None
 
         self._build_ui()
@@ -256,7 +259,10 @@ class LabelPage(SamSessionMixin, QWidget):
         self.btn_redo = self._tbtn(bar, tr("重做"))
         self.btn_delete = self._tbtn(bar, tr("删除"))
         self.btn_clear = self._tbtn(bar, tr("清空"))
-        for b in (self.btn_undo, self.btn_redo, self.btn_delete, self.btn_clear):
+        self.btn_sam_unload = self._tbtn(bar, tr("卸载 SAM"))  # W56·v7 P2-1
+        self.btn_sam_unload.clicked.connect(self.unload_sam)
+        for b in (self.btn_undo, self.btn_redo, self.btn_delete, self.btn_clear,
+                  self.btn_sam_unload):
             h.addWidget(b)
 
         sep3 = self._sep(bar)
@@ -484,6 +490,8 @@ class LabelPage(SamSessionMixin, QWidget):
             return
 
         self.canvas.set_image_pixmap(pm)
+        # W55·v7 P1-1：换图硬清空上一图形状（含撤销栈）；有意携带走 Ctrl+C/V
+        self.canvas.reset_session()
         self._image_path = path
         self._current_index = index
         self.view.fitInView(self.canvas.sceneRect(), Qt.KeepAspectRatio)
@@ -494,10 +502,9 @@ class LabelPage(SamSessionMixin, QWidget):
         filename = os.path.basename(path)
         self.status_changed.emit(filename, f"{pm.width()}x{pm.height()}")
 
-        # W4-T3: 交互式模式下换图 → 重新预热 SAM embedding（缓存按图哈希）
-        if (self.controller.mode is AnnotationMode.INTERACTIVE
-                and getattr(self._sam_adapter, "loaded", False)):
-            self._warm_sam()
+        # W55·v7 P1-2：换图 SAM 会话同步（全模式，防丢拍见 _sam_attach）
+        if getattr(self._sam_adapter, "loaded", False):
+            self._sync_sam_session()
 
     def _on_file_selected(self, row: int) -> None:
         """文件列表点击 -> 加载图像。"""

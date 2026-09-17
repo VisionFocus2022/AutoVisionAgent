@@ -10,7 +10,6 @@ offscreen 行为四路：
 from __future__ import annotations
 
 import os
-import threading
 
 import pytest
 
@@ -21,23 +20,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication, QTextEdit  # noqa: E402
 
 from project import versioning  # noqa: E402
-
-
-class FakeThread:
-    """同步假线程：start() 即执行（接缝约束见 gui/core/jobs.py docstring）。"""
-
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._t, self._a, self._k = target, args, kwargs or {}
-
-    def start(self):
-        if self._t:
-            self._t(*self._a, **self._k)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    monkeypatch.setattr(threading, "Thread", FakeThread)
-    return FakeThread
 
 
 @pytest.fixture(scope="session")

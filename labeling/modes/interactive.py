@@ -57,24 +57,42 @@ class InteractiveLabeler(AbstractLabeler):
     # ---- ILabeler 实现 ---- #
     def on_press(self, pt: Point) -> None:
         if self._adapter is None or self._image is None:
+            # W55·v7 P2-4：未加载/预热中不再静默无操作
+            self._notify("warn", "SAM 未就绪（未加载权重或预热中）")
             return
         self._active = True
+        if self._async_channel is not None:
+            # W56·v7 P1-3：worker 线程推理（GUI 不冻结）；忙时页面已提示
+            self._async_channel.submit(
+                lambda: self._adapter.predict_point(self._image, pt), "press"
+            )
+            return
         try:
             poly = self._adapter.predict_point(self._image, pt)
-        except Exception:
+        except Exception as exc:
             import logging as _log
             _log.getLogger(__name__).exception("SAM 交互预测失败")
+            self._notify("error", f"SAM 交互预测失败: {exc}")
             return
+        self._accept_poly(poly)
+
+    def _accept_poly(self, poly) -> None:
         if len(poly) >= 3:
             # W46·B：显式 POLYGON——_build 会带工具模式（INTERACTIVE），
             # LabelMe 导出器拒收致保存裸穿（UIA 真窗擒获）；形状类型与
             # 工具模式解耦，对齐 region_sam/brush_sam 提交语义
             self._pending = Shape(
                 mode=AnnotationMode.POLYGON,
-                points=tuple(poly),
+                points=tuple((float(p[0]), float(p[1])) for p in poly),
                 label=self.label,
                 color=self._color,
             )
+
+    def deliver(self, tag: str, payload) -> None:
+        """异步推理结果回投（主线程，W56·v7 P1-3；payload 为点列表）。"""
+        if tag == "press":
+            self._active = True
+            self._accept_poly(payload)
 
     def on_move(self, pt: Point) -> None:
         self._cursor = pt

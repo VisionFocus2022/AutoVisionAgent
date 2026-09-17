@@ -340,8 +340,8 @@ def test_real_lite_dist_guard():
     体积与一致性口径排除 ``__pycache__``/``*.pyc``/``logs/``：蒸馏冒烟等
     ``PYTHONPATH=_internal`` 使用会生成字节码缓存；lite exe 被启动过即按
     cwd 相对落 ``logs/autovision.log``——均属使用痕迹而非产品内容
-    （2026-08-31 实证：346B log 击穿字节级对账；与 make_lite_dist.
-    _product_bytes 同口径，两处豁免面必须同步增减）。
+    （2026-08-31 实证：346B log 击穿字节级对账）。W57·v7 P3-8 起守卫
+    直接复用 ``make_lite_dist._product_bytes``——豁免面单源，不再双份手抄。
     """
     if not _LITE_DIST.is_dir():
         pytest.skip(
@@ -355,17 +355,7 @@ def test_real_lite_dist_guard():
     assert torch_ver.is_file(), "torch/version.py 应来自 CPU 轮子"
     assert "+cpu" in torch_ver.read_text(encoding="utf-8")
 
-    def product_bytes(root: Path) -> int:
-        return sum(
-            p.stat().st_size
-            for p in root.rglob("*")
-            if p.is_file()
-            and "__pycache__" not in p.parts
-            and p.suffix != ".pyc"
-            and "logs" not in p.parts
-        )
-
-    total = product_bytes(_LITE_DIST)
+    total = mld._product_bytes(_LITE_DIST)  # noqa: SLF001 —— P3-8 单源对账口径
     assert total < _TWO_GIB, f"PRD AC-3.2 要求 lite <2GiB，实测 {total} 字节"
     # W45·P3-14 余量棘轮：硬线 5MiB（现状 ~6.5MiB）；<10MiB 打预警非阻塞。
     # 棘轮只升不降——击穿硬线先减重（剪除/换 CPU 轮）再谈升线。

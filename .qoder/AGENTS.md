@@ -14,7 +14,7 @@
 
 1. **主门禁绿**：`.venv/Scripts/python.exe -m pytest` rc=0（覆盖率 ≥92 棘轮，pytest.ini 单一真源）——聚合入口 `bash scripts/check-gate.sh`
 2. **命名规范**：`bash scripts/check-naming.sh`（.qoder 资产 R00 命名合规）
-3. **ruff 棘轮**：问题数 ≤ `scripts/ruff-baseline.txt`（2026-08-30 基线 1153；只降不升，清偿后降基线）
+3. **ruff 棘轮**：问题数 ≤ `scripts/ruff-baseline.txt`（2026-08-30 基线 1153 → W54 清偿归零，现基线 0；只降不升——W57·v7 P3-9 刷新）
 4. **规模/打包守卫沿用**：page.py ≤800 行、lite 产物 <2GiB、i18n zh/en 键集配对——既有守卫测试随主门禁生效，守卫红=修复不是绕过
 
 ## 3. 资产索引（新增资产必须在此登记，唯一事实源）
@@ -55,7 +55,7 @@
 | `dotnet test serving/dotnet_client` | C# 共享库测试（CI 并行 job 同款） |
 | 环境坑① | 中文路径 venv：pip/PyInstaller 一律 `.venv/Scripts/python.exe -m` 调用，禁裸命令 |
 | 环境坑② | PyTorch cu121：lock 首行已含索引；CI 下载 ~2.5GB，缓存键挂 requirements.lock.txt |
-| 环境坑③ | ruff 于 2026-08-30 首次安装（此前 pyproject 有配置、venv 无模块）；存量 1153 问题走棘轮基线 |
+| 环境坑③ | ruff 于 2026-08-30 首次安装（此前 pyproject 有配置、venv 无模块）；存量 1153 问题已于 W54 全量清偿（现基线 0） |
 | 环境坑④ | 管道 `| tail` 会吞退出码——判绿用 `echo ${PIPESTATUS[0]}` 或无管道复跑 |
 | 环境坑⑤ | 双远端 gitee+github：github 443 间歇阻断时先落 gitee 留档追平 |
 | 环境坑⑥ | GPU 训练/重推理前查大内存 python 残留进程（IDE 代理僵尸 pytest 会耗尽提交内存） |

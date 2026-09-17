@@ -26,7 +26,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from core.image_io import imread_unicode  # noqa: E402
 
-DATA = Path(r"E:/学习项目/极柱外观检标注图")
+DATA = Path(os.environ.get("AVA_POLE_DATA",
+                str(REPO_ROOT.parent / "极柱外观检标注图")))  # W57·v7 P2-3：可移植+env 覆盖
 MANIFEST = REPO_ROOT / "weights" / "sam3-pole-ft" / "manifest.json"
 DEFAULT_CKPT = REPO_ROOT / "weights" / "pole-seg" / "weights" / "best.pt"
 DEFECT_LABELS = {"YS", "ZW", "TJYS", "HS"}

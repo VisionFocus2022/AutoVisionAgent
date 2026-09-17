@@ -31,7 +31,12 @@ class TestUnknownRoleFallback:
         assert action_allowed("intruder", "label.batch_prelabel") is True, (
             "未知角色应回退 operator 判定（operator 允许该动作）"
         )
-        assert action_allowed("intruder", "settings") is False or True  # page 键误用例不计
+        # W57·v7 P3-1：原「is False or True」恒真断言回炉——"settings" 非
+        # 登记动作（_ACTION_MATRIX 无键 → allowed=None），全角色拒绝为
+        # action_allowed 的真实语义，此处按语义实断言
+        assert action_allowed("intruder", "settings") is False, (
+            "未登记动作键应全角色拒绝（矩阵无键 → False）"
+        )
 
     def test_unknown_role_registered_engineer_only_still_denied(self):
         """回退 operator 而非放大：若某动作仅 engineer/admin 允许，未知角色拒绝。"""

@@ -244,7 +244,11 @@ class TestAutoLabeler:
             raise RuntimeError("model not loaded")
 
         labeler = AutoLabeler("x", detector=bad_detector, image="img")
-        assert labeler.run() == 0
+        # W55·v7 P2-4 契约更新：失败返回 -1 哨兵（与零检出 0 区分），
+        # 不炸画布语义不变；操作员感知经反馈通道（全链用例见
+        # tests/test_w55_image_switch_session.py）
+        assert labeler.run() == -1
+        assert labeler.pending_count == 0
 
     def test_reset_clears_queue(self) -> None:
         labeler = AutoLabeler(

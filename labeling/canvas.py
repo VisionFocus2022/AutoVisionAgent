@@ -162,6 +162,19 @@ class AnnotationCanvas(QGraphicsScene):
             self._redraw()
             self.shapes_changed.emit(self.shapes)
 
+    def reset_session(self) -> None:
+        """硬清空会话：清形状并清空撤销/重做栈（W55·v7 P1-1）。
+
+        与 clear_shapes 的区别：不留撤销快照——换图是会话边界，Ctrl+Z
+        不得复活上一图的形状（跨图污染通道，撤销后门）。
+        """
+        self._shapes.clear()
+        self._undo_stack.clear()
+        self._redo_stack.clear()
+        self._redraw()
+        self._notify_undo_redo()
+        self.shapes_changed.emit(self.shapes)
+
     def replace_all(self, shapes) -> None:
         """整体替换标注列表（era-2 契约：可撤销的单步替换）。"""
         new_shapes = list(shapes)

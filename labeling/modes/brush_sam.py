@@ -72,8 +72,22 @@ class BrushSamLabeler(AbstractLabeler):
         stroke, self._stroke = self._stroke, []
         self._active = False
         if self._adapter is None or self._image is None:
+            # W55·v7 P2-4：未就绪不再静默吞笔划
+            self._notify("warn", "SAM 未就绪（未加载权重或预热中）")
             return None
         self._fg_points.extend(stroke)
+        if self._async_channel is not None:
+            # W56·v7 P1-3：worker 线程推理；忙时页面已提示
+            self._async_channel.submit(
+                lambda: self._adapter.predict_points(
+                    self._image,
+                    list(self._fg_points),
+                    [1] * len(self._fg_points),
+                    mask_input=self._logits,
+                ),
+                "brush",
+            )
+            return None
         try:
             poly, logits = self._adapter.predict_points(
                 self._image,
@@ -81,18 +95,28 @@ class BrushSamLabeler(AbstractLabeler):
                 [1] * len(self._fg_points),
                 mask_input=self._logits,
             )
-        except Exception:  # noqa: BLE001 — SAM 推理异常不炸画布
+        except Exception as exc:  # noqa: BLE001 — SAM 推理异常不炸画布
             _logger.exception("SAM 笔刷精修预测失败")
+            self._notify("error", f"SAM 笔刷精修预测失败: {exc}")
             return None
+        self._accept_result(poly, logits)
+        return None
+
+    def _accept_result(self, poly, logits) -> None:
         if len(poly) >= 3:
             self._pending = Shape(
                 mode=AnnotationMode.POLYGON,
-                points=tuple(poly),
+                points=tuple((float(p[0]), float(p[1])) for p in poly),
                 label=self.label,
                 color=self._color,
             )
             self._logits = logits
-        return None
+
+    def deliver(self, tag: str, payload) -> None:
+        """异步推理结果回投（主线程，W56·v7 P1-3；payload=(poly, logits)）。"""
+        if tag == "brush":
+            poly, logits = payload
+            self._accept_result(list(poly), logits)
 
     def preview(self) -> Shape | None:
         return self._pending

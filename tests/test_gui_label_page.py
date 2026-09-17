@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 
 import pytest
 
@@ -35,21 +34,6 @@ from labeling import AnnotationMode, Shape  # noqa: E402
 def qapp():
     app = QApplication.instance() or QApplication([])
     yield app
-
-
-class FakeThread:
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._t, self._a, self._k = target, args, kwargs or {}
-
-    def start(self):
-        if self._t:
-            self._t(*self._a, **self._k)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    monkeypatch.setattr(threading, "Thread", FakeThread)
-    return FakeThread
 
 
 def _png(path, w=32, h=24):

@@ -221,12 +221,13 @@ class TestConcurrency:
 class TestThreadSeam:
     @pytest.mark.unit
     def test_threading_thread_monkeypatch_seam(self, monkeypatch):
-        """复刻 tests/test_gui_datamanage_page.py:29-40 的 FakeThread 接缝：
-        monkeypatch threading.Thread 后 run_job 必须经替换类建线程（同步执行）。
+        """接缝契约（W57·v7 P3-2 注：通用 FakeThread 已单源收敛至
+        tests/conftest.py）：monkeypatch threading.Thread 后 run_job 必须
+        经替换类建线程（同步执行）；本探针额外捕获 daemon 标志。
         """
         daemon_flags: list[object] = []
 
-        class FakeThread:
+        class _DaemonProbeThread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=None):
                 self._target, self._args, self._kwargs = target, args, kwargs or {}
                 self.daemon = daemon
@@ -236,13 +237,15 @@ class TestThreadSeam:
                 if self._target:
                     self._target(*self._args, **self._kwargs)
 
-        monkeypatch.setattr(threading, "Thread", FakeThread)
+        monkeypatch.setattr(threading, "Thread", _DaemonProbeThread)
 
         ran: list[int] = []
         handle = run_job(lambda: ran.append(1), name="seam")
 
         assert ran == [1], "同步 start() 应已执行包裹函数"
-        assert isinstance(handle.thread, FakeThread), "线程须经 threading.Thread 属性解析创建"
+        assert isinstance(
+            handle.thread, _DaemonProbeThread
+        ), "线程须经 threading.Thread 属性解析创建"
         assert handle.thread.daemon is True
         assert daemon_flags == [True]
         assert active_jobs() == [], "同步执行路径下 finally 自摘除应已完成"

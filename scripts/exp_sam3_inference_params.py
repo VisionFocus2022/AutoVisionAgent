@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO_ROOT = Path(r"E:/学习项目/视觉大模型")
+REPO_ROOT = Path(__file__).resolve().parents[1]  # W57·v7 P2-3：仓相对锚（原 E:/ 绝对路径不可移植）
 sys.path.insert(0, str(REPO_ROOT))
 
 import cv2  # noqa: E402  # sys.path 注入后方可导入仓库依赖
@@ -22,7 +22,8 @@ import numpy as np  # noqa: E402  # 同上
 from core.image_io import imread_unicode  # noqa: E402  # 同上
 from labeling.sam3_adapter import Sam3Adapter  # noqa: E402  # 同上
 
-DATA = Path(r"E:/学习项目/极柱外观检标注图")
+DATA = Path(os.environ.get("AVA_POLE_DATA",
+                str(REPO_ROOT.parent / "极柱外观检标注图")))  # W57·v7 P2-3：可移植+env 覆盖
 MANIFEST = REPO_ROOT / "weights/sam3-pole-ft/manifest.json"
 DEFECT_LABELS = {"YS", "ZW", "TJYS", "HS"}
 

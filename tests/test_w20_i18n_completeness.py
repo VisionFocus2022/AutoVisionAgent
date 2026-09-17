@@ -126,3 +126,53 @@ def test_mode_label_keys_have_dict_entries():
     assert not missing, (
         f"模式按钮变量键缺词条（en_US 露中文）：{sorted(missing)}"
     )
+
+
+# ============================== W57·v7 P3-9：反向死键守卫（增量冻结） ============================== #
+# 字典键 ∖（tr() 字面量 ∪ _MODES 变量键 ∪ 豁免清单）= 空集。
+# 存量 67 键冻结于 _DEAD_KEY_ALLOWLIST（多数为动态链消费——pick_directory
+# 参数经变量透传 tr()、状态栏载荷拼装等，扫描器不可见；少量硬死键留待
+# 人工清理）。**棘轮语义：只减不增**——新增键若无消费面，本守卫即红，
+# 防字典无界膨胀（v6 P3-9 由 407 键长到 424 键时无人察觉的通道）。
+_DEAD_KEY_ALLOWLIST = frozenset({
+    "...", "AutoVisionAgent", "ONNX", "SAM 全图", "SKolpha 复刻平台",
+    "TensorRT", "关键点 (pose)", "关闭", "分割 (seg)", "分类 (cls)",
+    "切割完成", "切换主题", "切换语言", "划分完成", "删除完成", "单类",
+    "实例分割", "实例分割 (pseg)", "导入完成",
+    "将复制图像到 train/val/test 子目录（保留原文件）。确认？",
+    "工程师", "已撤销", "已重做", "平均值", "异常检测 (abdet)",
+    "引擎未安装：训练将使用模拟策略（假 loss，仅供流程验证）",
+    "快捷键", "感知损失", "拖拽划定区域，区域内点击分割", "操作员",
+    "文字识别", "无评估数据", "替换完成", "最大化", "最小化",
+    "未选择图像", "标注画布", "检测 (det)", "生成质量", "管理员",
+    "缺陷生成 (sgan)", "翻转完成", "菜单", "角色",
+    "评估引擎不可用，退化为 GT 自比较（指标仅供参考）",
+    "该任务引擎未安装", "语义分割", "语义分割 (sseg)",
+    "请先选择标注文件夹", "超分辨率", "超分辨率 (super)", "还原",
+    "选择图像", "选择存储目录", "选择导入源目录", "选择导出输出目录",
+    "选择工作空间", "选择批量推理目录", "选择批量预标注目录",
+    "选择数据目录", "选择标注文件夹", "选择模型", "选择模型权重",
+    "选择视频", "选择许可证文件", "（未装引擎）", "（模拟）",
+})
+
+
+@pytest.mark.unit
+def test_no_new_dead_dict_keys():
+    """反向死键守卫（W57·v7 P3-9）：新增字典键必须有消费面（棘轮只减不增）。"""
+    consumed = set(_tr_literals()) | _mode_label_keys()
+    dead = _dict_keys() - consumed - _DEAD_KEY_ALLOWLIST
+    assert not dead, (
+        f"新增死键 {len(dead)} 个（字典键无任何 tr() 消费面——请补消费、"
+        f"删除键、或经复核加入豁免清单并注明动态链）：\n"
+        + "\n".join(f"  {k!r}" for k in sorted(dead))
+    )
+
+
+@pytest.mark.unit
+def test_dead_key_allowlist_ratchets_down():
+    """豁免清单棘轮：清单键若已获消费面，必须从清单移除（防清单腐化）。"""
+    consumed = set(_tr_literals()) | _mode_label_keys()
+    stale = _DEAD_KEY_ALLOWLIST & consumed
+    assert not stale, (
+        f"豁免清单内 {len(stale)} 键已获字面量消费面，应从清单移除：{sorted(stale)}"
+    )

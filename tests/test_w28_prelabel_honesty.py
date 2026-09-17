@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import base64
-import threading
 
 import pytest
 
@@ -27,22 +26,6 @@ PNG_1PX = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
     "AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
-
-
-class FakeThread:
-    """threading.Thread 替身：同步执行 target（全仓接缝）。"""
-
-    def __init__(self, target=None, args=(), kwargs=None, daemon=None):
-        self._target, self._args, self._kwargs = target, args, kwargs or {}
-
-    def start(self):
-        if self._target is not None:
-            self._target(*self._args, **self._kwargs)
-
-
-@pytest.fixture
-def fake_threads(monkeypatch):
-    monkeypatch.setattr(threading, "Thread", FakeThread)
 
 
 @pytest.fixture(scope="session")
