@@ -39,6 +39,28 @@ _SUPERVISED_TASKS = {
 }
 
 
+def _normalize_to_3ch(image: Any) -> Any:
+    """灰度单通道归一（DEF-POLE-SEG-GRAY，2026-09-19）。
+
+    工业灰度相机/8bit 灰度 BMP 按 [H,W,1] 契约直传时，ultralytics 3 通道卷积权重
+    报 "expected input to have 3 channels, but got 1"——serving 公共入口统一转
+    BGR，全部有监督引擎受益（det/seg/pseg/pose…）。非 ndarray 或转换失败原样返回
+    （零样本/外部路径不受影响）。
+    """
+    try:
+        import cv2
+        import numpy as np
+
+        if isinstance(image, np.ndarray):
+            if image.ndim == 2:
+                return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+            if image.ndim == 3 and image.shape[2] == 1:
+                return cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    except Exception:  # noqa: BLE001 — 归一失败不拦推理主链，交由引擎自身报错
+        logger.warning("灰度归一转换失败，按原图直传引擎", exc_info=True)
+    return image
+
+
 class VisionModelDispatcher:
     """双范式统一分发器。
 
@@ -139,7 +161,8 @@ class VisionModelDispatcher:
             # R5-10: LRU touch — 标记为最近使用
             self._engines.move_to_end(task)
             engine = self._engines[task]
-        return engine.infer(image, threshold=threshold, labels=labels)
+        # DEF-POLE-SEG-GRAY：灰度 [H,W,1]/[H,W] 统一转 3 通道后再进引擎
+        return engine.infer(_normalize_to_3ch(image), threshold=threshold, labels=labels)
 
     # ---- 统一分发 ----
 
