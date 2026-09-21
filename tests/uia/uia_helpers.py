@@ -874,3 +874,166 @@ def login_admin(win) -> None:
     assert status is not None, "admin 登录未完成：状态栏未出现登录成功标志"
     logger.info("admin 登录完成: %s", status)
     time.sleep(1.0)
+
+
+# ============================== W58 工程案例扩展原语（PRD FR-2） ============================== #
+
+
+def find_spinner_controls(root, timeout: float = 5.0) -> list:
+    """收集子树内全部 Spinner 控件（QSpinBox/QDoubleSpinBox 的 UIA 暴露）。
+
+    Qt 表单 QLabel 与输入控件为兄弟节点（无 buddy 关联），Spinner 的
+    Name 通常为空——按 UIA 树序（≈构造序）+ 期望当前值签名定位。
+    """
+    deadline = time.time() + timeout
+    spinners: list = []
+    while time.time() < deadline:
+        spinners = [c for c in _iter_descendants(root, max_depth=10)
+                    if type(c).__name__.startswith("Spinner")]
+        if spinners:
+            return spinners
+        time.sleep(0.4)
+    return spinners
+
+
+def _spinner_value(ctrl):
+    """读 Spinner 当前值（ValuePattern；失败返回 None）。"""
+    try:
+        raw = ctrl.GetValuePattern().Value
+        return float(raw) if raw not in (None, "") else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def set_spinner_value(root, value, *, expect_current=None, index=0,
+                      timeout: float = 5.0) -> bool:
+    """按序定位 Spinner 设值；expect_current 提供时先校验当前值签名。
+
+    ValuePattern.SetValue 优先，Qt 未暴露可写 Value 时键盘兜底
+    （Click + 数字 + Enter）。
+    """
+    spinners = find_spinner_controls(root, timeout)
+    if len(spinners) <= index:
+        logger.error("Spinner 数不足: %d (index=%d)", len(spinners), index)
+        return False
+    ctrl = spinners[index]
+    if expect_current is not None:
+        cur = _spinner_value(ctrl)
+        if cur is None or abs(cur - float(expect_current)) > 1e-9:
+            logger.error(
+                "Spinner[%d] 当前值 %s ≠ 期望签名 %s", index, cur, expect_current
+            )
+            return False
+    try:
+        ctrl.GetValuePattern().SetValue(str(value))
+        time.sleep(0.3)
+        got = _spinner_value(ctrl)
+        if got is not None and abs(got - float(value)) < 1e-9:
+            return True
+        logger.warning("ValuePattern.SetValue 未生效（读回 %s），键盘兜底", got)
+    except Exception:  # noqa: BLE001
+        logger.warning("ValuePattern 不可用，键盘兜底", exc_info=True)
+    ctrl.Click()
+    time.sleep(0.2)
+    ua.SendKeys(f"{value}{{ENTER}}")
+    time.sleep(0.3)
+    got = _spinner_value(ctrl)
+    return got is not None and abs(got - float(value)) < 1e-9
+
+
+def set_edit_value_by_order(root, value: str, index: int = 0,
+                            timeout: float = 5.0) -> bool:
+    """按出现序定位 Edit 填值（无 Name 的行内编辑框兜底通道）。"""
+    edits = find_edit_controls(root, timeout)
+    if len(edits) <= index:
+        logger.error("Edit 数不足: %d (index=%d)", len(edits), index)
+        return False
+    return set_edit_value(edits[index], value)
+
+
+def _top_win_key(w) -> tuple:
+    """顶层窗口差集键（Handle 缺失形态用 NativeWindowHandle 兜底）。"""
+    h = getattr(w, "NativeWindowHandle", None) or 0
+    if not h:
+        rect = getattr(w, "BoundingRectangle", None)
+        r = tuple(getattr(rect, k, 0) for k in ("left", "top", "right", "bottom"))
+        h = r
+    return (getattr(w, "ClassName", ""), h)
+
+
+def select_combo_item_by_text(root, text_contains: str,
+                              combo_name_contains: str | None = None,
+                              timeout: float = 6.0) -> bool:
+    """选择组合框中含指定文本的项（Qt 非可编辑 QComboBox 主形态）。
+
+    探针实证（W58）：点击后弹出 QComboBoxPrivateContainer 顶层窗（不在
+    主窗子树），combo 自身子树同步长出 ListItem；上一 combo 的弹窗会
+    吞掉下一次点击（点击=先关旧弹窗）——故每轮先 ESC 清场。
+    combo_name_contains 可按 UIA Name 定向（Qt 表单 QLabel 伴生成名）。
+
+    策略1 SelectionPattern 直选；策略2 点击 → 顶层差集弹窗/combo 子树
+    内点击目标项。
+    """
+    combos = find_combo_controls(root, timeout)
+    if combo_name_contains:
+        named = [c for c in combos if combo_name_contains in (c.Name or "")]
+        combos = named or combos
+    for c in combos:
+        try:
+            c.Select(text_contains)
+            time.sleep(0.3)
+            if text_contains in (c.Name or ""):
+                return True
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            with contextlib.suppress(Exception):
+                ua.SendKey(ua.Keys.VK_ESCAPE)  # 清掉上一 combo 的弹窗
+            time.sleep(0.2)
+            before = {_top_win_key(w) for w in ua.GetRootControl().GetChildren()}
+            c.Click(simulateMove=False)
+            time.sleep(1.0)
+            candidates = []
+            for w in ua.GetRootControl().GetChildren():
+                if _top_win_key(w) not in before:
+                    candidates.extend(_iter_descendants(w, max_depth=8))
+            candidates.extend(_iter_descendants(c, max_depth=6))
+            for it in candidates:
+                if text_contains in (it.Name or ""):
+                    it.Click(simulateMove=False)
+                    time.sleep(0.5)
+                    return True
+            with contextlib.suppress(Exception):
+                ua.SendKey(ua.Keys.VK_ESCAPE)
+        except Exception:  # noqa: BLE001
+            logger.warning("combo 弹窗策略异常", exc_info=True)
+    logger.error("未在任何 ComboBox 中选中项: %r", text_contains)
+    return False
+
+def click_canvas_at(win, fx: float, fy: float, timeout: float = 10.0) -> bool:
+    """在标注画布相对坐标 (fx, fy)∈[0,1] 处单击（SAM 交互式点击原语）。
+
+    W58 工程案例用：InteractiveLabeler 点击 → 异步推理（ADR 0003）→
+    预览多边形；提交走右键（click_canvas_right）。
+    """
+    canvas = _find_canvas(win, timeout=timeout) if "timeout" in _find_canvas.__code__.co_varnames else _find_canvas(win)
+    if canvas is None:
+        logger.error("未找到标注画布")
+        return False
+    rect = canvas.BoundingRectangle
+    x = rect.left + int((rect.right - rect.left) * fx)
+    y = rect.top + int((rect.bottom - rect.top) * fy)
+    ua.Click(x, y)
+    return True
+
+
+def click_canvas_right(win, fx: float, fy: float, timeout: float = 10.0) -> bool:
+    """画布相对坐标右键单击（controller.handle_commit 提交原语）。"""
+    canvas = _find_canvas(win, timeout=timeout) if "timeout" in _find_canvas.__code__.co_varnames else _find_canvas(win)
+    if canvas is None:
+        return False
+    rect = canvas.BoundingRectangle
+    x = rect.left + int((rect.right - rect.left) * fx)
+    y = rect.top + int((rect.bottom - rect.top) * fy)
+    ua.RightClick(x, y)
+    return True

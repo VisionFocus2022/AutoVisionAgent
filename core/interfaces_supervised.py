@@ -77,6 +77,7 @@ class TrainConfig:
     amp: bool = True                    # 混合精度训练
     resume_from: str = ""               # 断点恢复路径
     output_dir: str = "./outputs"
+    data_yaml: str = ""                 # W58 真训练通道：训练数据集清单（导出训练集产的 data.yaml；空=训练页拦截回退模拟）
     # 早停
     patience: int = 0                   # 0 = 不启用早停
     # LR 调度器

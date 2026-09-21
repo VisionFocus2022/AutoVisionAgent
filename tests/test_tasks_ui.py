@@ -145,7 +145,11 @@ def test_make_trainer_no_warning_suppressed_when_real_training_possible(qapp):
     try:
         reg.has = lambda t: True if t is TaskType.CLS else orig_has(t)
         reg.get = lambda t: _TrainableEngine() if t is TaskType.CLS else orig_get(t)
-        trainer = page._make_trainer(TrainConfig(task=TaskType.CLS))
+        # W58 真训练通道契约更新：真引擎还需 data_yaml——本用例验证
+        # 「真策略路径无警告噪声」，按新契约带上数据集路径
+        trainer = page._make_trainer(
+            TrainConfig(task=TaskType.CLS, data_yaml="x:/stub/data.yaml")
+        )
         assert trainer is not None
         assert not any("模拟" in text for text, _ in messages), \
             f"真训练路径不应警告，收到: {messages!r}"

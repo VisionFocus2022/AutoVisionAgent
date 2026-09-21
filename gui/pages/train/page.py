@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -153,6 +154,19 @@ class TrainPage(QWidget):
         )
         form.addRow(tr("任务"), self.cmb_task)
 
+        # W58 真训练通道（PRD FR-1）：数据集 data.yaml 选择行——导出训练集
+        # 产物；空=训练页拦截回退模拟（诚实警告，见 _build_trainer）
+        self.txt_data = QLineEdit(form_frame)
+        self.txt_data.setPlaceholderText(tr("未选择（模拟训练）"))
+        btn_data = QPushButton(tr("浏览"), form_frame)
+        btn_data.clicked.connect(self._browse_data_yaml)
+        data_row = QWidget(form_frame)
+        h_data = QHBoxLayout(data_row)
+        h_data.setContentsMargins(0, 0, 0, 0)
+        h_data.addWidget(self.txt_data, 1)
+        h_data.addWidget(btn_data)
+        form.addRow(tr("数据集"), data_row)
+
         self.spin_epochs = QSpinBox(form_frame)
         self.spin_epochs.setRange(1, 10000)
         self.spin_epochs.setValue(100)
@@ -256,6 +270,17 @@ class TrainPage(QWidget):
         self.status_changed.emit(tr("预设"), preset_name)
 
     # ============================== 行为 ============================== #
+    def _browse_data_yaml(self) -> None:
+        """选择训练数据集清单（data.yaml，数据管理页导出训练集产物）。"""
+        from gui.widgets.file_dialog import pick_open_file
+
+        path = pick_open_file(
+            self, tr("选择数据集"), "Dataset YAML (*.yaml *.yml)"
+        )
+        if path:
+            self.txt_data.setText(path)
+            self.status_changed.emit(tr("数据集"), os.path.basename(path))
+
     def _build_config(self) -> TrainConfig:
         """从表单构造 TrainConfig（R5-4: 补全全部字段）。"""
         raw_task = self.cmb_task.currentData()
@@ -274,6 +299,7 @@ class TrainPage(QWidget):
             warmup_epochs=self.spin_warmup.value(),
             amp=self.chk_amp.isChecked(),
             workers=self.spin_workers.value(),
+            data_yaml=self.txt_data.text().strip(),
         )
 
     def _start_training(self) -> None:
@@ -356,8 +382,13 @@ class TrainPage(QWidget):
             if reg.has(cfg.task):
                 engine = reg.get(cfg.task)
                 if hasattr(engine, "train_epoch"):
-                    return GenericTrainer(cfg.task, EngineTrainStrategy(engine, cfg))
-                self._warn_simulated(tr("引擎不支持逐轮训练，使用模拟训练"))
+                    # W58 真训练通道：真引擎还需选定数据集（data.yaml）——
+                    # 未选时诚实回退模拟，避免 train_epoch 纵深防御抛错
+                    if cfg.data_yaml:
+                        return GenericTrainer(cfg.task, EngineTrainStrategy(engine, cfg))
+                    self._warn_simulated(tr("未选择数据集，使用模拟训练"))
+                else:
+                    self._warn_simulated(tr("引擎不支持逐轮训练，使用模拟训练"))
             else:
                 self._warn_simulated(tr("任务引擎未注册，使用模拟训练"))
         except (ImportError, RuntimeError, OSError):

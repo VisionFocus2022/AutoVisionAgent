@@ -215,7 +215,10 @@ def test_make_trainer_engine_with_train_epoch(train_page, monkeypatch):
     monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _Reg())
     monkeypatch.setattr(gt_mod, "GenericTrainer", _FakeGT)
 
-    trainer = train_page._make_trainer(TrainConfig(task=TaskType.DET))
+    # W58 真训练通道契约更新：真引擎还需 data_yaml（选择面拦截回退模拟）
+    trainer = train_page._make_trainer(
+        TrainConfig(task=TaskType.DET, data_yaml="x:/stub/data.yaml")
+    )
     assert trainer is not None  # _FakeGT 实例（打桩捕获策略）
     assert isinstance(captured["strategy"], EngineTrainStrategy)
     assert captured["task"] is TaskType.DET

@@ -685,6 +685,8 @@ class DataManagePage(QWidget):
         img_dir = self._image_dir or d
         out_root = pick_directory(self, "选择导出输出目录")
         if not out_root:
+            # W58：取消/路径未接受不再静默——操作员需要知道为何没导出
+            self.status_changed.emit(tr("已取消"), tr("导出训练集"))
             return
         fmt = self.cmb_export_fmt.currentData() or "yolo"
         from dataset.format_export import labelme_dir_to_coco, labelme_dir_to_yolo

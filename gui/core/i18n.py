@@ -502,6 +502,13 @@ _EN_US: dict[str, str] = {
     "SAM3 后端不支持负点击与笔刷迭代精修": (
         "SAM3 backend: no negative-click or brush-iterate refinement"
     ),
+
+    # ---- W58 新增（GUI 真训练通道，PRD FR-1） ----
+    "数据集": "Dataset",
+    "未选择（模拟训练）": "Not selected (simulated training)",
+    "选择数据集": "Select dataset",
+    "未选择数据集，使用模拟训练": "No dataset selected, using simulated training",
+    "已取消": "Cancelled",
 }
 
 

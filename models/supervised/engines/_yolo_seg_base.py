@@ -24,6 +24,10 @@ class _YoloSegBase(AbstractTaskEngine):
 
     def __init__(self, task: TaskType) -> None:
         super().__init__(task)
+        # W58 真训练通道（PRD FR-1）状态：一次性 ultralytics 适配器
+        self._train_model: Any = None
+        self._train_metrics: dict[str, float] = {}
+        self._train_output_dir: str = ""
 
     def load(self, weights_path: str, device: str = "cuda") -> None:
         """加载 YOLOv8-Seg 权重。"""
@@ -38,6 +42,91 @@ class _YoloSegBase(AbstractTaskEngine):
         self._model = YOLO(weights_path)
         self._weights_path = weights_path
         self._device = device
+
+    # ============================== 真训练通道（W58 · PRD FR-1） ============================== #
+    def train_epoch(self, epoch: int, cfg) -> dict:
+        """ultralytics 一次性训练适配器（GUI 真训练通道）。
+
+        ultralytics ``train()`` 自带完整训练循环，不适合作逐轮切片——本
+        适配器在**首轮**调用一次性跑完全部 epochs（进度经其自身日志流），
+        后续轮次直接返回末轮 metrics；GenericTrainer 的逐轮循环退化为
+        「总耗时摊到首轮 + 后续空转」，最优轨迹按末轮值记账（工程案例
+        流程铁证口径，非精度调优面——精度调优仍走脚本侧
+        scripts/train_pole_seg.py 全量口径）。
+
+        Args:
+            epoch: 当前轮次（仅记账，ultralytics 自管轮次）。
+            cfg: TrainConfig（data_yaml/epochs/img_size/batch_size/device/
+                workers/backbone/output_dir/amp 生效）。
+
+        Returns:
+            metrics dict（loss 末轮值，best-effort 提取，缺省 0.0）。
+
+        Raises:
+            ValueError: 未选择数据集（data_yaml 为空）——由训练页在选择
+                面拦截回退模拟，此为纵深防御第二道。
+        """
+        if self._train_model is not None:
+            return dict(self._train_metrics)
+        data_yaml = getattr(cfg, "data_yaml", "") or ""
+        if not data_yaml:
+            raise ValueError(
+                "未选择训练数据集（data.yaml）——请先在数据管理页导出训练集"
+            )
+        from ultralytics import YOLO
+
+        backbone = cfg.backbone or "yolov8n"
+        # .pt 路径原样使用（现成权重微调口径，免下载）；骨干名归一化 -seg.pt
+        if not backbone.endswith(".pt"):
+            backbone = f"{backbone}-seg.pt"
+        model = YOLO(backbone)
+        # project 必须绝对化：相对路径触发 ultralytics 的 {runs_dir}/{task}/
+        # 嵌套落点（W58 探针实证 runs/segment/outputs/train），产物位置随
+        # cwd/版本漂移——绝对路径钉死 {output_dir}/train/
+        model.train(
+            data=data_yaml,
+            epochs=max(1, cfg.epochs),
+            imgsz=cfg.img_size,
+            batch=cfg.batch_size,
+            device=cfg.device,
+            workers=cfg.workers,
+            project=os.path.abspath(cfg.output_dir),
+            name="train",
+            exist_ok=True,
+            amp=cfg.amp,
+        )
+        # best-effort 末轮 loss 提取（ultralytics 各版本返回形态不一）
+        loss = 0.0
+        trainer = getattr(model, "trainer", None)
+        for attr in ("loss", "loss_items", "final_epoch_loss"):
+            val = getattr(trainer, attr, None) if trainer is not None else None
+            if val is not None:
+                try:
+                    loss = float(val[-1] if isinstance(val, (list, tuple)) else val)
+                    break
+                except (TypeError, ValueError):
+                    continue
+        self._train_model = model
+        # W58 落盘口径修正：ultralytics 实际写到 {runs_dir}/{task}/{project}/
+        # {name}/（探针实证 runs/segment/outputs/train/weights/best.pt），
+        # 与 cfg.output_dir 直连直觉不符——以 trainer.save_dir 为准
+        save_dir = str(getattr(trainer, "save_dir", "") or "")
+        self._train_output_dir = save_dir or os.path.join(cfg.output_dir, "train")
+        self._train_metrics = {"loss": round(loss, 6)}
+        return dict(self._train_metrics)
+
+    def save(self, path: str) -> None:
+        """保存真训练产物：ultralytics best.pt 拷贝到训练器目标路径。
+
+        未跑过真训练时 no-op（空权重落盘无意义；模拟路径由
+        GenericTrainer 的既有 save 兜底语义管辖）。
+        """
+        import shutil
+
+        best = os.path.join(self._train_output_dir, "weights", "best.pt")
+        if os.path.isfile(best):
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            shutil.copyfile(best, path)
 
     def infer(
         self,
