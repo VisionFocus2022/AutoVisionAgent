@@ -1,9 +1,10 @@
 """主线程重活迁移测试（W3-T3，架构审查 P1-3）。
 
-data_manage 导入/划分、label AI 预标注、predict 单张推理必须移出 UI 线程：
+data_manage 导入/划分、predict 单张推理必须移出 UI 线程：
 FakeThread 替身记录线程创建并同步执行 worker（模拟完整跑完），证明
 ① 重活经 threading.Thread 分发（旧内联实现创建 0 线程 → RED）
 ② 完成后经 invoke_main 队列事件回主线程刷新（按钮恢复/结果落地）。
+（W59：label AI 预标注用例已随按钮删除移出本文件。）
 """
 from __future__ import annotations
 
@@ -89,39 +90,6 @@ def test_split_dataset_runs_in_worker(qapp, fake_threads, tmp_path, monkeypatch)
         len(list((base / s).glob("*.png"))) for s in ("train", "val", "test")
     )
     assert total == 10
-
-
-# ============================== label 预标注 ============================== #
-@pytest.mark.unit
-def test_ai_prelabel_runs_in_worker(qapp, fake_threads, monkeypatch):
-    from gui.pages.label import page as label_page_mod
-    from labeling.base import AnnotationMode, Shape
-
-    page = label_page_mod.LabelPage()
-    page._image_path = "demo.png"
-
-    def _fake_run(image_path):
-        assert image_path == "demo.png"
-        return [
-            Shape(
-                AnnotationMode.RECTANGLE,
-                ((1.0, 2.0), (30.0, 40.0)),
-                label="defect",
-            )
-        ]
-
-    monkeypatch.setattr(label_page_mod, "run_ai_prelabel", _fake_run)
-    # W28：预检语义收紧（注册≠可用，须查已加载权重）——本用例锚定
-    # worker 线程执行，放行预检（引擎可用性另有专项用例）
-    monkeypatch.setattr(label_page_mod, "det_engine_available", lambda: True)
-
-    page._ai_prelabel()
-
-    assert len(fake_threads.created) == 1, "预标注必须在 worker 线程执行"
-    qapp.processEvents()
-    assert page.btn_ai_prelabel.isEnabled()
-    assert len(page.canvas.shapes) == 1
-    assert page.canvas.shapes[0].mode is AnnotationMode.RECTANGLE
 
 
 # ============================== thread_bridge 回归 ============================== #

@@ -70,14 +70,6 @@ _EN_US: dict[str, str] = {
     "已撤销": "Undone",
     "已重做": "Redone",
     "标注数": "Shapes",
-    "零检出（未生成标注）": "No detections (no annotations generated)",
-    "批量预标注": "Batch Prelabel",
-    "批量预标注中": "Batch prelabeling...",
-    "批量预标注完成": "Batch Prelabel Complete",
-    "批量预标注已取消": "Batch Prelabel Cancelled",
-    "AI预标注不可用": "AI prelabel unavailable",
-    "请先在推理页加载 DET 模型": "Load a DET model on the Predict page first",
-    "选择批量预标注目录": "Select batch prelabel directory",
 
     # ---- v5 P2-N3 补译（tr() 对账守卫收口：en_US 零中文残留） ----
     "提示": "Notice",
@@ -92,7 +84,6 @@ _EN_US: dict[str, str] = {
     "快照清单读取失败": "Failed to read snapshot list",
     "版本对比完成": "Version compare complete",
     "无混淆矩阵数据": "No confusion matrix data",
-    "零样本未实装，请先训练/注册 DET 引擎": "Zero-shot not implemented; train/register a DET engine first",
     "旧密码": "Old Password",
     "新密码": "New Password",
     "确认新密码": "Confirm New Password",
@@ -105,7 +96,6 @@ _EN_US: dict[str, str] = {
     "交互式": "Interactive",
     # ---- W43：SAM 区域分割（模式标签经变量键传入，顺手补直译） ----
     "SAM 区域": "SAM Region",
-    "SAM 笔刷": "SAM Brush",
     "SAM 全图": "SAM Full-Image",
     "自动标注就绪": "Auto-annotation ready",
     "拖拽划定区域，区域内点击分割": "Drag to set region, click inside to segment",
@@ -336,11 +326,6 @@ _EN_US: dict[str, str] = {
     "选择标注文件夹": "Select annotation folder",
     "ONNX": "ONNX",
     "TensorRT": "TensorRT",
-    "已显示": "Shown",
-    "已隐藏": "Hidden",
-    "AI预标注": "AI Pre-label",
-    "AI预标注完成": "AI Pre-label Complete",
-    "显隐标注": "Toggle Shapes",
 
     # ---- P3 缺陷生成页 ----
     "缺陷生成": "Defect Generation",
@@ -377,7 +362,6 @@ _EN_US: dict[str, str] = {
     "确认删除": "Confirm Delete",
     "类别": "Class",
     "设置": "Settings",
-    "请先打开图像": "Please open an image first",
     "请先选择输出目录": "Please select output directory first",
     "选择图像进行推理": "Select image for inference",
 

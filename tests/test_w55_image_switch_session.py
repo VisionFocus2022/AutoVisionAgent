@@ -184,7 +184,6 @@ def marker_imread(monkeypatch):
 _SAM_MODES = [
     AnnotationMode.INTERACTIVE,
     AnnotationMode.REGION_SAM,
-    AnnotationMode.SAM_BRUSH,
     AnnotationMode.AUTO,
 ]
 
@@ -194,7 +193,7 @@ _SAM_MODES = [
 def test_switch_image_syncs_sam_session_all_modes(
     label_page, monkeypatch, folder2, fake_threads, marker_imread, mode
 ):
-    """换图后四个 SAM 模式的 labeler 都持新帧（v7 P1-2 主断言）。"""
+    """换图后 SAM 各模式的 labeler 都持新帧（v7 P1-2 主断言）。"""
     _open_folder(label_page, monkeypatch, folder2)
     adapter = FakeSamAdapter()
     label_page._sam_adapter = adapter
@@ -269,7 +268,7 @@ def test_stale_warm_result_not_attached(
 
 @pytest.mark.unit
 def test_switch_resets_mode_session_state(label_page, monkeypatch, folder2):
-    """v7 P3-7：RegionSam 区域框 / BrushSam 累积提示点换图清空。"""
+    """v7 P3-7：RegionSam 区域框换图清空。"""
     _open_folder(label_page, monkeypatch, folder2)
     adapter = FakeSamAdapter()
     label_page._sam_adapter = adapter
@@ -281,15 +280,6 @@ def test_switch_resets_mode_session_state(label_page, monkeypatch, folder2):
     monkeypatch.setattr(label_page, "_warm_sam", lambda: None)
     label_page.next_image()
     assert region_labeler._box is None, "换图应清 RegionSam 区域框"
-
-    label_page._apply_mode(AnnotationMode.SAM_BRUSH)
-    brush_labeler = label_page.controller._labeler
-    brush_labeler._fg_points = [(1.0, 2.0), (3.0, 4.0)]
-    brush_labeler._logits = object()
-
-    label_page.prev_image()  # 已在末张，回退同样走 _load_by_index 会话同步
-    assert brush_labeler._fg_points == []
-    assert brush_labeler._logits is None
 
 
 # ============================== W55·v7 P2-4：操作员感知通道 ============================== #

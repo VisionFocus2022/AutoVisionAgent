@@ -260,7 +260,7 @@ class SamSessionMixin:
         """槽：预热完成（主线程）——按当前模式注入。
 
         W44·C：AUTO 模式注入 AMG detector（全图自动分割 + IOU 阈值过滤）；
-        其余 SAM 模式（INTERACTIVE/REGION_SAM/SAM_BRUSH）注入 adapter。
+        其余 SAM 模式（INTERACTIVE/REGION_SAM）注入 adapter。
         W55·v7 P1-2：路径校验防丢拍——预热完成时用户已换图（warmed_path
         与当前 _image_path 不一致）则丢弃本次结果、对当前图重发预热，
         旧图 embedding 不再注入新画布。
@@ -363,15 +363,14 @@ class SamSessionMixin:
     def _sync_sam_session(self) -> None:
         """换图 SAM 会话同步（W55·v7 P1-2，全 SAM 模式）。
 
-        ① controller.cancel()：模式会话态重置（RegionSam 区域框 /
-           BrushSam 累积提示点与 logits——v7 P3-7）；
+        ① controller.cancel()：模式会话态重置（RegionSam 区域框）；
         ② controller.invalidate_image()：旧帧引用失效——新图预热完成前
            预测 no-op，新图坐标不进旧图模型；
         ③ _warm_sam()：异步预热新图（在途 busy 时本次跳过，由
            _sam_attach 的路径校验闭环对当前图补发）。
 
-        W4-T3 原仅 INTERACTIVE 生效——W43/W44 新增 REGION_SAM/SAM_BRUSH/
-        AUTO 三模式未同步扩展，v7 P1-2 收口。
+        W4-T3 原仅 INTERACTIVE 生效——W43/W44 新增 REGION_SAM/
+        AUTO 两模式未同步扩展，v7 P1-2 收口。
         """
         self.controller.cancel()
         self.controller.invalidate_image()

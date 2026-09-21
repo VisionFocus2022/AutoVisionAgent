@@ -1,24 +1,20 @@
 """W27（W26 计划）：label 页规模收敛抽取的行为保持守卫。
 
 背景：gui/pages/label/page.py W24 实测 828 行（棘轮 850，≤800 规范上限）。
-W27 把两块低内聚于"页面装配"的代码抽出（行为保持、槽名/模块级绑定不变）：
-  1. gui/pages/label/workers.py —— det_engine_available + run_ai_prelabel
-     （Qt-free 纯工作函数，仿 data_manage/workers.py 模式；W28 预标注
-     诚实化修复将落在此模块）
-  2. gui/pages/label/sam_session.py —— SAM 会话五方法 Mixin
-     （_ensure_sam/_sam_warmed/_warm_sam/_sam_attach/_sam_failed 原名
-     混入：invoke_main 槽名派发与 ui_on_error 经 MRO 解析不变）
+W27 把低内聚于"页面装配"的 SAM 会话代码抽出（行为保持、槽名/模块级
+绑定不变）：
+  gui/pages/label/sam_session.py —— SAM 会话五方法 Mixin
+  （_ensure_sam/_sam_warmed/_warm_sam/_sam_attach/_sam_failed 原名
+   混入：invoke_main 槽名派发与 ui_on_error 经 MRO 解析不变）
+
+（W59：原第 1 块 workers.py——det_engine_available + run_ai_prelabel
+——已随 AI 预标注/批量预标注按钮删除，相关用例一并移除。）
 
 兼容性红线（既有测试依赖，抽取不得破坏）：
-  - tests/test_gui_label_page.py 等大量用例 monkeypatch
-    gui.pages.label.page.run_ai_prelabel / det_engine_available
-    —— page.py 必须保留模块级 from-import 绑定（闭包经模块全局名
-    查找，补丁继续生效）
   - tests/test_sam_adapter.py TestSamDeviceWiring 源码守卫
     （adapter.load 须走 resolve_device）随代码迁移改指 sam_session.py，
     断言本体不变
 """
-import ast
 import importlib
 from pathlib import Path
 
@@ -26,49 +22,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LABEL_DIR = REPO_ROOT / "gui" / "pages" / "label"
-WORKERS = LABEL_DIR / "workers.py"
 SAM_SESSION = LABEL_DIR / "sam_session.py"
-PAGE = LABEL_DIR / "page.py"
-
-
-@pytest.mark.unit
-def test_workers_module_exists_and_qt_free():
-    """workers.py 在场且零 Qt 依赖（纯函数层，可同步单测）。"""
-    assert WORKERS.is_file(), "gui/pages/label/workers.py 应存在（W27 抽取）"
-    tree = ast.parse(WORKERS.read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            assert all(not a.name.startswith("PySide6") for a in node.names), (
-                f"workers.py 不得 import Qt（纯函数层）: {[a.name for a in node.names]}"
-            )
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            assert not node.module.startswith("PySide6"), (
-                f"workers.py 不得 from-import Qt: {node.module}"
-            )
-
-
-@pytest.mark.unit
-def test_workers_exposes_prelabel_functions():
-    """workers.py 提供 det_engine_available + run_ai_prelabel 两个顶层函数。"""
-    assert WORKERS.is_file()
-    tree = ast.parse(WORKERS.read_text(encoding="utf-8"))
-    funcs = {
-        n.name for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
-    }
-    assert {"det_engine_available", "run_ai_prelabel"} <= funcs
-
-
-@pytest.mark.unit
-def test_page_keeps_module_level_bindings_for_monkeypatch():
-    """page.py 保留模块级绑定（既有 monkeypatch 兼容红线）。
-
-    tests/test_gui_label_page.py::test_* 与 test_gui_jobs_migration.py
-    直接 setattr(gui.pages.label.page, "run_ai_prelabel"/"det_engine_available")。
-    """
-    src = PAGE.read_text(encoding="utf-8")
-    assert "from gui.pages.label.workers import" in src or (
-        "from .workers import" in src
-    ), "page.py 须以模块级 import 绑定 workers 函数（monkeypatch 兼容）"
 
 
 @pytest.mark.unit

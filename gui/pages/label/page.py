@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 import os
 
-from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, Signal, Slot
+from PySide6.QtCore import QSize, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QIcon, QImage, QKeySequence, QPixmap, QShortcut
 from PySide6.QtWidgets import (
     QFrame,
@@ -24,14 +24,9 @@ from PySide6.QtWidgets import (
 )
 
 from core.constants import IMG_EXTS as _IMG_EXTS
-from core.exceptions import AnnotationIOError, InvalidShapeError, SupervisedEngineError
+from core.exceptions import AnnotationIOError, InvalidShapeError
 from gui.core.i18n import tr
-from gui.core.jobs import run_job
-from gui.core.permissions import check_action  # W35：动作门控
-from gui.core.thread_bridge import invoke_main, ui_on_error
-from gui.pages.label import batch_prelabel as _bp  # W30：批量预标注（模块引用保测试缝）
 from gui.pages.label.sam_session import SamSessionMixin
-from gui.pages.label.workers import det_engine_available, run_ai_prelabel
 from gui.widgets.file_dialog import pick_directory, pick_open_file, pick_save_file
 from gui.widgets.thumbnail_loader import ThumbnailTask
 from labeling import AnnotationMode, save_labelme
@@ -48,7 +43,6 @@ _MODES = [
     (AnnotationMode.KEYPOINT, "关键点", "K"),
     (AnnotationMode.INTERACTIVE, "交互式", "I"),
     (AnnotationMode.REGION_SAM, "SAM 区域", "J"),
-    (AnnotationMode.SAM_BRUSH, "SAM 笔刷", "B"),
     # W46·B：补 W44 AUTO/AMG 通道缺失的 UI 入口（此前 _sam_attach 的
     # AUTO 分支无按钮可达=死路）——SAM3 后端下 label 输入框即概念提示词
     (AnnotationMode.AUTO, "SAM 全图", "G"),
@@ -58,7 +52,7 @@ _MODES = [
 # 绘制模式集合=SAM 系+手动系（规模守卫触发抽取，v6 P3 棘轮语义）
 _SAM_MODES = frozenset({
     AnnotationMode.INTERACTIVE, AnnotationMode.REGION_SAM,
-    AnnotationMode.SAM_BRUSH, AnnotationMode.AUTO,
+    AnnotationMode.AUTO,
 })
 _DRAW_MODES = _SAM_MODES | {
     AnnotationMode.POLYGON, AnnotationMode.RECTANGLE,
@@ -149,7 +143,7 @@ class LabelPage(SamSessionMixin, QWidget):
     """标注画布页（实装页）— 支持文件夹批量加载。
 
     SAM 交互式会话（加载/预热/注入）混入自 SamSessionMixin（W27 抽取，
-    槽名与行为不变）；AI 预标注工作函数在 gui/pages/label/workers.py。
+    槽名与行为不变）。
     """
 
     status_changed = Signal(str, str)  # (text, accent) -> 主壳状态栏
@@ -203,7 +197,7 @@ class LabelPage(SamSessionMixin, QWidget):
         root.addWidget(self._build_body_splitter(), 1)
 
     def _build_toolbar(self) -> QFrame:
-        """顶部工具栏：打开/翻页/模式组 + 编辑/AI 预标注/保存组。"""
+        """顶部工具栏：打开/翻页/模式组 + 编辑/保存组。"""
         bar = QFrame(self)
         bar.setObjectName("toolbar")
         bar.setFixedHeight(48)
@@ -251,7 +245,7 @@ class LabelPage(SamSessionMixin, QWidget):
             h.addWidget(btn)
 
     def _build_toolbar_action_group(self, bar: QWidget, h: QHBoxLayout) -> None:
-        """工具栏编辑组：撤销/重做/删除/清空 + AI 预标注/显隐 + 保存。"""
+        """工具栏编辑组：撤销/重做/删除/清空/卸载 SAM + 保存。"""
         sep2 = self._sep(bar)
         h.addWidget(sep2)
 
@@ -264,20 +258,6 @@ class LabelPage(SamSessionMixin, QWidget):
         for b in (self.btn_undo, self.btn_redo, self.btn_delete, self.btn_clear,
                   self.btn_sam_unload):
             h.addWidget(b)
-
-        sep3 = self._sep(bar)
-        h.addWidget(sep3)
-
-        self.btn_ai_prelabel = self._tbtn(bar, tr("AI预标注") + "  W")
-        self.btn_ai_prelabel.setProperty("role", "accent")
-        h.addWidget(self.btn_ai_prelabel)
-
-        # W30：文件夹批量预标注（对标 SKolpha saveData 自动标注产物）
-        self.btn_batch_prelabel = self._tbtn(bar, tr("批量预标注"))
-        h.addWidget(self.btn_batch_prelabel)
-
-        self.btn_toggle_shapes = self._tbtn(bar, tr("显隐标注"))
-        h.addWidget(self.btn_toggle_shapes)
 
         h.addStretch()
 
@@ -367,9 +347,6 @@ class LabelPage(SamSessionMixin, QWidget):
         self.btn_redo.clicked.connect(self.canvas.redo)
         self.btn_delete.clicked.connect(self._delete_selected)
         self.btn_clear.clicked.connect(self.canvas.clear_shapes)
-        self.btn_ai_prelabel.clicked.connect(self._ai_prelabel)
-        self.btn_batch_prelabel.clicked.connect(self._batch_prelabel)
-        self.btn_toggle_shapes.clicked.connect(self._toggle_shapes_visible)
 
         self.file_list.currentRowChanged.connect(self._on_file_selected)
 
@@ -389,7 +366,6 @@ class LabelPage(SamSessionMixin, QWidget):
             ("Esc", self.controller.cancel), ("Delete", self._delete_selected),
             ("Ctrl+S", self.save), ("Ctrl+O", self.open_image),
             ("A", self.prev_image), ("D", self.next_image),
-            ("W", self._ai_prelabel), ("Space", self._toggle_shapes_visible),
             ("Ctrl+C", self._copy_shapes),
             ("Ctrl+V", lambda: self._paste_shapes(20)),
         ]:
@@ -525,134 +501,6 @@ class LabelPage(SamSessionMixin, QWidget):
         total = len(self._image_files)
         self.btn_prev.setEnabled(self._current_index > 0)
         self.btn_next.setEnabled(self._current_index < total - 1)
-
-    # ------------------------------ AI 预标注 ------------------------------ #
-    def _ai_prelabel(self) -> None:
-        """AI 自动预标注（快捷键 W）。
-
-        对标 SKolpha：加载预训练模型推理 -> 自动生成标注 -> 人工修正。
-        W3-T3: 推理移出 UI 线程，完成后经 invoke_main 回主线程落形状。
-        W18（v3 P2-7）：零样本桥已删——DET 引擎不可用时状态栏诚实提示
-        （零样本未实装），不再派发必失败的静默路径。
-        """
-        if not self._image_path:
-            self.status_changed.emit(tr("请先打开图像"), "!")
-            return
-        if not det_engine_available():
-            self.status_changed.emit(
-                tr("AI预标注不可用"),
-                tr("零样本未实装，请先训练/注册 DET 引擎"),
-            )
-            return
-        logger.info("AI 预标注开始: %s", self._image_path)
-        self.btn_ai_prelabel.setEnabled(False)
-        self._pending_prelabel = []
-
-        def _work():
-            try:
-                shapes = run_ai_prelabel(self._image_path)
-            except (ImportError, RuntimeError, OSError, ValueError):
-                logger.exception("AI 预标注失败")
-                shapes = []
-            except SupervisedEngineError as exc:
-                # W28 审计折入：引擎级失败显式走失败槽（恢复按钮+报错），
-                # 不摊平成零检出——「零检出」只留给真实零框结果
-                invoke_main(self, "_prelabel_failed", str(exc)[:60])
-                return
-            self._pending_prelabel = shapes
-            invoke_main(self, "_prelabel_done", len(shapes))
-
-        # W17（v3 P2-1）：on_error 兜底——元组外异常也复位按钮（prelabel 槽）
-        run_job(_work, name="label_ai_prelabel", on_error=ui_on_error(self, "_prelabel_failed"))
-
-    @Slot(int)
-    def _prelabel_done(self, count: int) -> None:
-        """槽：预标注完成（主线程）——落形状并恢复按钮。"""
-        self.btn_ai_prelabel.setEnabled(True)
-        for s in self._pending_prelabel or []:
-            self.canvas.add_shape(mode=s.mode, label=s.label, points=list(s.points))
-        self._pending_prelabel = []
-        if count > 0:
-            self.status_changed.emit(tr("AI预标注完成"), f"{count} {tr('标注数')}")
-        else:
-            # W28：零检出给显式反馈（按钮恢复≠用户知情——W18 无静默路径）
-            self.status_changed.emit(
-                tr("AI预标注完成"), tr("零检出（未生成标注）")
-            )
-
-    @Slot(str)
-    def _prelabel_failed(self, err: str) -> None:
-        """槽：预标注异常兜底（W17 on_error）——恢复按钮并报错。"""
-        self.btn_ai_prelabel.setEnabled(True)
-        self._pending_prelabel = []
-        self.status_changed.emit(tr("操作失败"), err[:60])
-
-    # ------------------------------ W30 批量预标注 ------------------------------ #
-    def _batch_prelabel(self) -> None:
-        """文件夹批量预标注：目录→逐图 DET 推理→LabelMe JSON。
-
-        产物位置共享约定：{项目根 or workspace}/results/autolabel_{ts}/
-        （镜像 batchPredict；标注页无项目态 → workspace 根，绝不写进
-        被扫描数据集目录）。坏图跳过记录、取消停在当前图（manifest 留痕）。
-        """
-        denied = check_action("label.batch_prelabel")
-        if denied:
-            self.status_changed.emit(denied, "!")
-            return
-        if not det_engine_available():
-            self.status_changed.emit(
-                tr("AI预标注不可用"), tr("请先在推理页加载 DET 模型")
-            )
-            return
-        d = pick_directory(self, "选择批量预标注目录")
-        if not d:
-            return
-        from gui.pages.predict.workers import collect_images
-
-        images = collect_images(d)
-        if not images:
-            self.status_changed.emit(tr("目录无图像"), "!")
-            return
-        save_dir = _bp.autolabel_save_dir(None)
-        total = len(images)
-        self.btn_batch_prelabel.setEnabled(False)
-        self.status_changed.emit(tr("批量预标注中"), f"0/{total}")
-
-        def _work(cancel):
-            manifest = _bp.run_batch_prelabel(images, save_dir, cancel=cancel)
-            invoke_main(
-                self, "_batch_prelabel_done",
-                manifest["written"], total, manifest["cancelled"],
-            )
-
-        run_job(
-            _work, name="label_batch_prelabel",
-            on_error=ui_on_error(self, "_batch_prelabel_failed"),
-        )
-
-    @Slot(int, int, bool)
-    def _batch_prelabel_done(self, written: int, total: int, cancelled: bool) -> None:
-        """槽：批量预标注完成（主线程）。"""
-        self.btn_batch_prelabel.setEnabled(True)
-        if cancelled:
-            self.status_changed.emit(tr("批量预标注已取消"), f"{written}/{total}")
-        else:
-            self.status_changed.emit(tr("批量预标注完成"), f"{written}/{total}")
-
-    @Slot(str)
-    def _batch_prelabel_failed(self, err: str) -> None:
-        """槽：批量预标注异常兜底（W17 on_error）。"""
-        self.btn_batch_prelabel.setEnabled(True)
-        self.status_changed.emit(tr("操作失败"), err[:60])
-
-    def _toggle_shapes_visible(self) -> None:
-        """显隐标注层（快捷键 Space）。"""
-        current = self.canvas.itemsVisible()
-        self.canvas.setItemsVisible(not current)
-        self.status_changed.emit(
-            tr("显隐标注"),
-            tr("已显示") if not current else tr("已隐藏")
-        )
 
     # ------------------------------ 标注模式 ------------------------------ #
     def _apply_mode(self, mode: AnnotationMode) -> None:
@@ -791,7 +639,6 @@ class LabelPage(SamSessionMixin, QWidget):
         self.btn_delete.setText(tr("删除"))
         self.btn_clear.setText(tr("清空"))
         self.btn_apply_label.setText(tr("添加标签"))
-        self.btn_batch_prelabel.setText(tr("批量预标注"))
         for mode, label_key, key in _MODES:
             if mode in self._mode_btns:
                 self._mode_btns[mode].setText(f"{tr(label_key)}  {key}")

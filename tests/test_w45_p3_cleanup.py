@@ -28,7 +28,7 @@ class TestUnknownRoleFallback:
         """未知角色 × 已登记动作 = operator 同判定（v6 P3-6 统一）。"""
         from gui.core.permissions import action_allowed
 
-        assert action_allowed("intruder", "label.batch_prelabel") is True, (
+        assert action_allowed("intruder", "predict.batch_infer") is True, (
             "未知角色应回退 operator 判定（operator 允许该动作）"
         )
         # W57·v7 P3-1：原「is False or True」恒真断言回炉——"settings" 非

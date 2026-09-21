@@ -46,7 +46,6 @@ def test_check_action_permits_unlogged_and_registered(monkeypatch):
     session.set_current_role("operator")
     try:
         assert check_action("predict.batch_infer") is None, "operator×batch_infer 应放行"
-        assert check_action("label.batch_prelabel") is None
     finally:
         session.reset_current_role()
 
@@ -90,7 +89,7 @@ def test_check_action_denies_unregistered_with_audit(monkeypatch):
         session.reset_current_role()
 
 
-# ============================== 3. 三个按钮入口消费 ============================== #
+# ============================== 3. 按钮入口消费 ============================== #
 
 
 @pytest.fixture(scope="session")
@@ -98,32 +97,6 @@ def qapp():
     from PySide6.QtWidgets import QApplication
 
     return QApplication.instance() or QApplication([])
-
-
-@pytest.mark.unit
-def test_label_batch_prelabel_denied(qapp, monkeypatch):
-    """标注页批量预标注：动作拒绝 → 早退 + 状态栏文案。"""
-    from gui.pages.label import page as label_mod
-    from gui.pages.label.page import LabelPage
-
-    monkeypatch.setattr(
-        label_mod, "check_action",
-        lambda action: "无权限执行该操作" if action == "label.batch_prelabel" else None,
-    )
-    page = LabelPage()
-    page._msgs = []
-    page.status_changed.connect(lambda t, a: page._msgs.append((t, a)))
-
-    picked = []
-
-    def _sentinel(*a, **k):
-        picked.append(1)
-        return ""
-
-    monkeypatch.setattr(label_mod, "pick_directory", _sentinel)
-    page._batch_prelabel()
-    assert picked == [], "拒绝路径不得触目录对话框"
-    assert any("无权限" in t for t, _ in page._msgs), page._msgs
 
 
 @pytest.mark.unit

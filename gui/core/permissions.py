@@ -45,10 +45,8 @@ _PAGE_MATRIX: dict[str, frozenset[str]] = {
     }),
 }
 
-# ---- 动作矩阵（W29 空集起步；各波冻结动作集后逐波登记） ----
-# W30：批量预标注（标注页 operator 可见，动作不收紧——三角色全允许）
+# ---- 动作矩阵（W29 空集起步；各波冻结动作集后逐波登记） ---- #
 _ACTION_MATRIX: dict[str, frozenset[str]] = {
-    "label.batch_prelabel": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
     # W33：批量推理（operator 推理页可见，动作不收紧）
     "predict.batch_infer": frozenset({ROLE_ADMIN, ROLE_ENGINEER, ROLE_OPERATOR}),
     # W34：视频超分
@@ -83,8 +81,8 @@ def page_allowed(role: str, page_id: str) -> bool:
 def action_allowed(role: str, action: str) -> bool:
     """角色是否允许动作（W29 最小面：未注册动作全角色拒绝）。
 
-    后续波次（W30 批量预标注 / W33 批量产物 / W34 视频）冻结各自动作
-    集后在此登记：_ACTION_MATRIX[action] = frozenset({ROLE_...})。
+    后续波次（W33 批量产物 / W34 视频）冻结各自动作集后在此登记：
+    _ACTION_MATRIX[action] = frozenset({ROLE_...})。
     """
     allowed = _ACTION_MATRIX.get(action)
     # W45·P3-6：未知角色回退 operator（与 page_allowed 同口径；未登记动作

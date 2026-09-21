@@ -24,9 +24,9 @@ from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 _PAGES = [
     ("predict", "gui.pages.predict.page"),
     ("eval_", "gui.pages.eval_.page"),
-    ("label", "gui.pages.label.page"),
-    # W27：SAM 会话两处 run_job（label_sam_load/label_sam_warm）随
-    # SamSessionMixin 迁出——清单跟随，否则 W17 on_error 收口失守
+    # W59：label 页自身 run_job（AI 预标注）已随按钮删除——仅剩 SAM 会话
+    # 三处 run_job（label_sam_load/label_sam_warm/label_sam_predict）在
+    # sam_session.py，清单跟随，否则 W17 on_error 收口失守
     ("label_sam", "gui.pages.label.sam_session"),
     ("data_manage", "gui.pages.data_manage.page"),
     ("deploy", "gui.pages.deploy.page"),
@@ -167,30 +167,6 @@ def test_deploy_modelexporterror_recovers_button(qapp, fake_threads, monkeypatch
     qapp.processEvents()
     assert page._export_btn.isEnabled(), "ModelExportError 后导出按钮必须恢复"
     assert any("导出失败" in s for s in statuses)
-
-
-@pytest.mark.unit
-def test_label_prelabel_unexpected_exception_recovers_button(qapp, fake_threads, monkeypatch, tmp_path):
-    """label 预标注：run_ai_prelabel 抛元组外 KeyError → 按钮恢复。"""
-    from gui.pages.label import page as label_mod
-    from gui.pages.label.page import LabelPage
-
-    # W18：_ai_prelabel 启动前有 det_engine_available 预检——本用例锚定
-    # worker 异常路由，预检放行（引擎可用性另有专项用例）
-    monkeypatch.setattr(label_mod, "det_engine_available", lambda: True)
-
-    page = LabelPage()
-    page._image_path = str(tmp_path / "a.png")
-
-    def _boom(path):
-        raise KeyError("unexpected")
-
-    monkeypatch.setattr("gui.pages.label.page.run_ai_prelabel", _boom)
-
-    page.btn_ai_prelabel.setEnabled(False)
-    page._ai_prelabel()
-    qapp.processEvents()
-    assert page.btn_ai_prelabel.isEnabled()
 
 
 @pytest.mark.unit

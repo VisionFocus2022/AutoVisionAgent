@@ -1,9 +1,9 @@
 """label 页行为测试（W9-T2：55% → 最大绝对洼地填平）。
 
 文件夹批量加载（递归/上限 500/空目录/坏图）、单图与取消、导航边界、
-五模式切换与 dragMode、标签应用、撤销重做接线、删除/复制/粘贴、
-保存三态 + 自动切下一张（QTimer 真实触发）、run_ai_prelabel registry 直连路径
-（DET 引擎；W18 起零样本 dispatcher 回退已删——引擎不可用时诚实提示"零样本未实装"）。
+模式切换与 dragMode、标签应用、撤销重做接线、删除/复制/粘贴、
+保存三态 + 自动切下一张（QTimer 真实触发）。
+（AI/批量预标注与显隐标注按钮已于 W59 删除——历史用例随特性移除。）
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QListWidgetItem,
 )
 
-from labeling import AnnotationMode, Shape  # noqa: E402
+from labeling import AnnotationMode  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -354,161 +354,7 @@ def test_save_empty_and_cancel_and_io_error(label_page, monkeypatch, tmp_path):
     assert label_page._msgs[-1][1] == "ERROR"
 
 
-# ============================== AI 预标注 ============================== #
-@pytest.mark.unit
-def test_ai_prelabel_requires_image_then_lands_shapes(
-    label_page, fake_threads, monkeypatch, folder3, qapp
-):
-    from gui.pages.label import page as label_mod
-
-    label_page._ai_prelabel()
-    assert any(t == "请先打开图像" for t, _ in label_page._msgs)
-
-    # W18（v3 P2-7）：预检放行（本用例锚定落形状路径，不测引擎可用性）
-    monkeypatch.setattr(label_mod, "det_engine_available", lambda: True)
-    monkeypatch.setattr(label_mod, "pick_directory", lambda *a, **k: str(folder3))
-    label_page.open_folder()
-    shapes = [
-        Shape(AnnotationMode.RECTANGLE, ((1.0, 1.0), (9.0, 9.0)), label="crack"),
-        Shape(AnnotationMode.RECTANGLE, ((2.0, 2.0), (8.0, 8.0)), label="hole"),
-    ]
-    monkeypatch.setattr(label_mod, "run_ai_prelabel", lambda p: shapes)
-    label_page._ai_prelabel()
-    qapp.processEvents()
-
-    assert len(label_page.canvas.shapes) == 2
-    assert label_page.btn_ai_prelabel.isEnabled() is True
-    assert any(t == "AI预标注完成" for t, _ in label_page._msgs)
-
-
-# ==================== W18（v3 P2-7）：零样本桥删除后的诚实路径 ==================== #
-@pytest.mark.unit
-def test_ai_prelabel_without_det_engine_honest_status(
-    label_page, monkeypatch, tmp_path
-):
-    """W18：DET 引擎不可用 → 状态栏明确提示"零样本未实装"，不派发任务。
-
-    RED：旧实现静默走零样本 dispatcher 回退（必失败返回空，用户零感知）。
-    """
-    import models.supervised.registry as reg_mod
-
-    class _NoReg:
-        def has(self, t):
-            return False
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _NoReg())
-    label_page._image_path = str(tmp_path / "a.png")
-
-    label_page._ai_prelabel()
-
-    assert any(
-        "零样本未实装" in t or "零样本未实装" in a
-        for t, a in label_page._msgs
-    ), f"状态栏应含诚实文案'零样本未实装'，got: {label_page._msgs}"
-    # 未派发任务 → 按钮不应被禁用（不存在禁用后等空结果的路径）
-    assert label_page.btn_ai_prelabel.isEnabled() is True
-
-
-@pytest.mark.unit
-def test_run_ai_prelabel_no_det_engine_returns_empty_without_dispatcher(
-    tmp_path, monkeypatch
-):
-    """W18：无 DET 引擎时诚实返回空列表，绝不触碰 dispatcher（GUI 为
-    registry 直连正式形态，v3 P2-7）。"""
-    import models.supervised.registry as reg_mod
-    from gui.pages.label.page import run_ai_prelabel
-
-    class _NoReg:
-        def has(self, t):
-            return False
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _NoReg())
-
-    import industrial_vision_platform.vision_dispatcher as disp_mod
-
-    # 用调用记录器而非"抛异常哨兵"——AutoLabeler.run 会吞 Exception，
-    # 抛哨兵无法证明未调用（W18 实测：原 RED 波次被吞掉静默通过）
-    calls = []
-    monkeypatch.setattr(disp_mod, "get_dispatcher", lambda: calls.append(1))
-
-    img = tmp_path / "img.png"
-    _png(img)
-    assert run_ai_prelabel(str(img)) == []
-    assert calls == [], "run_ai_prelabel 不得再走 dispatcher 桥（v3 P2-7）"
-
-
-@pytest.mark.unit
-def test_run_ai_prelabel_det_engine_bad_image_returns_empty(
-    tmp_path, monkeypatch
-):
-    """W18：DET 引擎在位但坏图读不出 → 诚实返回空（无零样本回退可走）。"""
-    import models.supervised.registry as reg_mod
-    from core.interfaces_supervised import DetectionResult, TaskType
-    from gui.pages.label.page import run_ai_prelabel
-
-    class _Engine:
-        def infer(self, im):
-            return DetectionResult(task=TaskType.DET, score=0.0)
-
-    class _Reg:
-        def has(self, t):
-            return True
-
-        def get(self, t):
-            return _Engine()
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _Reg())
-
-    bad = tmp_path / "bad.png"
-    bad.write_bytes(b"junk")
-    assert run_ai_prelabel(str(bad)) == []
-
-
-@pytest.mark.unit
-def test_run_ai_prelabel_det_engine_path(tmp_path, monkeypatch):
-    import models.supervised.registry as reg_mod
-    from core.interfaces_supervised import DetectionResult, TaskType
-    from gui.pages.label.page import run_ai_prelabel
-
-    img = tmp_path / "img.png"
-    _png(img)
-
-    class _Engine:
-        def infer(self, im):
-            return DetectionResult(
-                task=TaskType.DET, score=0.9,
-                boxes=np.array([[1.0, 2.0, 30.0, 20.0], [5, 5, 9, 9]]),
-                labels=("crack", "hole"), scores=(0.9, 0.8),
-            )
-
-    class _Reg:
-        def has(self, t):
-            return True
-
-        def get(self, t):
-            return _Engine()
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _Reg())
-    shapes = run_ai_prelabel(str(img))
-    assert len(shapes) == 2
-    assert shapes[0].label == "crack"
-    assert shapes[0].mode is AnnotationMode.RECTANGLE
-
-
-# （W18：原 test_run_ai_prelabel_zero_shot_fallback_and_bad_image 已删——
-#  零样本 dispatcher 回退桥随 v3 P2-7 正式化移除，改为上方两个诚实路径用例）
-
-
-# ============================== 显隐与杂项 ============================== #
-@pytest.mark.unit
-def test_toggle_shapes_visible(label_page):
-    _add_rect(label_page)
-    before = label_page.canvas.itemsVisible()
-    label_page._toggle_shapes_visible()
-    assert label_page.canvas.itemsVisible() is (not before)
-    assert any(t == "显隐标注" for t, _ in label_page._msgs)
-
-
+# ============================== 杂项 ============================== #
 @pytest.mark.unit
 def test_thumbnail_callback_sets_icon(label_page):
     item = QListWidgetItem("a.png")
@@ -524,37 +370,3 @@ def test_retranslate_refresh_texts(label_page):
     label_page.retranslate()
     assert label_page.btn_open_folder.text() == "打开文件夹"
     assert label_page.btn_save.text() == "保存标注"
-
-
-@pytest.mark.unit
-def test_run_ai_prelabel_multiclass_labels_per_box(tmp_path, monkeypatch):
-    """W39（v6 P2-7）：多类 DET 结果逐框取标签——原实现全框共用
-    labels[0]，与批量预标注（batch_prelabel 逐框 labels[i]）语义分叉，
-    两条 AI 预标注路径对同一结果必须产出一致标签。"""
-    import models.supervised.registry as reg_mod
-    from core.interfaces_supervised import DetectionResult, TaskType
-    from gui.pages.label.page import run_ai_prelabel
-
-    class _Engine:
-        def infer(self, im):
-            return DetectionResult(
-                task=TaskType.DET, score=0.9,
-                boxes=((1, 2, 30, 20), (5, 6, 40, 25)),
-                labels=("crack", "dent"), scores=(0.9, 0.8),
-            )
-
-    class _Reg:
-        def has(self, t):
-            return True
-
-        def get(self, t):
-            return _Engine()
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _Reg())
-
-    img = tmp_path / "img.png"
-    _png(img)
-    shapes = run_ai_prelabel(str(img))
-    assert [s.label for s in shapes] == ["crack", "dent"], (
-        f"逐框标签应与检出对应，got {[s.label for s in shapes]}"
-    )

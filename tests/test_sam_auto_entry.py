@@ -23,10 +23,13 @@ def test_auto_mode_has_toolbar_entry():
 
 
 def test_mode_shortcuts_unique():
-    """模式快捷键不得与页内翻页/预标注键冲突（A=上一张 D=下一张 W=AI 预标注）。"""
+    """模式快捷键不得与页内翻页键冲突（A=上一张 D=下一张）。
+
+    （W59：W（AI 预标注）/Space（显隐标注）已随按钮删除，退出冲突集。）
+    """
     from gui.pages.label.page import _MODES
 
-    keys = [k for _m, _t, k in _MODES] + ["A", "D", "W", "Space"]
+    keys = [k for _m, _t, k in _MODES] + ["A", "D"]
     assert len(keys) == len(set(keys)), f"快捷键冲突: {sorted(keys)}"
 
 

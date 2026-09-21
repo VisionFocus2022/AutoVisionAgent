@@ -4,8 +4,9 @@
 1. 迁移守卫：三页源码无裸 threading.Thread 直调、必须消费 run_job（P2-1）；
 2. deploy 导出经 run_job 分发 + task_value 主线程预读形态保持（W14-C2），
    worker 体内触碰 QComboBox.currentIndex 立即炸；
-3. P2-19 关键操作日志：label 保存标注/AI 预标注开始、predict 批量开始/
-   完成/导出、deploy 导出开始/完成（caplog 断言）；
+3. P2-19 关键操作日志：label 保存标注、predict 批量开始/
+   完成/导出、deploy 导出开始/完成（caplog 断言）
+   （W59：AI 预标注日志用例已随按钮删除移出）；
 4. P2-2 原子写：predict 批量 batch_results.json 经 temp+os.replace 落盘
    （机制断言：replace 被调用且源为 .tmp 临时文件）+ 故障注入
    （replace 抛 OSError → 既有文件内容完好未截断）。
@@ -75,16 +76,23 @@ def _det_result(n_boxes=1, score=0.9):
 # ============================== 1. 迁移守卫（P2-1） ============================== #
 @pytest.mark.unit
 def test_three_pages_no_bare_threading_thread():
-    """P2-1 迁移守卫：label×3/predict×2/deploy×1 裸线程全部改经 run_job。"""
+    """P2-1 迁移守卫：label/predict/deploy 裸线程全部改经 run_job。
+
+    （W59：label 页 run_job 消费点随 AI 预标注删除迁至 sam_session.py，
+    「必须消费 run_job」断言对 label 改查 sam_session 模块。）
+    """
     from gui.pages.deploy import page as dep_mod
     from gui.pages.label import page as label_mod
+    from gui.pages.label import sam_session as sam_mod
     from gui.pages.predict import page as pred_mod
 
-    for mod in (label_mod, pred_mod, dep_mod):
+    for mod in (label_mod, sam_mod, pred_mod, dep_mod):
         src = Path(mod.__file__).read_text(encoding="utf-8")
         assert "threading.Thread" not in src, (
             f"{mod.__name__} 仍存在裸 threading.Thread 直调（P2-1 迁移未完成）"
         )
+    for mod in (sam_mod, pred_mod, dep_mod):
+        src = Path(mod.__file__).read_text(encoding="utf-8")
         assert "run_job(" in src, f"{mod.__name__} 未消费 gui.core.jobs.run_job"
 
 
@@ -175,29 +183,6 @@ def test_label_save_logs_operation(qapp, monkeypatch, tmp_path, caplog):
               if r.levelno == logging.INFO]
     assert any("保存标注" in m and str(out) in m for m in logged), (
         f"保存标注应记 info 日志（含路径），got: {logged}"
-    )
-
-
-@pytest.mark.unit
-def test_label_ai_prelabel_logs_start(qapp, fake_threads, monkeypatch, caplog):
-    """P2-19：AI 预标注开始落 info（含图像路径）。"""
-    from gui.pages.label import page as label_mod
-
-    page = label_mod.LabelPage()
-    page._image_path = "demo.png"
-    # W28：预检语义收紧（注册≠可用，须查已加载权重）——本用例锚定
-    # P2-19 日志而非预检，放行预检（引擎可用性另有专项用例）
-    monkeypatch.setattr(label_mod, "det_engine_available", lambda: True)
-    monkeypatch.setattr(label_mod, "run_ai_prelabel", lambda p: [])
-
-    with caplog.at_level(logging.INFO, logger="gui.pages.label.page"):
-        page._ai_prelabel()
-    qapp.processEvents()
-
-    logged = [r.getMessage() for r in caplog.records
-              if r.levelno == logging.INFO]
-    assert any("AI 预标注开始" in m and "demo.png" in m for m in logged), (
-        f"AI 预标注开始应记 info 日志，got: {logged}"
     )
 
 

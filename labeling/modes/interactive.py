@@ -80,7 +80,7 @@ class InteractiveLabeler(AbstractLabeler):
         if len(poly) >= 3:
             # W46·B：显式 POLYGON——_build 会带工具模式（INTERACTIVE），
             # LabelMe 导出器拒收致保存裸穿（UIA 真窗擒获）；形状类型与
-            # 工具模式解耦，对齐 region_sam/brush_sam 提交语义
+            # 工具模式解耦，对齐 region_sam 提交语义
             self._pending = Shape(
                 mode=AnnotationMode.POLYGON,
                 points=tuple((float(p[0]), float(p[1])) for p in poly),

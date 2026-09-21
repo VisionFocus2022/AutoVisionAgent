@@ -44,7 +44,6 @@ for _name, _module_path in [
     ("PolygonLabeler", "labeling.modes.polygon"),
     ("RectangleLabeler", "labeling.modes.rectangle"),
     ("RegionSamLabeler", "labeling.modes.region_sam"),
-    ("BrushSamLabeler", "labeling.modes.brush_sam"),
 ]:
     try:
         import importlib
@@ -68,7 +67,6 @@ _MODE_LABELLER_MAP = {
     AnnotationMode.AUTO: "AutoLabeler",
     AnnotationMode.INTERACTIVE: "InteractiveLabeler",
     AnnotationMode.REGION_SAM: "RegionSamLabeler",
-    AnnotationMode.SAM_BRUSH: "BrushSamLabeler",
 }
 
 for _mode, _cls_name in _MODE_LABELLER_MAP.items():
