@@ -23,6 +23,7 @@
 | 极柱标注：多边形 + 矩形 + 切图 + 保存 | test_pole_dataset_flows.py::test_pole_label_polygon_and_rectangle | ①状态栏"标注数" ②磁盘：两个 LabelMe JSON——polygon.json 含 shape_type=polygon、rectangle.json 含 rectangle，且 imagePath 互不相同（证明切图） | 多边形=左键 N 点 + 右键提交（labeling/controller.py:113-114）；矩形复用既有拖拽 |
 | 项目创建流 | test_pole_dataset_flows.py::test_project_create_flow | ①状态栏"已创建/创建失败" ②磁盘：存储目录下出现项目目录 ③UIA 树：项目列表项含项目名 | 存储目录走"浏览"→「选择存储目录」对话框（_browse_root 触发 _init_store 重初始化） |
 | 设置持久化（主题切换） | test_pole_dataset_flows.py::test_settings_theme_persist | ①状态栏保存成功 ②磁盘：user_settings.json 含 theme 键 | exe 模式写 `dist/.../_internal/configs/`（烤进包内，不污染仓库）；测后恢复深色 |
+| 极柱工程案例全链（W58·含真训练） | test_pole_engineering_case.py::test_pole_engineering_case_full_chain | ①状态栏逐步（含「训练已启动 seg」「批量完成」）②磁盘：LabelMe JSON（SAM3 polygon+矩形）/ yolo 目录 data.yaml+labels（seg 多边形行）/ seg_final.pt 6.8MB 真权重 / batch_results.json ≥4 条 / CSV 表头+数据行 ③UIA 树：任务下拉按名定向 | python 模式两连绿 ~153s；真训练=ultralytics 2 epochs（PRD FR-1 通道）；SAM3 异步（ADR 0003）真窗首验 |
 | 主页仪表盘渲染 | test_pole_dataset_flows.py::test_home_dashboard | UIA 树：仪表盘/快捷操作/最近项目/检测历史 标签存在 | W9 计数器修复后的页面加载冒烟 |
 
 ## 断言铁证通道（三级，无像素断言）
@@ -49,7 +50,8 @@
 ## 条件用例（本轮不做，记录在案）
 
 - AI 预标注（"AI预标注  W"）：需真权重/引擎，环境就绪后补。
-- 推理页真模型批量 + 导出 CSV：`AVA_UIA_MODEL` 指向真 .pt 后补（W8 修的 numpy→json 路径届时在真窗复验）。
+- ~~推理页真模型批量 + 导出 CSV~~（W58 已偿：工程案例全链用例以**自产真权重**（当轮训练 seg_final.pt）完成批量推理 + CSV——比原设想更近一步，模型来自软件自身）。
+- ~~训练真引擎~~（W58 已偿：GUI 真训练通道 FR-1 落地，seg 任务经 ultralytics 真训，epochs 表单可调）。
 - 评估页 GT 对比、缺陷生成页：依赖真模型/生成引擎。
 
 ## 确认记录
