@@ -65,6 +65,16 @@ T1 产品侧真训练通道（FR-1，TDD：先单测后实现）→ T2 UIA 助�
 | AC-5 SAM3 异步真窗 | ✅ | 用例内 3 次 SAM3 点击均形状提交（W55/ADR 0003 真窗首验通过，无假红） |
 | AC-6 主门禁 | ✅ | 1265 passed + 5 skipped / ruff 0 / 覆盖 ≥92 棘轮随 addopts |
 
+**exe 打包模式补充验证（2026-09-21，用户指令追加）**：重打包后全链
+**两连绿**（166.10s / 148.88s）——发版检查单口径闭环。exe 专属问题两枚
+均在跑批中定位并修复：
+① 冻结态 DataLoader 多进程崩溃 → `sys.frozen` 时 workers=0（单测守护）；
+② 冻结窗口态 exe 继承 pytest 控制台句柄 → ultralytics Rich 控制台探测
+异常致 worker 无声死 → conftest exe 分支 stdout 改 PIPE 捕获（对齐 python
+分支可诊断性，兼修句柄形态；双击启动无控制台形态不受影响）。
+另：标注完成后经「卸载 SAM」释放 ~4GB 显存再训练（W56 卸载通道首次
+实战，操作员真实流形态）。
+
 **实施中顺带修复的产品缺陷**（探索未预见，属 FR-1 落地必要件）：
 ① 数据集导出取消/路径未接受时静默 return → 诚实发「已取消」状态（data_manage）；
 ② ultralytics project 相对路径触发 {runs}/{task} 嵌套落点漂移 → 绝对化钉死 {output_dir}/train；

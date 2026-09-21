@@ -178,7 +178,26 @@ def _launch_app(source: str) -> subprocess.Popen:
     # dist\AutoVisionAgent\logs（cwd 相对）供 UIA 失败排查，不被 pytest
     # 会话临时目录劫走（python 源码分支继承 env 正是隔离所需，不动）。
     exe_env = {k: v for k, v in os.environ.items() if k != "AVA_LOG_DIR"}
-    return subprocess.Popen([exe], cwd=os.path.dirname(exe), env=exe_env)
+    # W58：exe stdout/stderr 也管道捕获（GBK 安全解码）——此前 exe 模式
+    # worker 异常只进 stdout 不可见（训练冻结态失败排障实证），对齐
+    # python 分支的可诊断性；仅日志转发，不改变应用行为。
+    proc = subprocess.Popen(
+        [exe], cwd=os.path.dirname(exe), env=exe_env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+    import threading
+
+    def _exe_reader():
+        try:
+            for b in iter(proc.stdout.readline, b""):
+                logger.info(
+                    "[exe] %s", b.decode("utf-8", errors="replace").rstrip()
+                )
+        except Exception:  # noqa: BLE001  # 进程退出后管道关闭属正常
+            pass
+
+    threading.Thread(target=_exe_reader, daemon=True).start()
+    return proc
 
 
 def _dump_process(proc: subprocess.Popen) -> None:

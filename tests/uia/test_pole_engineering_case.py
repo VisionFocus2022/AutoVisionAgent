@@ -287,6 +287,13 @@ def _step_annotate(win, data_dir: Path) -> Path:
     kinds = {s.get("shape_type") for s in doc["shapes"]}
     assert "polygon" in kinds, f"SAM3 多边形缺失: {kinds}"
     logger.info("标注铁证: %d shapes, 类型 %s", len(doc["shapes"]), kinds)
+
+    # 标注完成卸载 SAM 释放 ~4GB 显存（W56 卸载通道）——后续真训练与
+    # 推理共用 12GB 笔记本卡，SAM3 常驻会挤兑（exe 模式实证：训练启动
+    # 即 OOM 型静默失败）；亦贴合操作员「标注完→释放→训练」真实流
+    if click_button(win, "卸载 SAM", T_NAV):
+        unloaded = wait_status(win, "SAM 已卸载", timeout=30.0)
+        logger.info("SAM 卸载: %s", unloaded or "<未确认（继续）>")
     return label_path
 
 
@@ -363,7 +370,14 @@ def _step_train(win, data_yaml: Path) -> Path:
     assert final is not None, f"训练未终态: {_last_status(win)}"
     assert "完成" in final, f"训练失败: {final}"
 
-    outputs = Path(os.environ.get("AVA_TRAIN_OUTPUTS", str(REPO_ROOT / "outputs")))
+    # 输出根随被测模式：python=cwd(仓根) / exe=cwd(dist/AutoVisionAgent)——
+    # 训练器 output_dir 是 App 的相对路径 ./outputs
+    _source = os.environ.get("AVA_UIA_SOURCE", "exe").lower()
+    _app_root = (
+        REPO_ROOT if _source == "python"
+        else REPO_ROOT / "dist" / "AutoVisionAgent"
+    )
+    outputs = Path(os.environ.get("AVA_TRAIN_OUTPUTS", str(_app_root / "outputs")))
     final_pt = outputs / "seg_final.pt"
     # W58 铁证主锚：seg_final.pt（训练器正名产物，= best.pt 拷贝）。
     # ultralytics best 原始位随版本/cwd 漂移（相对 project 嵌套 runs/ 怪癖），

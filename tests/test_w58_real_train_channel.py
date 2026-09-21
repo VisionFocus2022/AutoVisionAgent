@@ -91,6 +91,24 @@ def test_train_epoch_one_shot_adapter(fake_yolo, tmp_path):
 
 
 @pytest.mark.unit
+def test_train_epoch_frozen_forces_zero_workers(fake_yolo, monkeypatch, tmp_path):
+    """冻结态（PyInstaller exe）DataLoader 多进程会重_exec 自身——workers 清零。"""
+    import sys
+
+    from models.supervised.engines.seg_yolo import SegYoloEngine
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    cfg = TrainConfig(
+        task=TaskType.SEG, epochs=1, device="cpu", workers=4,
+        output_dir=str(tmp_path), data_yaml=str(tmp_path / "data.yaml"),
+    )
+    SegYoloEngine().train_epoch(1, cfg)
+    assert fake_yolo.created[0].train_calls[0]["workers"] == 0, (
+        "冻结态 workers 必须 0（exe 模式 DataLoader 崩溃实证）"
+    )
+
+
+@pytest.mark.unit
 def test_train_epoch_backbone_pt_path_passthrough(fake_yolo, tmp_path):
     """.pt 全路径 backbone 原样使用（微调口径，免下载）。"""
     from models.supervised.engines.seg_yolo import SegYoloEngine

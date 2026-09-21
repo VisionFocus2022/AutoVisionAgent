@@ -83,13 +83,18 @@ class _YoloSegBase(AbstractTaskEngine):
         # project 必须绝对化：相对路径触发 ultralytics 的 {runs_dir}/{task}/
         # 嵌套落点（W58 探针实证 runs/segment/outputs/train），产物位置随
         # cwd/版本漂移——绝对路径钉死 {output_dir}/train/
+        # workers 冻结态清零：PyInstaller exe 下 DataLoader 多进程会重_exec
+        # 自身（经典冻结态崩溃，exe 模式实证：训练启动即失败且无异常日志；
+        # python 模式不受影响）
+        import sys
+        workers = 0 if getattr(sys, "frozen", False) else cfg.workers
         model.train(
             data=data_yaml,
             epochs=max(1, cfg.epochs),
             imgsz=cfg.img_size,
             batch=cfg.batch_size,
             device=cfg.device,
-            workers=cfg.workers,
+            workers=workers,
             project=os.path.abspath(cfg.output_dir),
             name="train",
             exist_ok=True,
