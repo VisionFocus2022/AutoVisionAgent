@@ -34,6 +34,7 @@ import pytest
 
 try:
     from tests.uia.uia_helpers import (
+        _iter_descendants,
         app_log_path,
         click_button,
         click_canvas_at,
@@ -54,6 +55,7 @@ try:
     )
 except ImportError:  # pragma: no cover - 顶层模式兜底
     from uia_helpers import (  # type: ignore
+        _iter_descendants,
         app_log_path,
         click_button,
         click_canvas_at,
@@ -125,6 +127,32 @@ def _last_status(win) -> str:
         return read_status_text(win)
     except Exception:  # noqa: BLE001
         return "<读取失败>"
+
+
+def _invoke_if_status_stuck(win, button_text: str, settle: float = 8.0) -> None:
+    """W64：模式按钮物理点击偶发不触发（远程会话 z 序/输入延迟）——
+    settle 秒内状态栏无任何变动则对该控件补一发 InvokePattern.Invoke
+    （Qt checkable 按钮的 Invoke 直发 clicked，免鼠标，W60 锁屏期已证）；
+    状态已动（点击生效）则零操作返回。"""
+    baseline = _last_status(win)
+    deadline = time.time() + settle
+    while time.time() < deadline:
+        time.sleep(1.0)
+        if _last_status(win) != baseline:
+            return
+    import uiautomation as _ua
+
+    for c in _iter_descendants(win, max_depth=12):
+        try:
+            tn = type(c).__name__
+            if tn.startswith(("Button", "CheckBox")) \
+                    and button_text in (c.Name or ""):
+                c.GetPattern(10000).Invoke()  # UIA_InvokePatternId
+                logger.info("状态 %ss 未动，已 Invoke 补击 %r", settle, button_text)
+                return
+        except Exception:  # noqa: BLE001
+            continue
+    logger.warning("Invoke 补击未找到控件 %r", button_text)
 
 
 def _count_status_shapes(status: str) -> int:
@@ -226,6 +254,11 @@ def _step_annotate(win, data_dir: Path) -> Path:
 
     # ---- SAM3 交互式：加载 → 就绪 → 点击×3（每次：异步推理→右键提交）----
     assert click_button(win, "交互式", T_NAV), "未找到'交互式'模式按钮"
+    # W64：物理点击偶发不触发模式切换（远程会话 z 序/输入延迟），8s 内
+    # 状态无变动则 Invoke 补一刀（checkable 按钮的 Invoke 直发 clicked，
+    # 免鼠标——W60 锁屏期已证此通道），再进入长等待
+    _invoke_if_status_stuck(win, "交互式")
+
     ready = wait_any_status(
         win, ["交互式标注就绪", "SAM 加载失败"], T_SAM3_LOAD
     )
@@ -302,9 +335,19 @@ def _step_export_dataset(win, data_dir: Path, export_root: Path) -> Path:
     logger.info("--- 步骤3：导出训练集 ---")
     export_root.mkdir(parents=True, exist_ok=True)  # 文件夹对话框需已存在路径
     assert _nav_click(win, "数据管理", "导出训练集"), "未找到'导出训练集'"
-    assert enter_path_in_open_dialog(
+
+    # W64：对话框偶发不现（点击未达槽 / _get_ann_dir 意外 None）——
+    # 二次点击重试 + 状态回读定位（请先选择目录=目录态丢了；状态未动=点击没落）
+    if not enter_path_in_open_dialog(
         "选择导出输出目录", str(export_root), T_NAV
-    )
+    ):
+        logger.warning(
+            "导出对话框未现（首次），状态=%r，二次点击重试", _last_status(win)
+        )
+        assert click_button(win, "导出训练集", T_NAV), "二次未找到'导出训练集'"
+        assert enter_path_in_open_dialog(
+            "选择导出输出目录", str(export_root), T_NAV
+        ), f"导出对话框二次未现，状态={_last_status(win)!r}"
     status = wait_any_status(
         win, ["张", "失败", "请先选择目录", "无标注"], T_IMPORT
     )

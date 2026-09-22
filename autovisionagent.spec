@@ -20,7 +20,13 @@ a = Analysis(
     ] + ([
         # 如果 configs/user_settings.json 存在则打包
         ("configs/user_settings.json", "configs"),
-    ] if Path("configs/user_settings.json").exists() else []),
+    ] if Path("configs/user_settings.json").exists() else []) + ([
+        # W63 复盘：骨干权重随包分发（exe CWD=dist 根，ultralytics 按裸名
+        # 就地解析——缺文件即触发联网下载，离线工位直接训练失败；
+        # W58 时代的 dist 内 .pt 是手动拷贝，重建即丢，此处固化进 spec
+        ("yolov8n-seg.pt", "."),
+        ("yolo26n.pt", "."),
+    ] if Path("yolov8n-seg.pt").exists() else []),
     hiddenimports=[
         # PySide6
         "PySide6.QtCore",

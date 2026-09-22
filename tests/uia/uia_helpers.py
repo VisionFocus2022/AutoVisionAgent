@@ -165,6 +165,11 @@ def click_button(root, text_contains: str, timeout: float = 10.0) -> bool:
     if btn is None:
         logger.warning("未找到按钮: '%s'", text_contains)
         return False
+    # W64：原生对话框刚关/远程会话（ToDesk）下主窗 z 序可能漂移——
+    # UIA Click 走物理坐标，窗口不在前台即落空（页没切/模式没切，
+    # 表现为下一步"按钮找不到"或状态超时）。激活前置消掉这一类假红。
+    with contextlib.suppress(Exception):
+        root.SetActive()
     with contextlib.suppress(Exception):
         btn.SetFocus()
     btn.Click()
@@ -978,6 +983,10 @@ def select_combo_item_by_text(root, text_contains: str,
     if combo_name_contains:
         named = [c for c in combos if combo_name_contains in (c.Name or "")]
         combos = named or combos
+    # W64：弹窗差集策略依赖主窗前台（z 序漂移时点击/弹窗检测全废），
+    # 激活前置与 click_button 同款
+    with contextlib.suppress(Exception):
+        root.SetActive()
     for c in combos:
         try:
             c.Select(text_contains)
