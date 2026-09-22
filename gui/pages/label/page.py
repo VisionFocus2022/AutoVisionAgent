@@ -147,6 +147,7 @@ class LabelPage(SamSessionMixin, QWidget):
     """
 
     status_changed = Signal(str, str)  # (text, accent) -> 主壳状态栏
+    request_page = Signal(str)  # W59c：「下一步」向导导航（shell 泛化挂接）
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -264,6 +265,13 @@ class LabelPage(SamSessionMixin, QWidget):
         self.btn_save = QPushButton(tr("保存标注"), bar)
         self.btn_save.setProperty("role", "accent")
         h.addWidget(self.btn_save)
+
+        # W59c：向导下一步——标注完成→数据管理（导出训练集）
+        self.btn_goto_data = QPushButton(tr("下一步：数据管理"), bar)
+        self.btn_goto_data.clicked.connect(
+            lambda: self.request_page.emit("data_manage")
+        )
+        h.addWidget(self.btn_goto_data)
 
     def _build_body_splitter(self) -> QSplitter:
         """正文三栏：图像文件列表 + 画布 + 右侧标签面板。"""
@@ -417,6 +425,7 @@ class LabelPage(SamSessionMixin, QWidget):
             more.setFlags(Qt.NoItemFlags)
             self.file_list.addItem(more)
         self.file_list.blockSignals(False)
+        self._mark_annotated_items()  # W59b：● 标记有同名 JSON 的图
 
         # 自动加载第一张
         if images:
@@ -481,6 +490,55 @@ class LabelPage(SamSessionMixin, QWidget):
         # W55·v7 P1-2：换图 SAM 会话同步（全模式，防丢拍见 _sam_attach）
         if getattr(self._sam_adapter, "loaded", False):
             self._sync_sam_session()
+        # W59b：画布为空时自动载入同名 LabelMe JSON（PRD FR-1）
+        self._try_load_existing_json()
+
+    # ====================== 同目录 LabelMe 识别（W59b · PRD FR-1） ====================== #
+
+    def _sibling_json(self, image_path: str) -> str | None:
+        """同名 LabelMe JSON 路径（存在才返回）。"""
+        jp = os.path.splitext(image_path)[0] + ".json"
+        return jp if os.path.isfile(jp) else None
+
+    def _mark_annotated_items(self) -> None:
+        """文件列表为有同名 JSON 的图加 ● 前缀（打开文件夹后一次扫描）。
+
+        只查存在性不解析（1288 次 stat 量级可忽略）；非图像说明行按
+        「项文本以文件名结尾」判据跳过（错位保护）。
+        """
+        for row in range(min(self.file_list.count(), len(self._image_files))):
+            item = self.file_list.item(row)
+            base = os.path.basename(self._image_files[row])
+            if not item.text().endswith(base):
+                continue
+            if self._sibling_json(self._image_files[row]) and \
+                    not item.text().startswith("● "):
+                item.setText(f"● {base}")
+
+    def _try_load_existing_json(self) -> None:
+        """画布为空时自动载入当前图同名 LabelMe JSON（PRD FR-1②）。
+
+        画布非空（手绘在途）不合并不覆盖；损坏 JSON 容错提示不炸
+        （json.JSONDecodeError 属 ValueError 子类，已覆盖）。
+        """
+        if self.canvas.shapes or not self._image_path:
+            return
+        jp = self._sibling_json(self._image_path)
+        if not jp:
+            return
+        try:
+            from labeling.io_labelme import load_labelme_shapes
+
+            shapes = load_labelme_shapes(jp)
+        except (OSError, ValueError, KeyError, AnnotationIOError) as exc:
+            logger.warning("载入既有标注失败: %s (%s)", jp, exc)
+            self.status_changed.emit(tr("载入标注失败"), str(exc)[:60])
+            return
+        if shapes:
+            self.canvas.replace_all(shapes)
+            self.status_changed.emit(
+                tr("已载入"), f"{len(shapes)} {tr('标注数')}"
+            )
 
     def _on_file_selected(self, row: int) -> None:
         """文件列表点击 -> 加载图像。"""

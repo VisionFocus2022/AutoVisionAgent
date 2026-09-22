@@ -79,6 +79,7 @@ class DataManagePage(QWidget):
     """数据管理页：导入图像 → 浏览缩略图 → 划分数据集 → 查看统计。"""
 
     status_changed = Signal(str, str)  # (text, accent) → 主壳状态栏
+    request_page = Signal(str)  # W59c：「下一步」向导导航
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -215,6 +216,9 @@ class DataManagePage(QWidget):
         h.addWidget(self.cmb_export_fmt)
         self.btn_export = QPushButton(tr("导出训练集"), bar)
         h.addWidget(self.btn_export)
+        self.btn_goto_train = QPushButton(tr("下一步：训练"), bar)  # W59c 向导
+        self.btn_goto_train.clicked.connect(lambda: self.request_page.emit("train"))
+        h.addWidget(self.btn_goto_train)
 
     def _build_toolbar_version_group(self, bar: QWidget, h: QHBoxLayout) -> None:
         """工具栏版本组：创建快照 + 版本对比（W19 v3 第三波 FR-4.2）。"""
@@ -344,6 +348,8 @@ class DataManagePage(QWidget):
         ann = os.path.join(os.path.dirname(path), "annotations")
         if os.path.isdir(ann):
             self._annotations_dir = ann
+        else:
+            self._annotations_dir = None  # W59：残留旧值会把旧目录 JSON 数进新目录
         self._refresh()
         self.status_changed.emit(
             tr("已选择目录"), path.replace("\\", "/").split("/")[-1]
@@ -508,13 +514,10 @@ class DataManagePage(QWidget):
             more.setFlags(Qt.NoItemFlags)
             self.thumb_list.addItem(more)
 
-        # 统计已标注数
+        ann_dir = self._annotations_dir or self._image_dir  # W59：_get_ann_dir 同口径
         ann_count = 0
-        if self._annotations_dir and os.path.isdir(self._annotations_dir):
-            ann_count = len([
-                f for f in os.listdir(self._annotations_dir)
-                if f.endswith(".json")
-            ])
+        if ann_dir and os.path.isdir(ann_dir):
+            ann_count = len([f for f in os.listdir(ann_dir) if f.endswith(".json")])
 
         self._update_stats(len(images), ann_count, {})
         self.status_changed.emit(tr("就绪"), f"{len(images)} {tr('张')}")

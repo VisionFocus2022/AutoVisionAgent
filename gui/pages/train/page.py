@@ -67,6 +67,7 @@ _TRAIN_PRESETS = {
 class TrainPage(QWidget):
     """训练配置与执行页。"""
 
+    request_page = Signal(str)  # W59c：「下一步」向导导航
     status_changed = Signal(str, str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -122,6 +123,11 @@ class TrainPage(QWidget):
         self.btn_stop.setEnabled(False)
         btn_lay.addWidget(self.btn_start)
         btn_lay.addWidget(self.btn_stop)
+        # W59c：训练完成→推理（加载产物批量推理）；权限门随 shell.select
+        self.btn_goto_predict = QPushButton(tr("下一步：推理"), form_frame)
+        self.btn_goto_predict.clicked.connect(
+            lambda: self.request_page.emit("predict"))
+        btn_lay.addWidget(self.btn_goto_predict)
         ff.addLayout(btn_lay)
 
         # 进度条
@@ -279,7 +285,46 @@ class TrainPage(QWidget):
         )
         if path:
             self.txt_data.setText(path)
-            self.status_changed.emit(tr("数据集"), os.path.basename(path))
+            self._echo_dataset_stats(path)
+
+    def _echo_dataset_stats(self, yaml_path: str) -> None:
+        """数据集样本统计回显（W59b · PRD FR-2）：train/val 各 N 张。
+
+        只数文件不解析标签（轻量）；{split} 与 {split}/images 两目录形态
+        均认；清单缺键/路径无效/文件不可读诚实提示。
+        """
+        try:
+            from yaml import safe_load
+
+            with open(yaml_path, encoding="utf-8") as fh:
+                doc = safe_load(fh) or {}
+            base = os.path.dirname(os.path.abspath(yaml_path))
+            parts: list[str] = []
+            for split in ("train", "val"):
+                rel = doc.get(split)
+                if not isinstance(rel, str):
+                    continue
+                for cand in (
+                    os.path.join(base, rel),
+                    os.path.join(base, rel, "images"),
+                ):
+                    if os.path.isdir(cand):
+                        n = sum(
+                            1 for f in os.listdir(cand)
+                            if f.lower().endswith(
+                                (".png", ".jpg", ".jpeg", ".bmp")
+                            )
+                        )
+                        parts.append(f"{split}={n}")
+                        break
+            if parts:
+                self.status_changed.emit(tr("数据集"), " ".join(parts))
+            else:
+                self.status_changed.emit(
+                    tr("数据集清单读取失败"), "train/val 键缺失或路径无效"
+                )
+        except (OSError, ValueError) as exc:
+            self.status_changed.emit(tr("数据集清单读取失败"), str(exc)[:60])
 
     def _build_config(self) -> TrainConfig:
         """从表单构造 TrainConfig（R5-4: 补全全部字段）。"""

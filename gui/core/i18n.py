@@ -487,6 +487,16 @@ _EN_US: dict[str, str] = {
         "SAM3 backend: no negative-click or brush-iterate refinement"
     ),
 
+    # ---- W59c 新增（工作流下一步向导导航，PRD FR-2） ----
+    "下一步：数据管理": "Next: Data",
+    "下一步：训练": "Next: Train",
+    "下一步：推理": "Next: Predict",
+
+    # ---- W59b 新增（标注页 JSON 识别 + 训练页样本回显，PRD FR-1/2） ----
+    "已载入": "Loaded",
+    "载入标注失败": "Failed to load annotations",
+    "数据集清单读取失败": "Dataset manifest read failed",
+
     # ---- W58 新增（GUI 真训练通道，PRD FR-1） ----
     "数据集": "Dataset",
     "未选择（模拟训练）": "Not selected (simulated training)",

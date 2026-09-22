@@ -185,9 +185,16 @@ class MainWindow(QMainWindow):
     def add_page(
         self, key: str, icon: str, title: str, widget: QWidget
     ) -> None:
-        """注册页面到侧边导航 + 页面栈。"""
+        """注册页面到侧边导航 + 页面栈。
+
+        W59c：页面可声明 request_page = Signal(str) 获得「下一步」向导
+        导航能力（泛化挂接到 select——权限/审计走既有门，无信号页零侵入）。
+        """
         self._pages[key] = widget
         self._stack.addWidget(widget)
+        req = getattr(widget, "request_page", None)
+        if req is not None:
+            req.connect(self.select)
 
         btn = QPushButton(f"  {title}")
         btn.setProperty("nav", True)
