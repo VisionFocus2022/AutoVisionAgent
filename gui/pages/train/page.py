@@ -287,6 +287,15 @@ class TrainPage(QWidget):
             self.txt_data.setText(path)
             self._echo_dataset_stats(path)
 
+    def apply_external_dataset(self, yaml_path: str) -> None:
+        """应用外部传入的数据集清单（W63：数据管理「下一步」向导交接）。
+
+        与 _browse_data_yaml 同语义（填入+统计回显），无对话框——
+        真实训练仍需显式点「开始训练」，此处只带上下文不触发任何重活。
+        """
+        self.txt_data.setText(yaml_path)
+        self._echo_dataset_stats(yaml_path)
+
     def _echo_dataset_stats(self, yaml_path: str) -> None:
         """数据集样本统计回显（W59b · PRD FR-2）：train/val 各 N 张。
 

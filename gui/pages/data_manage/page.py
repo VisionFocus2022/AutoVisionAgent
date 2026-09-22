@@ -88,6 +88,8 @@ class DataManagePage(QWidget):
         self._image_dir: str | None = None
         self._images: list[str] = []
         self._annotations_dir: str | None = None
+        # W63：最近一次 YOLO 导出的 data.yaml（向导交接给训练页；COCO 不记）
+        self._last_export_yaml: str = ""
         self._thumb_pool = QThreadPool(self)
         self._thumb_pool.setMaxThreadCount(4)
         self._thumb_items: dict[str, QListWidgetItem] = {}  # R5-5: path → item
@@ -334,6 +336,18 @@ class DataManagePage(QWidget):
         )
         if not path:
             return
+        self.apply_external_dir(path)
+        self.status_changed.emit(
+            tr("已选择目录"), path.replace("\\", "/").split("/")[-1]
+        )
+
+    def apply_external_dir(self, path: str) -> None:
+        """应用外部传入的图像目录（W62：标注页「下一步」向导交接）。
+
+        与 _select_dir 同语义：兄弟 annotations/ 优先，否则回退同目录
+        （W59 口径）；区别仅在于无对话框、无状态回显——缩略图与统计
+        刷新即证据。平铺/分离两种数据集形态均覆盖。
+        """
         self._image_dir = path
         ann = os.path.join(os.path.dirname(path), "annotations")
         if os.path.isdir(ann):
@@ -341,9 +355,11 @@ class DataManagePage(QWidget):
         else:
             self._annotations_dir = None  # W59：残留旧值会把旧目录 JSON 数进新目录
         self._refresh()
-        self.status_changed.emit(
-            tr("已选择目录"), path.replace("\\", "/").split("/")[-1]
-        )
+
+    @property
+    def last_dataset_yaml(self) -> str:
+        """最近一次 YOLO 导出的 data.yaml（W63 向导交接用；无导出为空串）。"""
+        return self._last_export_yaml
 
     def _import_images(self) -> None:
         """从外部目录导入图像到当前数据目录（W3-T3: worker 线程执行复制）。"""
@@ -643,9 +659,13 @@ class DataManagePage(QWidget):
                 )
         else:
             def work():
-                return labelme_dir_to_yolo(
+                summary = labelme_dir_to_yolo(
                     img_dir, d, os.path.join(out_root, "yolo")
                 )
+                # W63：记产物 data.yaml（worker 线程写一次 attr，GIL 原子；
+                # 消费在导航时主线程读，invoke_main 跳已给先后序）
+                self._last_export_yaml = os.path.join(out_root, "yolo", "data.yaml")
+                return summary
 
         self._run_worker(
             "export",

@@ -166,6 +166,7 @@ class LabelPage(SamSessionMixin, QWidget):
         # 图像文件列表
         self._image_files: list[str] = []
         self._current_index: int = -1
+        self._folder: str = ""  # W62：当前打开的文件夹（向导上下文交接用）
 
         # 标注剪贴板（copy/paste）
         self._clipboard: list = []
@@ -390,6 +391,7 @@ class LabelPage(SamSessionMixin, QWidget):
         )
         if not folder:
             return
+        self._folder = folder  # W62：向导交接上下文
 
         # 递归扫描所有图像文件
         images: list[str] = []
@@ -449,6 +451,7 @@ class LabelPage(SamSessionMixin, QWidget):
         )
         if not path:
             return
+        self._folder = os.path.dirname(path)  # W62：单图回落所在目录
         self._image_files = [path]
         self._current_index = -1
 
@@ -494,6 +497,11 @@ class LabelPage(SamSessionMixin, QWidget):
         self._try_load_existing_json()
 
     # ====================== 同目录 LabelMe 识别（W59b · PRD FR-1） ====================== #
+
+    @property
+    def current_folder(self) -> str:
+        """当前打开的文件夹（W62：向导目录交接用；未打开为空串）。"""
+        return self._folder
 
     def _sibling_json(self, image_path: str) -> str | None:
         """同名 LabelMe JSON 路径（存在才返回）。"""

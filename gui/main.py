@@ -153,6 +153,34 @@ def setup_logging() -> None:
     logging.getLogger(__name__).info("日志系统已初始化")
 
 
+def _wire_label_to_data_handoff(label_page, data_page) -> None:
+    """W62：标注「下一步：数据管理」→ 目录上下文交接。
+
+    沿 project_opened→set_project_dir 同款页间交接：标注页打开过文件夹
+    才交接（空串零操作，不碰用户已选目录）；平铺/分离数据集形态由
+    apply_external_dir 的兄弟 annotations/ 探测+W59 回退口径覆盖。
+    """
+    def _handoff(key: str) -> None:
+        if key == "data_manage" and label_page.current_folder:
+            data_page.apply_external_dir(label_page.current_folder)
+
+    label_page.request_page.connect(_handoff)
+
+
+def _wire_data_to_train_handoff(data_page, train_page) -> None:
+    """W63：数据管理「下一步：训练」→ 数据集上下文交接。
+
+    只带最近一次 YOLO 导出的 data.yaml（COCO 无 yaml 不记、未导出为空串
+    零操作——训练页保持「未选择（模拟训练）」诚实回退，手动选择不被
+    无导出场景覆盖）。真实训练仍需显式「开始训练」。
+    """
+    def _handoff(key: str) -> None:
+        if key == "train" and data_page.last_dataset_yaml:
+            train_page.apply_external_dataset(data_page.last_dataset_yaml)
+
+    data_page.request_page.connect(_handoff)
+
+
 def build_window() -> MainWindow:
     """构造主窗口并注册全部实装页面。"""
     win = MainWindow("AutoVisionAgent")
@@ -187,6 +215,10 @@ def build_window() -> MainWindow:
     # ---- 项目打开 → 通知工作页 ----
     project_page.project_opened.connect(data_page.set_project_dir)
     project_page.project_opened.connect(predict_page.set_project_dir)
+
+    # ---- W62/W63：向导目录交接（标注→数据管理→训练） ----
+    _wire_label_to_data_handoff(label_page, data_page)
+    _wire_data_to_train_handoff(data_page, train_page)
 
     # ---- 项目打开 → 刷新仪表盘统计 ----
     def _refresh_home_stats(project_dir: str) -> None:
