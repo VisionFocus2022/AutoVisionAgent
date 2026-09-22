@@ -76,50 +76,13 @@ def _assert_atomic_replaces(spy: _ReplaceSpy, expected_dsts: set[str]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# cut_labelme_json
+# cut_labelme_json（W61：函数已全链删除——守卫其不再存在）
 # ---------------------------------------------------------------------------
 
 
-def test_cut_labelme_json_writes_via_os_replace(tmp_path, monkeypatch):
-    """机制：瓦片 JSON 落盘走 tmp + os.replace。"""
-    src = tmp_path / "big.json"
-    _write_labelme(src)
-    out_dir = tmp_path / "tiles"
-
-    spy = _ReplaceSpy()
-    monkeypatch.setattr(bt.os, "replace", spy)
-
-    results = bt.cut_labelme_json(str(src), 100, 100, str(out_dir))
-    assert len(results) == 1
-
-    _assert_atomic_replaces(spy, {str(out_dir / "big_0_0.json")})
-    tile_doc = json.loads(
-        Path(results[0]).read_text(encoding="utf-8")
-    )
-    assert tile_doc["shapes"][0]["points"] == [[10.0, 10.0], [90.0, 90.0]]
-
-
-def test_cut_labelme_json_replace_failure_keeps_existing_tile(
-    tmp_path, monkeypatch
-):
-    """故障注入：replace 抛 OSError → 旧瓦片完好、无 tmp 残留。"""
-    src = tmp_path / "big.json"
-    _write_labelme(src)
-    out_dir = tmp_path / "tiles"
-    out_dir.mkdir()
-    old_tile = out_dir / "big_0_0.json"
-    old_tile.write_text('{"OLD": true}', encoding="utf-8")
-
-    def boom(src: str, dst: str) -> None:
-        raise OSError("disk full (injected)")
-
-    monkeypatch.setattr(bt.os, "replace", boom)
-
-    with pytest.raises(OSError):
-        bt.cut_labelme_json(str(src), 100, 100, str(out_dir))
-
-    assert old_tile.read_text(encoding="utf-8") == '{"OLD": true}'
-    assert list(out_dir.glob("*.tmp")) == [], "replace 失败后残留 .tmp 文件"
+def test_cut_labelme_json_removed():
+    """W61：切割链路已按用户裁决全链删除，原子写守护随功能一并退场。"""
+    assert not hasattr(bt, "cut_labelme_json")
 
 
 # ---------------------------------------------------------------------------
@@ -204,44 +167,10 @@ def test_batch_delete_labels_replace_failure_keeps_original(
 
 
 # ---------------------------------------------------------------------------
-# flip_image_annotation
+# flip_image_annotation（W61：函数已全链删除——守卫其不再存在）
 # ---------------------------------------------------------------------------
 
 
-def test_flip_image_annotation_writes_via_os_replace(tmp_path, monkeypatch):
-    """机制+语义：翻转落盘走 tmp+replace，内容与直写版逐字节一致。"""
-    target = tmp_path / "a.json"
-    _write_labelme(target)
-    doc = _labelme_doc()
-    for s in doc["shapes"]:
-        s["points"] = [
-            [100 - p[0], p[1]] for p in s["points"]
-        ]
-    expected_text = json.dumps(doc, ensure_ascii=False, indent=2)
-
-    spy = _ReplaceSpy()
-    monkeypatch.setattr(bt.os, "replace", spy)
-
-    assert bt.flip_image_annotation(str(target), 100, "horizontal") is True
-
-    _assert_atomic_replaces(spy, {str(target)})
-    assert target.read_text(encoding="utf-8") == expected_text
-
-
-def test_flip_image_annotation_replace_failure_keeps_original(
-    tmp_path, monkeypatch
-):
-    """故障注入：replace 抛 OSError → 原文件完好、无 tmp 残留。"""
-    target = tmp_path / "a.json"
-    original_text = _write_labelme(target)
-
-    def boom(src: str, dst: str) -> None:
-        raise OSError("disk full (injected)")
-
-    monkeypatch.setattr(bt.os, "replace", boom)
-
-    with pytest.raises(OSError):
-        bt.flip_image_annotation(str(target), 100, "horizontal")
-
-    assert target.read_text(encoding="utf-8") == original_text
-    assert list(tmp_path.glob("*.tmp")) == []
+def test_flip_image_annotation_removed():
+    """W61：翻转链路已按用户裁决全链删除，原子写守护随功能一并退场。"""
+    assert not hasattr(bt, "flip_image_annotation")

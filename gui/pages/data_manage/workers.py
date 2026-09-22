@@ -5,7 +5,6 @@
 """
 from __future__ import annotations
 
-import json
 import os
 import random
 import shutil
@@ -142,52 +141,10 @@ def label_statistics(ann_dir: str) -> dict[str, int]:
     return label_data_statistics(ann_dir)
 
 
-def flip_annotations(ann_dir: str, mode: str) -> int:
-    """翻转标注坐标（从 JSON 读真实图像尺寸，缺尺寸跳过），返回成功数。"""
-    from labeling.batch_tools import flip_image_annotation
-
-    count = 0
-    for f in os.listdir(ann_dir):
-        if not f.endswith(".json"):
-            continue
-        path = os.path.join(ann_dir, f)
-        w = h = 0
-        try:
-            with open(path, encoding="utf-8") as fh:
-                doc = json.load(fh)
-            w = doc.get("imageWidth", 0)
-            h = doc.get("imageHeight", 0)
-        except (OSError, json.JSONDecodeError):
-            pass
-        if w == 0 and mode == "horizontal":
-            continue  # 缺少宽度信息时跳过水平翻转，避免坐标错误
-        if h == 0 and mode == "vertical":
-            continue  # 缺少高度信息时跳过垂直翻转
-        if flip_image_annotation(path, w, mode):
-            count += 1
-    return count
-
-
-def cut_annotations(ann_dir: str, tile_w: int, tile_h: int) -> int:
-    """切割标注 JSON 到 tiles/ 子目录，返回生成瓦片数。"""
-    from labeling.batch_tools import cut_labelme_json
-
-    out_dir = os.path.join(ann_dir, "tiles")
-    total = 0
-    for f in os.listdir(ann_dir):
-        if f.endswith(".json"):
-            total += len(
-                cut_labelme_json(os.path.join(ann_dir, f), tile_w, tile_h, out_dir)
-            )
-    return total
-
-
 __all__ = [
     "import_images",
     "split_dataset",
     "replace_labels",
     "delete_labels",
     "label_statistics",
-    "flip_annotations",
-    "cut_annotations",
 ]

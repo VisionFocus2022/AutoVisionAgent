@@ -44,8 +44,6 @@ _OP_TITLES = {
     "split": "划分完成",
     "replace": "替换完成",
     "delete": "删除完成",
-    "flip": "翻转完成",
-    "cut": "切割完成",
     "export": "导出完成",
     # W19（v3 第三波 FR-4.2）：版本管理入口
     "snapshot": "快照完成",
@@ -107,8 +105,6 @@ class DataManagePage(QWidget):
             "stats": self.btn_stat,
             "replace": self.btn_replace,
             "delete": self.btn_delete_lbl,
-            "flip": self.btn_flip,
-            "cut": self.btn_cut,
             "export": self.btn_export,
             # W19（v3 第三波 FR-4.2）：快照后台执行期间禁用按钮
             "snapshot": self.btn_snapshot,
@@ -204,10 +200,6 @@ class DataManagePage(QWidget):
         h.addWidget(self.btn_replace)
         self.btn_delete_lbl = QPushButton(tr("删除标签"), bar)
         h.addWidget(self.btn_delete_lbl)
-        self.btn_flip = QPushButton(tr("翻转标注"), bar)
-        h.addWidget(self.btn_flip)
-        self.btn_cut = QPushButton(tr("切割标注"), bar)
-        h.addWidget(self.btn_cut)
 
         # W5-T2: 训练集导出（LabelMe→YOLO/COCO，补齐标注→训练断链）
         self.cmb_export_fmt = QComboBox(bar)
@@ -301,8 +293,6 @@ class DataManagePage(QWidget):
         self.btn_stat.clicked.connect(self._tool_statistics)
         self.btn_replace.clicked.connect(self._tool_replace_label)
         self.btn_delete_lbl.clicked.connect(self._tool_delete_labels)
-        self.btn_flip.clicked.connect(self._tool_flip_annotation)
-        self.btn_cut.clicked.connect(self._tool_cut_json)
         self.btn_export.clicked.connect(self._tool_export_dataset)
 
         # W19（v3 第三波 FR-4.2）：版本管理入口
@@ -631,55 +621,6 @@ class DataManagePage(QWidget):
             lambda n: f"{n} {tr('个文件')}",
         )
 
-    def _tool_flip_annotation(self) -> None:
-        """翻转标注坐标（配合图像翻转）（W3-T3: worker 线程执行）。"""
-        denied = check_action("data_manage.batch_label_edit")
-        if denied:
-            self.status_changed.emit(denied, "!")
-            return
-        d = self._get_ann_dir()
-        if not d:
-            return
-        from PySide6.QtWidgets import QInputDialog
-        items = ["horizontal", "vertical"]
-        mode, ok = QInputDialog.getItem(
-            self, tr("翻转标注"), tr("翻转模式:"), items, 0, False
-        )
-        if not ok:
-            return
-        from gui.pages.data_manage import workers
-
-        self._run_worker(
-            "flip",
-            lambda: workers.flip_annotations(d, mode),
-            lambda n: f"{n} {tr('个文件')}",
-        )
-
-    def _tool_cut_json(self) -> None:
-        """切割标注 JSON（大图切小图时同步切割标注）（W3-T3: worker 线程执行）。"""
-        d = self._get_ann_dir()
-        if not d:
-            return
-        from PySide6.QtWidgets import QInputDialog
-        tile_str, ok = QInputDialog.getText(
-            self, tr("切割标注"), tr("瓦片大小 (宽x高，如 640x640):")
-        )
-        if not ok or not tile_str:
-            return
-        try:
-            parts = tile_str.lower().split("x")
-            tile_w, tile_h = int(parts[0]), int(parts[1])
-        except (ValueError, IndexError):
-            self.status_changed.emit(tr("格式错误"), "!")
-            return
-        from gui.pages.data_manage import workers
-
-        self._run_worker(
-            "cut",
-            lambda: workers.cut_annotations(d, tile_w, tile_h),
-            lambda n: f"{n} {tr('个瓦片')}",
-        )
-
     def _tool_export_dataset(self) -> None:
         """导出训练集：LabelMe → YOLO/COCO（W5-T2，worker 线程执行）。"""
         d = self._get_ann_dir()
@@ -787,8 +728,6 @@ class DataManagePage(QWidget):
         self.btn_stat.setText(tr("标注统计"))
         self.btn_replace.setText(tr("替换标签"))
         self.btn_delete_lbl.setText(tr("删除标签"))
-        self.btn_flip.setText(tr("翻转标注"))
-        self.btn_cut.setText(tr("切割标注"))
         self.btn_export.setText(tr("导出训练集"))
         self.btn_snapshot.setText(tr("创建快照"))
         self.btn_diff.setText(tr("版本对比"))

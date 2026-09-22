@@ -265,18 +265,11 @@ def test_workers_replace_and_delete_and_stats(ann_fixture):
 
 
 @pytest.mark.unit
-def test_workers_flip_and_cut(ann_fixture):
+def test_workers_flip_and_cut_removed():
+    """W61：workers 翻转/切割函数已按用户裁决全链删除——worker 层守护。"""
     from gui.pages.data_manage import workers
 
-    _, ann_dir = ann_fixture
-    # 翻转：a.json 矩形 (4,4)-(20,16) 水平翻转于 w=64 → x2' = 64-4=60, x1'=64-20=44
-    assert workers.flip_annotations(str(ann_dir), "horizontal") == 2
-    doc = json.loads((ann_dir / "a.json").read_text(encoding="utf-8"))
-    pts = doc["shapes"][0]["points"]
-    assert sorted(p[0] for p in pts) == [44.0, 60.0]
-
-    # 切割：32x32 瓦片（仅含形状的瓦片产出 json；两图各 1 个形状 → ≥2）
-    total = workers.cut_annotations(str(ann_dir), 32, 32)
-    assert total >= 2
-    tiles = list((ann_dir / "tiles").glob("*.json"))
-    assert len(tiles) == total
+    assert not hasattr(workers, "flip_annotations")
+    assert not hasattr(workers, "cut_annotations")
+    assert "flip_annotations" not in workers.__all__
+    assert "cut_annotations" not in workers.__all__

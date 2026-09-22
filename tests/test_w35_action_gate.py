@@ -216,8 +216,9 @@ def test_main_wires_session_role_on_login(qapp):
 
 @pytest.mark.unit
 def test_data_manage_batch_tools_denied(qapp, monkeypatch):
-    """数据管理页三个批量写盘工具（替换/删除/翻转）：动作拒绝 → 早退 +
-    状态栏文案，且不触目录选择（漏网收口——operator 可见页上的破坏性操作）。"""
+    """数据管理页两个批量写盘工具（替换/删除）：动作拒绝 → 早退 +
+    状态栏文案，且不触目录选择（漏网收口——operator 可见页上的破坏性操作）。
+    （W61：翻转标注已全链删除，原三工具收敛为二。）"""
     from gui.pages.data_manage import page as dm_mod
     from gui.pages.data_manage.page import DataManagePage
 
@@ -234,7 +235,7 @@ def test_data_manage_batch_tools_denied(qapp, monkeypatch):
         page, "_get_ann_dir", lambda: picked.append(1) or ""
     )
     for method in (
-        "_tool_replace_label", "_tool_delete_labels", "_tool_flip_annotation",
+        "_tool_replace_label", "_tool_delete_labels",
     ):
         page._msgs.clear()
         getattr(page, method)()

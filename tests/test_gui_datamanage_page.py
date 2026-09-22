@@ -450,23 +450,12 @@ def test_tool_replace_cancelled(dm_page, scripted_input, fake_threads):
 
 
 @pytest.mark.unit
-def test_tool_flip_and_cut(dm_page, fake_threads, scripted_input, qapp, proj):
-    scripted_input.items = ["horizontal"]
-    dm_page._tool_flip_annotation()
-    qapp.processEvents()
-    assert any(t == "翻转完成" for t, _ in dm_page._msgs)
-    doc = json.loads((proj / "annotations" / "a.json").read_text("utf-8"))
-    xs = sorted(p[0] for p in doc["shapes"][0]["points"])
-    assert xs == [12.0, 28.0]  # w=32 水平翻转：32-20, 32-4
-
-    scripted_input.texts = ["16x16"]
-    dm_page._tool_cut_json()
-    qapp.processEvents()
-    assert any(t == "切割完成" for t, _ in dm_page._msgs)
-
-    scripted_input.texts = ["bad-format"]
-    dm_page._tool_cut_json()
-    assert any(t == "格式错误" for t, _ in dm_page._msgs)
+def test_tool_flip_and_cut_removed(dm_page):
+    """W61：翻转标注/切割标注两按钮已按用户裁决全链删除——UI 层守护。"""
+    assert not hasattr(dm_page, "btn_flip")
+    assert not hasattr(dm_page, "btn_cut")
+    assert not hasattr(dm_page, "_tool_flip_annotation")
+    assert not hasattr(dm_page, "_tool_cut_json")
 
 
 # ============================== 训练集导出 ============================== #
