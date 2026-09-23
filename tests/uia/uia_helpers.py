@@ -165,15 +165,21 @@ def click_button(root, text_contains: str, timeout: float = 10.0) -> bool:
     if btn is None:
         logger.warning("未找到按钮: '%s'", text_contains)
         return False
-    # W64：原生对话框刚关/远程会话（ToDesk）下主窗 z 序可能漂移——
-    # UIA Click 走物理坐标，窗口不在前台即落空（页没切/模式没切，
-    # 表现为下一步"按钮找不到"或状态超时）。激活前置消掉这一类假红。
+    # W64：远程会话时段鼠标 SendInput 静默丢（点击找到但槽不触发）——
+    # Qt 按钮（含 checkable）的 InvokePattern.Invoke 直发 clicked 且免
+    # 鼠标（W60 锁屏期/本轮登录双证），改 Invoke 优先、鼠标兜底。
+    invoked = False
     with contextlib.suppress(Exception):
-        root.SetActive()
-    with contextlib.suppress(Exception):
-        btn.SetFocus()
-    btn.Click()
-    logger.info("已点击按钮: '%s'", text_contains)
+        btn.GetPattern(10000).Invoke()  # UIA_InvokePatternId
+        invoked = True
+    if not invoked:
+        with contextlib.suppress(Exception):
+            root.SetActive()
+        with contextlib.suppress(Exception):
+            btn.SetFocus()
+        btn.Click()
+    logger.info("已点击按钮: '%s'（%s）",
+                text_contains, "Invoke" if invoked else "鼠标")
     return True
 
 
@@ -559,8 +565,12 @@ def _click_confirm_button(dlg) -> bool:
                 continue
             for t in confirm_texts:
                 if t in cname:
+                    # W64：鼠标通道失效时段确认点击静默丢（对话框不关、
+                    # 路径不生效）——原生对话框按钮支持 Invoke，双通道齐发
+                    with contextlib.suppress(Exception):
+                        c.GetPattern(10000).Invoke()  # UIA_InvokePatternId
                     c.Click()
-                    logger.info("已点击确认按钮: '%s'", cname)
+                    logger.info("已点击确认按钮: '%s'（Invoke+鼠标）", cname)
                     return True
         except Exception:  # noqa: BLE001
             continue
@@ -619,6 +629,12 @@ def draw_rectangle_on_canvas(
     y1 = int(rect.top + (rect.bottom - rect.top) * rel_y1)
     x2 = int(rect.left + (rect.right - rect.left) * rel_x2)
     y2 = int(rect.top + (rect.bottom - rect.top) * rel_y2)
+
+    # W64：Invoke 导航不 raise 窗口——拖拽前必须激活主窗，否则绝对坐标
+    # 全落在遮挡窗上
+    with contextlib.suppress(Exception):
+        win.SetActive()
+    time.sleep(0.3)
 
     # 先点击画布中心，确保 QGraphicsView 获得焦点
     cx = (rect.left + rect.right) // 2
@@ -864,17 +880,68 @@ def click_login_button_precise(win) -> bool:
 UIA_ADMIN_PWD = "UiaFlow#2026"  # 与 conftest.ready_admin_cfg 预置凭据一致（≥8 字符）
 
 
+def _form_login_button_gone(win) -> bool:
+    """W64 硬校验：表单'登录'按钮（ButtonControl 精确名）是否已从树消失。
+
+    gui/main.py 登录切换注释口径即此——侧栏'  登录'是 CheckBoxControl
+    不受影响；初始状态栏'就绪'会误命中弱信号等待，此判定不受骗。
+    """
+    for c in _iter_descendants(win, max_depth=12):
+        try:
+            if type(c).__name__ == "ButtonControl" \
+                    and (c.Name or "").strip() == "登录":
+                return False
+        except Exception:  # noqa: BLE001
+            continue
+    return True
+
+
 def login_admin(win) -> None:
     """真实 admin 登录（凭据由 conftest.ready_admin_cfg 预置免改密）。
 
-    应用为函数级夹具逐用例重启（每次停在登录页），无需幂等；等待口径：
-    状态栏「登录成功」或主页「就绪/仪表盘」。
+    应用为函数级夹具逐用例重启（每次停在登录页），无需幂等；W64 弱信号
+    加固：先以「表单登录按钮从树中消失」为硬校验（未消失自动重击≤3 次），
+    再等状态——'就绪'是初始态，登录点击未生效时旧口径会误判成功。
     """
     edits = sort_login_edits(win)
     assert len(edits) >= 2, f"登录页应有用户名/密码两个输入框，got {len(edits)}"
     assert set_edit_value(edits[0], "admin"), "用户名写入失败"
     assert set_edit_value(edits[1], UIA_ADMIN_PWD), "密码写入失败"
-    assert click_login_button_precise(win), "未找到精确'登录'按钮"
+    logged_in = False
+    for attempt in range(3):
+        assert click_login_button_precise(win), "未找到精确'登录'按钮"
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            if _form_login_button_gone(win):
+                logged_in = True
+                break
+            time.sleep(0.4)
+        if logged_in:
+            break
+        # W64：鼠标通道失效时段（远程会话抢占输入）改用 Invoke 免鼠标
+        # 直发 clicked——W60 锁屏期已证此通道可靠（app 日志 AUDIT 为证）
+        logger.warning(
+            "登录点击后表单未消失（第 %d 次），改 Invoke 补击", attempt + 1
+        )
+        import uiautomation as _ua
+
+        for c in _iter_descendants(win, max_depth=12):
+            try:
+                if type(c).__name__ == "ButtonControl" \
+                        and (c.Name or "").strip() == "登录":
+                    c.GetPattern(10000).Invoke()  # UIA_InvokePatternId
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            if _form_login_button_gone(win):
+                logged_in = True
+                break
+            time.sleep(0.4)
+        if logged_in:
+            break
+    assert logged_in, "登录表单在 3 次点击+Invoke 后仍未消失（登录未被应用处理）"
     status = wait_any_status(win, ["登录成功", "就绪", "仪表盘"], 15.0)
     assert status is not None, "admin 登录未完成：状态栏未出现登录成功标志"
     logger.info("admin 登录完成: %s", status)
@@ -1029,6 +1096,10 @@ def click_canvas_at(win, fx: float, fy: float, timeout: float = 10.0) -> bool:
     if canvas is None:
         logger.error("未找到标注画布")
         return False
+    # W64：Invoke 导航不附带窗口激活（物理点击才会 raise）——画布绝对
+    # 坐标点击必须先把主窗拉回前台，否则落在遮挡窗上
+    with contextlib.suppress(Exception):
+        win.SetActive()
     rect = canvas.BoundingRectangle
     x = rect.left + int((rect.right - rect.left) * fx)
     y = rect.top + int((rect.bottom - rect.top) * fy)
@@ -1041,6 +1112,8 @@ def click_canvas_right(win, fx: float, fy: float, timeout: float = 10.0) -> bool
     canvas = _find_canvas(win, timeout=timeout) if "timeout" in _find_canvas.__code__.co_varnames else _find_canvas(win)
     if canvas is None:
         return False
+    with contextlib.suppress(Exception):
+        win.SetActive()  # W64：同 click_canvas_at，Invoke 导航不 raise 窗口
     rect = canvas.BoundingRectangle
     x = rect.left + int((rect.right - rect.left) * fx)
     y = rect.top + int((rect.bottom - rect.top) * fy)
