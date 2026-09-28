@@ -83,7 +83,7 @@ SAM3_WEIGHTS = REPO_ROOT / "weights" / "sam3"
 T_NAV = float(os.environ.get("AVA_UIA_T_NAV", "20"))
 T_IMPORT = 60.0
 T_LABEL = 60.0
-T_SAM3_LOAD = float(os.environ.get("AVA_UIA_T_SAM3", "180"))
+T_SAM3_LOAD = float(os.environ.get("AVA_UIA_T_SAM3", "300"))  # W64:冷启动(6.5G 权重冷读+CUDA 冷初始化)实测 >180s——run16 当天首跑悬挂,300s 后 run17 一次过
 T_TRAIN = float(os.environ.get("AVA_UIA_T_TRAIN", "900"))
 T_INFER = 300.0
 
