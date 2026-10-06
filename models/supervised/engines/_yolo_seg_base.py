@@ -45,6 +45,57 @@ def _ensure_amp_asset() -> bool:
     return False
 
 
+# W1-6 小数据默认超参（W71 F-2 证据锚定，docs/prd-w1-6-small-data-hyperparams.md）
+_YOLO_LR0 = 0.01
+_SMALL_DATA_MAX_IMAGES = 50   # N≤50 视为小数据（首案例典型量级）
+_SMALL_DATA_EPOCH_FLOOR = 100  # 小数据轮数下限（W71：12 图 100 轮 SGD → mAP50 0.506）
+
+
+def _count_train_labels(data_yaml: str) -> int:
+    """data.yaml → 训练标签数（P0-1 划分布局 labels/train，旧布局回退 labels/）。"""
+    from pathlib import Path
+
+    root = Path(data_yaml).resolve().parent
+    for sub in ("labels/train", "labels"):
+        d = root / sub
+        if d.is_dir():
+            return len(list(d.glob("*.txt")))
+    return 0
+
+
+def _extract_val_metrics(model) -> dict:
+    """训练后 best-effort 提取末轮 val P/R/mAP50（W1-6）。
+
+    两级：trainer.metrics（det/seg 键名自适配）→ model.val()（.box.mp/
+    .mr/.map50）；双缺返回空 dict——观测件不阻塞训练（AC-2 三态）。
+    """
+    out: dict = {}
+    suffix = "(M)" if getattr(model, "task", "") == "segment" else "(B)"
+    trainer = getattr(model, "trainer", None)
+    metrics = getattr(trainer, "metrics", None) if trainer is not None else None
+    if isinstance(metrics, dict):
+        src = {
+            "precision": metrics.get(f"metrics/precision{suffix}")
+            or metrics.get("metrics/precision(B)"),
+            "recall": metrics.get(f"metrics/recall{suffix}")
+            or metrics.get("metrics/recall(B)"),
+            "map50": metrics.get(f"metrics/mAP50{suffix}")
+            or metrics.get("metrics/mAP50(B)"),
+        }
+        out = {k: round(float(v), 4) for k, v in src.items() if v is not None}
+    if len(out) < 3:
+        try:
+            box = getattr(model.val(), "box", None)
+            out = {
+                "precision": round(float(box.mp), 4),
+                "recall": round(float(box.mr), 4),
+                "map50": round(float(box.map50), 4),
+            }
+        except Exception:  # noqa: BLE001  # val 路径任何故障都不挡训练
+            logger.debug("val 指标提取失败（不阻塞训练）", exc_info=True)
+    return out
+
+
 def _resolve_backbone(backbone: str, seg: bool = True) -> str:
     """骨干名/路径 → ultralytics 模型路径（W58 契约 + W65/W69 回退）。
 
@@ -148,9 +199,20 @@ class _YoloSegBase(AbstractTaskEngine):
         # 自身（经典冻结态崩溃，exe 模式实证：训练启动即失败且无异常日志；
         # python 模式不受影响）
         workers = 0 if getattr(sys, "frozen", False) else cfg.workers
+        # W1-6（W71 F-2 实证）：optimizer=auto 在小数据上 lr 起不来（零检出
+        # 死模型）——YOLO 通道显式 SGD lr0=0.01（ultralytics 官方默认同款）；
+        # N≤50 图时轮数自适应提升（保用户更高值不动）
+        n_train = _count_train_labels(data_yaml)
+        epochs = cfg.epochs
+        if 0 < n_train <= _SMALL_DATA_MAX_IMAGES and epochs < _SMALL_DATA_EPOCH_FLOOR:
+            logger.info(
+                "小数据集 N=%d≤%d：训练轮数 %d→%d 自适应提升",
+                n_train, _SMALL_DATA_MAX_IMAGES, epochs, _SMALL_DATA_EPOCH_FLOOR,
+            )
+            epochs = _SMALL_DATA_EPOCH_FLOOR
         model.train(
             data=data_yaml,
-            epochs=max(1, cfg.epochs),
+            epochs=max(1, epochs),
             imgsz=cfg.img_size,
             batch=cfg.batch_size,
             device=cfg.device,
@@ -159,6 +221,8 @@ class _YoloSegBase(AbstractTaskEngine):
             name="train",
             exist_ok=True,
             amp=cfg.amp,
+            optimizer="SGD",
+            lr0=_YOLO_LR0,
         )
         # best-effort 末轮 loss 提取（ultralytics 各版本返回形态不一）
         loss = 0.0
@@ -178,6 +242,11 @@ class _YoloSegBase(AbstractTaskEngine):
         save_dir = str(getattr(trainer, "save_dir", "") or "")
         self._train_output_dir = save_dir or os.path.join(cfg.output_dir, "train")
         self._train_metrics = {"loss": round(loss, 6)}
+        # W1-6：末轮 val P/R/mAP50 三级提取（trainer.metrics → val() → 缺席
+        # 不阻塞）；epochs_effective 让完成状态显示真实训练轮数（一次性
+        # 适配器下外层轮数与内部轮数解耦，外层计数会低估）
+        self._train_metrics.update(_extract_val_metrics(model))
+        self._train_metrics["epochs_effective"] = max(1, epochs)
         return dict(self._train_metrics)
 
     def save(self, path: str) -> None:

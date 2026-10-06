@@ -83,7 +83,9 @@ def test_train_epoch_one_shot_adapter(fake_yolo, tmp_path):
     assert kw["data"] == cfg.data_yaml
     assert kw["epochs"] == 2
     assert kw["imgsz"] == 640 and kw["batch"] == 4 and kw["device"] == "cpu"
-    assert m1 == {"loss": 0.25}, "末轮 loss 提取（trainer.loss 末元素）"
+    # W1-6：metrics 增补 epochs_effective（真实内部轮数）——收敛为按键断言
+    assert m1["loss"] == 0.25, "末轮 loss 提取（trainer.loss 末元素）"
+    assert m1.get("epochs_effective") == 2, "W1-6：一次性适配器回传真实内部轮数"
 
     m2 = engine.train_epoch(2, cfg)
     assert len(fake_yolo.created) == 1, "后续轮次不得重跑（一次性适配器）"

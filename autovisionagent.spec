@@ -26,6 +26,9 @@ a = Analysis(
         # W58 时代的 dist 内 .pt 是手动拷贝，重建即丢，此处固化进 spec
         ("yolov8n-seg.pt", "."),
         ("yolo26n.pt", "."),
+        # W1-6：det 首选骨干（W71 实测 yolo26n 回退在小数据 mAP50 0.27
+        # vs yolov8n 0.506——默认收敛路径需要正主骨干随包）
+        ("yolov8n.pt", "."),
     ] if Path("yolov8n-seg.pt").exists() else []),
     hiddenimports=[
         # PySide6

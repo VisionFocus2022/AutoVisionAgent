@@ -649,18 +649,26 @@ class TrainPage(QWidget):
     def _on_finished(self, artifact) -> None:
         """训练完成回调。"""
         # W18（P3① 留痕）：训练完成 INFO——操作 + 关键参数（日志可见性）
+        metrics = getattr(artifact, "metrics", None) or {}
+        # W1-6：一次性适配器的 epochs_effective 反映真实内部轮数（小数据
+        # 自适应提升时外层计数会低估）；P/R/mAP50 让"训练没学"肉眼可见
+        n_epochs = metrics.get("epochs_effective") or artifact.epochs_completed
+        pr_text = _format_final_metrics(metrics)
         logger.info(
-            "训练完成: task=%s, epochs_completed=%s",
-            artifact.task.value, getattr(artifact, "epochs_completed", None),
+            "训练完成: task=%s, epochs_completed=%s, metrics=%s",
+            artifact.task.value, n_epochs, pr_text or "n/a",
         )
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self._set_form_enabled(True)  # M17：训练结束恢复表单
         self.progress_bar.setValue(100)
         self.lbl_log.setText(
-            tr("训练完成") + f": {artifact.epochs_completed} " + tr("轮")
+            tr("训练完成") + f": {n_epochs} " + tr("轮")
+            + (f"  {pr_text}" if pr_text else "")
         )
-        self.status_changed.emit(tr("训练完成"), artifact.task.value)
+        self.status_changed.emit(
+            tr("训练完成"), artifact.task.value + (f" {pr_text}" if pr_text else "")
+        )
         # W14-C3（P2-11③）：训练完成审计接线——log_train_complete 此前
         # 全仓 0 调用（docstring 宣称记录训练，实际无消费者）；user 取
         # 会话当前用户（core.session，登录页写入），artifact 字段可得则传。
@@ -691,6 +699,21 @@ class TrainPage(QWidget):
     def retranslate(self) -> None:
         self.btn_start.setText(tr("开始训练"))
         self.btn_stop.setText(tr("强制结束"))
+
+
+def _format_final_metrics(metrics: dict | None) -> str:
+    """末轮 val 指标 → 完成状态文案（W1-6）。
+
+    三键齐全才格式化（部分指标显示半截比不显示更误导）；任何形态
+    异常返回空串——显示层不挡训练完成路径。
+    """
+    try:
+        return (
+            f"P={metrics['precision']:.2f} R={metrics['recall']:.2f}"
+            f" mAP50={metrics['map50']:.2f}"
+        )
+    except (KeyError, TypeError, ValueError):
+        return ""
 
 
 __all__ = ["TrainPage", "EngineTrainStrategy"]

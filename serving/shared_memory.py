@@ -621,8 +621,18 @@ def _read_range_from_file(file_path: str, offset: int, length: int, base_dir: Pa
     仅允许读取 base_dir 下、文件名匹配 ava_*.bin 的区域文件，防止
     调用方（FetchRegion/read_* 系列经回环无鉴权 gRPC 暴露）把本函数
     当作任意文件读取原语。校验失败抛 ValueError。
+
+    H6 收口（B-1 批遗留红灯，2026-10-06 实证）：read 与并发 release 竞争
+    时文件先被删，Windows 上 ``p.resolve()`` 对不存在路径失败被白名单
+    except 吞掉——把"区域已被回收"误报成"路径不在允许目录内"。先判
+    文件存在性：已消失直接 FileNotFoundError（并发回收的明确契约形态，
+    白名单无从谈起）；存在才走白名单。
     """
     if base_dir is not None and not _shm_path_allowed(file_path, base_dir):
+        # 复核存在性消歧：resolve() 打开句柄与并发删除仍有窄窗——文件
+        # 已消失=回收竞态误报（FileNotFoundError），仍在=真白名单违规
+        if not os.path.isfile(file_path):
+            raise FileNotFoundError(f"共享内存区域已被回收: {file_path}")
         logger.warning(
             "拒绝读取白名单外的共享内存路径: %s (base_dir=%s)", file_path, base_dir
         )
