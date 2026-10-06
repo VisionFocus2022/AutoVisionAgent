@@ -38,8 +38,8 @@
 | W1-1 | 训练逐轮进度与曲线（适配器逐轮回调：loss/epoch/剩余时间→训练页实时曲线） | L2（并发/线程模型必答） | ✅ 完成（2026-10-06）：on_fit_epoch_end 回调（工作线程→invokeMain）→进度条/loss 曲线/epoch k/N·剩余 ETA；request_stop→trainer.stop 破环（真训练从此可中断）；UIA DoD 采样 ≥2 进度点+强停复位；PRD docs/prd-w1-1-epoch-progress.md |
 | W1-2 | 训练历史与模型资产页（历史列表+一键加载推理+模型卡） | L2 | ✅ 完成（2026-10-07）：core/train_history JSONL 存储（workspace 持久）+训练完成落账（真/模拟标记+P/R/mAP50/类别表/输入尺寸）+历史页（选中行+工具栏：模型卡对话框/一键加载→apply_external_model 缝切推理页）+operator 可见；UIA DoD 97s 全链；PRD docs/prd-w1-2-train-history.md |
 | W1-3 | 模拟训练彻底显式化（非真任务下拉灰显+说明+点开始显式确认） | L1-L2 | ✅ 完成（2026-10-06）：REAL_TRAIN_TASKS 单源+守护测试（逐引擎核验 train_epoch）/下拉灰显"（模拟训练）"/启动确认框（任务无真通道或无数据集，自定义中文按钮）；UIA DoD full_workflow 点穿确认框；连带修 P0-1 布局击穿任务探测真缺陷；PRD docs/prd-w1-3-simulated-explicit.md |
-| W1-4 | AMP 预检异步化+幽灵训练观察收口 | L1 | 预检在 worker；挂账项若复现即抓栈修 |
-| W1-5 | 首启体验：安装参数配置初始密码（去 txt 明文交付） | L1 | 无网新工位：--init-pwd 参数生效；txt 不再生成（或即删提示） |
+| W1-4 | AMP 预检异步化+幽灵训练观察收口 | L1 | ✅ 完成（2026-10-07）：amp_preflight 移入 TrainWorker.run（fit 前），失败经 stage_msg 码信号回 UI（翻译+取消勾选），amp=False 经 fit 参数链生效；真线程单测 3 绿（线程≠主线程/回退三联动/免检零打扰）；幽灵训练维持观察未复现；PRD docs/prd-w1-4-w1-5-wave1-tail.md |
+| W1-5 | 首启体验：安装参数配置初始密码（去 txt 明文交付） | L1 | ✅ 完成（2026-10-07）：--init-pwd（双形态解析）→ LoginPage → 库空时参数密码建 admin（must_change 保留）且不写 txt；<8 字符告警回落随机+txt；单测 5 绿；PRD docs/prd-w1-4-w1-5-wave1-tail.md |
 | W1-6 | 小数据训练默认超参修复（W71 实测：optimizer=auto 默认 lr 12 图上未起，零检出死模型；同数据 lr0=0.01 SGD 即 mAP50 0.0075→0.506） | L2 | ✅ 完成（2026-10-06）：默认 SGD lr0=0.01 + N≤50 轮数自适应 100 + 完成态 P/R/mAP50 显示 + yolov8n 随包；DoD exe 实跑 12 图案例 mAP50=0.51>0.3，P=1.00/R=0.35；PRD docs/prd-w1-6-small-data-hyperparams.md |
 
 **Wave 1 整体 DoD**：N1-N4 全过；极柱案例走向导链训练全程"零模拟、
@@ -93,8 +93,8 @@ W3-相机采集 depends D-2(硬件, 外部闸门)
 
 ## §7 状态快照（跨会话真相源）
 
-- 当前波：Wave 1（2026-10-06~07 **W1-6/W1-3/W1-1/W1-2 四行完成**；
-  下一步 = W1-4 AMP 预检异步 + W1-5 初始密码参数化（收尾两小切片））
+- 当前波：Wave 1（**六行全部完成** 2026-10-06~07：W1-6/W1-3/W1-1/W1-2/
+  W1-4/W1-5；波末 DoD 先验待用户实测认可后回写完结，下一步 Wave 2 细化）
 - 已完成波：无（波内行推进：W1-6 ✅）
 - W1-2 波末复盘三问（2026-10-07 追记）：①预测准——L2 合适；两处设计
   变更（行内按钮→工具栏、状态序+showEvent）都是 UIA 实证逼出的真发现，
@@ -109,6 +109,7 @@ W3-相机采集 depends D-2(硬件, 外部闸门)
   不可中断）。③排序不悔——W1-3 先于 W1-1 让确认框先就位，W1-1 的
   UIA 测试免受模拟确认干扰。
 - 健康度累计：计划腐烂数 0 / 阻塞超龄 0 / 预验尸命中 0
-- 🔶 在制：W1-2 批**未提交**（train_history 存储+历史页+predict 缝+权限/i18n
-  +测试，主门禁 1400 绿+ruff 0，exe 已重打包并 DoD 实跑，待用户批准提交）
+- 🔶 在制：W1-4+W1-5 批**未提交**（worker 预检+stage_msg/login 参数链/
+  main 解析/测试重写与新增，主门禁 1439 绿+ruff 0，exe 已重打包+
+  wizard 回归，待用户批准提交）
 - 续作四查入口：本节 + 阻塞登记 + 决策台账 + git log 用户提交

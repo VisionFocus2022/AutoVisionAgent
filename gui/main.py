@@ -225,12 +225,23 @@ def _wire_data_to_train_handoff(data_page, train_page) -> None:
     data_page.request_page.connect(_handoff)
 
 
-def build_window() -> MainWindow:
+def _parse_init_pwd(argv: list[str] | None = None) -> str | None:
+    """W1-5：--init-pwd <pwd> / --init-pwd=<pwd> 解析（无则 None）。"""
+    argv = list(sys.argv if argv is None else argv)
+    for i, a in enumerate(argv):
+        if a == "--init-pwd" and i + 1 < len(argv):
+            return argv[i + 1]
+        if a.startswith("--init-pwd="):
+            return a.split("=", 1)[1]
+    return None
+
+
+def build_window(init_password: str | None = None) -> MainWindow:
     """构造主窗口并注册全部实装页面。"""
     win = MainWindow("AutoVisionAgent")
 
     # ---- 实例化所有页面 ----
-    login_page = LoginPage()
+    login_page = LoginPage(init_password=init_password)
     home_page = HomePage()
     label_page = LabelPage()
     data_page = DataManagePage()
@@ -382,7 +393,8 @@ def main() -> int:
     theme_mgr = ThemeManager(app)
     theme_mgr.apply(settings.get("theme", "night"))
 
-    win = build_window()
+    # W1-5：--init-pwd 安装参数（首启建库时生效，不落明文文件）
+    win = build_window(_parse_init_pwd())
     win.attach_theme(theme_mgr)
     win.show()
     return app.exec()

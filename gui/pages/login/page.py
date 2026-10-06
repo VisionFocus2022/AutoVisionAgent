@@ -195,9 +195,12 @@ class LoginPage(QWidget):
     login_success = Signal(str, str)  # (user, role)——role 为稳定枚举值（W18/P2-8）
     status_changed = Signal(str, str)
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None,
+                 init_password: str | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("pageBody")
+        # W1-5：--init-pwd 安装参数（有效=用它建 admin 且不写明文 txt）
+        self._init_password = init_password
         self._ensure_default_admin()
         # W24（v4 P3-7）：补扫残留首启凭据（此前删除失败的场景），
         # 首启场景 _ensure_default_admin 刚建文件时 must_change=True
@@ -206,9 +209,13 @@ class LoginPage(QWidget):
         self._build_ui()
         self._wire()
 
-    @staticmethod
-    def _ensure_default_admin() -> None:
-        """确保 configs/users.json 中有默认 admin 账户（R4-4: 随机密码）。"""
+    def _ensure_default_admin(self) -> None:
+        """确保 configs/users.json 中有默认 admin 账户。
+
+        W1-5：``--init-pwd`` 提供且合规（非空 ≥8 字符）→ 用该密码建
+        admin 且**不写明文 txt**（无网新工位免文件交付）；未提供/不合规
+        → 随机密码+txt（R4-4 原行为），不合规另有告警。
+        """
         try:
             config_dir = str(_CONFIG_DIR)
             os.makedirs(config_dir, exist_ok=True)
@@ -220,8 +227,14 @@ class LoginPage(QWidget):
                 db = {}
             # 只有当库为空时才创建默认 admin（R4-4: 随机密码）
             if not db:
-                # 生成随机初始密码（R4-4）
-                default_pwd = secrets.token_urlsafe(12)
+                from_init_arg = self._init_password
+                if from_init_arg and (len(from_init_arg) < 8):
+                    logger.warning(
+                        "--init-pwd 长度不足 8 字符，忽略并回落随机密码"
+                    )
+                    from_init_arg = None
+                # 生成随机初始密码（R4-4）——W1-5：参数密码优先
+                default_pwd = from_init_arg or secrets.token_urlsafe(12)
                 h, s, iters = _hash_password(default_pwd)
                 db["admin"] = {
                     "password_hash": h,
@@ -236,9 +249,17 @@ class LoginPage(QWidget):
                 # 不构成访问控制——凭据保护实际依赖文件系统 ACL/目录权限。
                 with contextlib.suppress(OSError):
                     os.chmod(db_path, 0o600)
-                # W19（v3 第三波 FR-5.1）：初始密码改落一次性文件，
-                # 日志只记提示不含明文（W14-C3 的日志通道明文就此关闭）
-                LoginPage._write_initial_credentials(config_dir, default_pwd)
+                if from_init_arg:
+                    logger.info(
+                        "已按 --init-pwd 配置初始密码（不生成明文文件，"
+                        "首登仍强制改密）"
+                    )
+                else:
+                    # W19（v3 第三波 FR-5.1）：初始密码改落一次性文件，
+                    # 日志只记提示不含明文（W14-C3 的日志通道明文就此关闭）
+                    LoginPage._write_initial_credentials(
+                        config_dir, default_pwd
+                    )
         except (OSError, json.JSONDecodeError):
             logger.exception("初始化默认管理员失败")
 

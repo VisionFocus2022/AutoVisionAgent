@@ -61,6 +61,7 @@ class FakeWorker:
     def __init__(self, trainer, cfg, parent=None):
         self.trainer, self.cfg = trainer, cfg
         self.progress, self.finished_sig, self.failed = _Sig(), _Sig(), _Sig()
+        self.stage_msg = _Sig()  # W1-4：AMP 预检回传信号
         self.finished = _Sig()
         self.stopped = False
         self._running = False

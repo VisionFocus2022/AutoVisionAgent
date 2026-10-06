@@ -34,7 +34,6 @@ from gui.core.thread_bridge import invoke_main
 from gui.pages.train.strategy import EngineTrainStrategy  # W1-1 拆分（规模守卫）
 from gui.pages.train.worker import TrainWorker
 from gui.widgets.loss_chart import LossChartWidget
-from models.supervised.amp_preflight import amp_preflight
 
 logger = logging.getLogger(__name__)
 
@@ -504,18 +503,6 @@ class TrainPage(QWidget):
         # 错乱；改了也只影响下次启动但用户无感知。锁定全部配置控件组。
         self._set_form_enabled(False)
         self.lbl_log.setText(tr("训练中..."))
-        # W31 AMP 预检：cuda 侧 fp16 前向+反向有限性探针；失败=警告+回退
-        # FP32（cpu/lite 静默跳过，不随包 checkamp.pt 资产）
-        if cfg.amp:
-            logger.info("AMP 预检开始: device=%s", cfg.device)
-            ok, reason = amp_preflight(cfg.device)
-            logger.info("AMP 预检结束: ok=%s reason=%s", ok, reason)
-            if not ok:
-                logger.warning("AMP 预检失败，训练回退 FP32: %s", reason)
-                self.status_changed.emit(tr("AMP 预检失败，已回退 FP32"), reason[:40])
-                self.chk_amp.setChecked(False)
-                cfg = dataclasses.replace(cfg, amp=False)
-
         # 构建训练器（延迟导入避免循环依赖）
         # O10（2026-10-05 二轮审查）：except 元组收窄——裸 Exception 会把
         # _make_trainer 内的编码 bug（AttributeError 等）也变成"训练失败"
@@ -532,6 +519,7 @@ class TrainPage(QWidget):
         # （"QThread: Destroyed while thread is still running" 崩溃路径）。
         self._worker = TrainWorker(trainer, cfg)
         self._worker.progress.connect(self._on_progress)
+        self._worker.stage_msg.connect(self._on_stage_msg)  # W1-4
         self._worker.finished_sig.connect(self._on_finished)
         self._worker.failed.connect(self._on_failed)
 
@@ -659,6 +647,14 @@ class TrainPage(QWidget):
             self.btn_stop.setEnabled(False)  # 防重复点击（完成回调统一复位）
             self.lbl_log.setText(tr("已请求停止，等待当前轮结束..."))
             self.status_changed.emit(tr("训练停止中"), "...")
+
+    @Slot(str, str)
+    def _on_stage_msg(self, code: str, detail: str) -> None:
+        """W1-4：worker 阶段事件 → 文案/联动（码在 worker 侧，翻译在 UI 侧）。"""
+        if code == "amp_fallback":
+            logger.warning("AMP 预检失败，已回退 FP32（worker 回传）: %s", detail)
+            self.status_changed.emit(tr("AMP 预检失败，已回退 FP32"), detail)
+            self.chk_amp.setChecked(False)
 
     def _on_progress(self, ratio: float, metrics: dict) -> None:
         """进度回调（主线程，经信号槽）。"""

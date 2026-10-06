@@ -1,133 +1,119 @@
-"""W31（W26 计划 P2）：AMP 预检——训练前 cuda 侧 fp16 前向+反向有限性探针。
+"""W31/W1-4 AMP 预检测试（真线程模式重写）。
 
-背景：SKolpha 打包 checkamp.pt 资产方案被弃用（随包资产 +2MB 且黑盒）；
-2 行 autocast 往返等价且诚实。失败=警告+回退 FP32；cpu/lite 静默跳过。
+W1-4（PRD docs/prd-w1-4-w1-5-wave1-tail.md）后预检在 TrainWorker 线程：
+- AC-4①预检线程≠主线程，_start_training 即刻返回
+- AC-4②预检失败 → fit 收到 amp=False + 状态"AMP 预检失败" + chk_amp 取消
+- AC-4③预检成功 → amp=True 保持
 """
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
-pytest.importorskip("PySide6")
-
-import os  # noqa: E402
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from core.interfaces_supervised import TaskType as _TaskType
 
 
 @pytest.fixture(scope="session")
 def qapp():
+    from PySide6.QtWidgets import QApplication
+
     return QApplication.instance() or QApplication([])
 
 
-# ============================== 1. 探针纯函数 ============================== #
+class _Artifact:
+    task = _TaskType.DET
+    config = None
+    weights_path = ""
+    metrics = {}
+    epochs_completed = 1
+    best_metric = 0.0
 
 
-@pytest.mark.unit
-def test_amp_preflight_cpu_skips():
-    """cpu / lite（CPU torch）：静默跳过——(True, "skip")，不触 GPU 探测。"""
-    from models.supervised.amp_preflight import amp_preflight
+class _Trainer:
+    """fit 即回：捕获传入 cfg（amp 回退断言用）。"""
 
-    ok, reason = amp_preflight("cpu")
-    assert ok is True and reason == "skip"
+    def __init__(self):
+        self.captured = None
 
-
-@pytest.mark.unit
-def test_amp_preflight_cuda_exception_returns_false_with_reason(monkeypatch):
-    """cuda 侧探针异常 → (False, 原因含探针失败)——不静默不崩。"""
-    import torch
-
-    from models.supervised import amp_preflight as amp_mod
-
-    monkeypatch.setattr(amp_mod, "resolve_device", lambda d: "cuda")
-
-    def _boom(*a, **k):
-        raise RuntimeError("cuda probe exploded")
-
-    monkeypatch.setattr(torch, "autocast", _boom)
-    ok, reason = amp_mod.amp_preflight("cuda")
-    assert ok is False
-    assert "探针失败" in reason and "cuda probe exploded" in reason
+    def fit(self, cfg, progress, should_stop):
+        self.captured = cfg
+        progress(1.0, {"loss": 0.5})
+        return _Artifact()
 
 
-@pytest.mark.unit
-def test_amp_preflight_cuda_nonfinite_grad_returns_false(monkeypatch):
-    """反向梯度非有限 → (False, 原因含非有限)。"""
-    import torch
-
-    from models.supervised import amp_preflight as amp_mod
-
-    monkeypatch.setattr(amp_mod, "resolve_device", lambda d: "cuda")
-
-    class _FalseAll:
-        def all(self):
-            return self
-
-        def item(self):
-            return False
-
-    monkeypatch.setattr(torch, "isfinite", lambda t: _FalseAll())
-    ok, reason = amp_mod.amp_preflight("cuda")
-    assert ok is False
-    assert "非有限" in reason
-
-
-# ============================== 2. 训练页接线 ============================== #
-
-
-def _wire_train_page(monkeypatch, preflight_result):
-    """构造训练页并注入预检结果 + 假 TrainWorker 捕获 cfg。"""
+def _make_page(monkeypatch, preflight_result):
+    """真 TrainWorker 页面；预检结果注入并记录调用线程。"""
     from gui.pages.train import page as train_mod
-    from gui.pages.train.page import TrainPage
 
-    page = TrainPage()
-    # W1-3：绕开模拟训练确认模态框（无数据集=模拟启动形态，单测注入放行）
-    monkeypatch.setattr(TrainPage, "_confirm_simulated", lambda self: True)
-    page.chk_amp.setChecked(True)
+    monkeypatch.setattr(train_mod.TrainPage, "_confirm_simulated",
+                        lambda self: True)
+    page = train_mod.TrainPage()
     msgs = []
     page.status_changed.connect(lambda t, a: msgs.append((t, a)))
+    page._msgs = msgs
+    recorder = {"thread": None, "calls": 0}
 
-    captured = []
-    monkeypatch.setattr(train_mod, "amp_preflight", lambda d: preflight_result)
-    monkeypatch.setattr(TrainPage, "_make_trainer", lambda self, cfg: object())
+    def _fake_preflight(device):
+        recorder["calls"] += 1
+        recorder["thread"] = threading.get_ident()
+        return preflight_result
 
-    class _Sig:
-        def connect(self, *a, **k):
-            pass
+    import models.supervised.amp_preflight as ap
 
-    class _FakeWorker:
-        progress = _Sig()
-        finished_sig = _Sig()
-        failed = _Sig()
-        finished = _Sig()
+    monkeypatch.setattr(ap, "amp_preflight", _fake_preflight)
+    trainer = _Trainer()
+    monkeypatch.setattr(page, "_make_trainer", lambda cfg: trainer)
+    return page, trainer, recorder
 
-        def __init__(self, trainer, cfg):
-            captured.append(cfg)
 
-        def start(self):
-            pass
-
-    monkeypatch.setattr(train_mod, "TrainWorker", _FakeWorker)
-    return page, msgs, captured
+def _wait_finish(qapp, page, timeout=15.0) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        qapp.processEvents()  # 跨线程排队信号（finished/清理链）需事件泵
+        if getattr(page, "_worker", None) is None:
+            return
+        time.sleep(0.1)
+    raise AssertionError("训练线程未在时限内收尾")
 
 
 @pytest.mark.unit
-def test_train_page_amp_failure_warns_and_falls_back(qapp, monkeypatch):
-    """预检失败 → 状态栏警告 + 训练配置回退 FP32 + 复选框即时反映。"""
-    page, msgs, captured = _wire_train_page(monkeypatch, (False, "fp16 非有限"))
+def test_amp_preflight_fails_in_worker(qapp, monkeypatch):
+    """AC-4②：预检失败（worker 线程）→ amp=False/状态/取消勾选。"""
+    page, trainer, recorder = _make_page(monkeypatch, (False, "fp16 非有限"))
+    page.chk_amp.setChecked(True)
+    t0 = time.time()
     page._start_training()
-
-    assert any("回退" in t or "回退" in a for t, a in msgs), msgs
-    assert captured and captured[0].amp is False, "训练配置必须回退 amp=False"
+    assert time.time() - t0 < 0.5, "_start_training 应即刻返回（预检在 worker）"
+    _wait_finish(qapp, page)
+    assert recorder["calls"] == 1
+    assert recorder["thread"] != threading.get_ident(), "预检应跑在 worker 线程"
+    assert trainer.captured.amp is False, "fit 应收到 amp=False 回退"
     assert page.chk_amp.isChecked() is False
+    assert any(t == "AMP 预检失败，已回退 FP32" for t, _ in page._msgs)
+    assert any(t == "训练完成" for t, _ in page._msgs)
 
 
 @pytest.mark.unit
-def test_train_page_amp_ok_keeps_amp(qapp, monkeypatch):
-    """预检通过/跳过 → amp 保持，无警告。"""
-    page, msgs, captured = _wire_train_page(monkeypatch, (True, "ok"))
+def test_amp_preflight_ok_keeps_amp(qapp, monkeypatch):
+    """AC-4③：预检成功 → amp=True 保持、无回退状态。"""
+    page, trainer, recorder = _make_page(monkeypatch, (True, "ok"))
+    page.chk_amp.setChecked(True)
     page._start_training()
+    _wait_finish(qapp, page)
+    assert recorder["calls"] == 1
+    assert trainer.captured.amp is True
+    assert not any("AMP" in t for t, _ in page._msgs), "成功不应有 AMP 警告"
+    assert page.chk_amp.isChecked() is True
 
-    assert captured and captured[0].amp is True
-    assert not any("回退" in t or "回退" in a for t, a in msgs)
+
+@pytest.mark.unit
+def test_amp_disabled_skips_preflight(qapp, monkeypatch):
+    """amp 未勾选 → 预检零调用（cpu/lite 路径不打扰）。"""
+    page, trainer, recorder = _make_page(monkeypatch, (True, "ok"))
+    page.chk_amp.setChecked(False)
+    page._start_training()
+    _wait_finish(qapp, page)
+    assert recorder["calls"] == 0
+    assert trainer.captured.amp is False
