@@ -27,6 +27,16 @@ pytest.importorskip("PIL")
 import evaluation.generative_metrics as gm  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _clean_model_caches():
+    """E13：每用例前后清模型缓存——替身注入残留会跨用例污染真模型引用。"""
+    gm._INCEPTION_CACHE.clear()
+    gm._LPIPS_CACHE.clear()
+    yield
+    gm._INCEPTION_CACHE.clear()
+    gm._LPIPS_CACHE.clear()
+
+
 def _img(h=6, w=8, seed=0):
     rng = np.random.default_rng(seed)
     return rng.random((h, w, 3)).astype(np.float32)
@@ -159,8 +169,10 @@ def test_sqrtm_complex_dtype_with_negligible_imag_falls_back_to_real():
 # ============================== perceptual_loss（假 lpips 模块） ============================== #
 @pytest.mark.unit
 def test_perceptual_loss_fake_lpips_module(monkeypatch):
-    """注入假 lpips 模块走 LPIPS 主路径：net="alex" 构造、[-1,1] NCHW 张量、
-    逐对前向取均值、长度不齐取 min（:157、:164-179）。"""
+    """注入假 lpips 模块走 LPIPS 主路径：net="alex" 构造、[-1,1] NCHW 张量。
+
+    E4（2026-10-06 三轮审查）后默认 nearest 配对：2 gen × 3 tgt =
+    6 次前向（每 gen 对全部 tgt），模型返回固定 0.25 → 均值 0.25。"""
     seen_tensors = []
 
     class _Model:
@@ -184,17 +196,87 @@ def test_perceptual_loss_fake_lpips_module(monkeypatch):
     fake_mod.LPIPS = _ctor
     monkeypatch.setitem(sys.modules, "lpips", fake_mod)
 
-    gen = [_img(seed=1), _img(seed=2)]          # 2 张
-    tgt = [_img(seed=3), _img(seed=4), _img(seed=5)]  # 3 张 → n=min=2
+    gen = [_img(seed=1), _img(seed=2)]               # 2 张
+    tgt = [_img(seed=3), _img(seed=4), _img(seed=5)]  # 3 张
 
     loss = gm.perceptual_loss(gen, tgt)
     assert ctor_kw == {"net": "alex"}
-    assert len(seen_tensors) == 2  # 只取前 2 对
+    # E4 nearest：每张 gen 对全部 3 张 tgt → 2×3 = 6 次前向
+    assert len(seen_tensors) == 6
     for a, b in seen_tensors:
         assert a.shape == (1, 3, 6, 8) and b.shape == (1, 3, 6, 8)  # NCHW
         assert a.dtype == torch.float32
         assert float(a.min()) >= -1.0 and float(a.max()) <= 1.0     # [-1,1]
     assert loss == pytest.approx(0.25)
+
+
+@pytest.mark.unit
+def test_perceptual_loss_index_pairing_backward_compat(monkeypatch):
+    """E4 兼容锚：pairing="index" 保持旧按下标配对语义（n=min 截断）。"""
+    seen_tensors = []
+
+    class _Model:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+        def __call__(self, a, b):
+            seen_tensors.append((a, b))
+            return torch.tensor(0.25)
+
+    fake_mod = types.ModuleType("lpips")
+    fake_mod.LPIPS = lambda net="alex": _Model()
+    monkeypatch.setitem(sys.modules, "lpips", fake_mod)
+
+    gen = [_img(seed=1), _img(seed=2)]
+    tgt = [_img(seed=3), _img(seed=4), _img(seed=5)]
+
+    loss = gm.perceptual_loss(gen, tgt, pairing="index")
+    assert len(seen_tensors) == 2  # 旧语义：只取前 2 对
+    assert loss == pytest.approx(0.25)
+
+
+@pytest.mark.unit
+def test_perceptual_loss_nearest_takes_min_per_gen(monkeypatch):
+    """E4 核心：nearest 模式每 gen 取对全部 tgt 的最小值（可区分返回值验证）。"""
+    # 假模型返回 |a_mean - b_mean|——可构造每 gen 与某张 tgt 最接近
+    class _Model:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+        def __call__(self, a, b):
+            return torch.tensor(abs(float(a.mean()) - float(b.mean())))
+
+    fake_mod = types.ModuleType("lpips")
+    fake_mod.LPIPS = lambda net="alex": _Model()
+    monkeypatch.setitem(sys.modules, "lpips", fake_mod)
+
+    # gen[0] 均值 0.2 → 最近 tgt（0.25）距离 0.05
+    # gen[1] 均值 0.8 → 最近 tgt（0.75）距离 0.05
+    gen = [
+        np.full((4, 4, 3), 0.2, dtype=np.float32),
+        np.full((4, 4, 3), 0.8, dtype=np.float32),
+    ]
+    tgt = [
+        np.full((4, 4, 3), 0.25, dtype=np.float32),
+        np.full((4, 4, 3), 0.5, dtype=np.float32),
+        np.full((4, 4, 3), 0.75, dtype=np.float32),
+    ]
+
+    loss = gm.perceptual_loss(gen, tgt)
+    assert loss == pytest.approx(0.05, abs=1e-4), "nearest 必须取每 gen 的最小距离"
+
+
+@pytest.mark.unit
+def test_perceptual_loss_invalid_pairing_raises():
+    """E4：未知配对模式显式拒绝。"""
+    with pytest.raises(ValueError, match="配对模式"):
+        gm.perceptual_loss([_img()], [_img()], pairing="bogus")
 
 
 @pytest.mark.unit
@@ -208,3 +290,110 @@ def test_to_tensor_lpips_range_and_shape():
     half = np.full((2, 2, 3), 0.5, dtype=np.float32)
     t2 = gm._to_tensor_lpips(half, "cpu")
     np.testing.assert_allclose(t2.numpy(), 0.0, rtol=0)
+
+
+# ============== E13（2026-10-06 三轮审查）：模型缓存复用 ============== #
+
+
+@pytest.mark.unit
+def test_inception_model_cached_per_device(monkeypatch):
+    """E13：同 device 两次调用返回同一实例（此前每次重建）。"""
+    import torchvision.models as tvm
+
+    built = []
+
+    def _factory(**kw):
+        m = _FakeInception()
+        built.append(m)
+        return m
+
+    monkeypatch.setattr(tvm, "inception_v3", _factory)
+    m1 = gm._get_inception_model("cpu")
+    m2 = gm._get_inception_model("cpu")
+    assert m1 is m2, "同 device 必须复用"
+    assert len(built) == 1
+    # 不同 device 各自缓存
+    m3 = gm._get_inception_model("cuda")
+    assert m3 is not m1
+    assert len(built) == 2
+
+
+@pytest.mark.unit
+def test_extract_features_reuses_model_within_fid(monkeypatch):
+    """E13 核心：fid_score 全流程下模型只构建一次（此前 gen/real 各一次=两次）。"""
+    import torchvision.models as tvm
+
+    build_count = {"n": 0}
+
+    def _factory(**kw):
+        build_count["n"] += 1
+        return _FakeInception()
+
+    monkeypatch.setattr(tvm, "inception_v3", _factory)
+
+    def _fake_extract(images, device="cpu"):
+        return gm._extract_features(images, device)
+
+    # 直接观测：两次 _extract_features 共享一次构建
+    feats1 = gm._extract_features(np.stack([_img(seed=1)]))
+    feats2 = gm._extract_features(np.stack([_img(seed=2)]))
+    assert build_count["n"] == 1, "两次特征提取必须共享同一模型实例"
+    assert feats1.shape == (1, 2048) and feats2.shape == (1, 2048)
+
+
+@pytest.mark.unit
+def test_reset_inception_cache_clears(monkeypatch):
+    """E13：_reset_inception_cache 后重新构建。"""
+    import torchvision.models as tvm
+
+    built = []
+
+    def _factory(**kw):
+        m = _FakeInception()
+        built.append(m)
+        return m
+
+    monkeypatch.setattr(tvm, "inception_v3", _factory)
+    m1 = gm._get_inception_model("cpu")
+    gm._reset_inception_cache()
+    m2 = gm._get_inception_model("cpu")
+    assert m1 is not m2 and len(built) == 2
+
+
+# ============== E6（2026-10-06 三轮审查）：尺寸对齐 ============== #
+
+
+@pytest.mark.unit
+def test_to_numpy_resizes_mixed_sizes():
+    """E6：异尺寸输入统一 resize 到首图基准（此前 np.stack 崩）。"""
+    big = np.ones((6, 8, 3), dtype=np.float32)
+    small = np.zeros((4, 4, 3), dtype=np.float32)
+    arr = gm._to_numpy([big, small])
+    assert arr.shape == (2, 6, 8, 3), "以首图为基准对齐"
+
+
+@pytest.mark.unit
+def test_to_numpy_grayscale_expanded():
+    """E6：灰度 HxW → 3 通道（工业灰度相机输入防御）。"""
+    gray = np.full((4, 4), 0.5, dtype=np.float32)
+    arr = gm._to_numpy([gray])
+    assert arr.shape == (1, 4, 4, 3)
+
+
+@pytest.mark.unit
+def test_to_numpy_strict_mode_raises_on_mixed():
+    """E6：resize=False 保留严格模式（旧行为锚）。"""
+    big = np.ones((6, 8, 3), dtype=np.float32)
+    small = np.zeros((4, 4, 3), dtype=np.float32)
+    with pytest.raises(ValueError):
+        gm._to_numpy([big, small], resize=False)
+
+
+@pytest.mark.unit
+def test_perceptual_loss_l2_fallback_mixed_sizes_no_crash(monkeypatch):
+    """E6：lpips 缺失回退 L2 + 异尺寸输入 → 对齐后不崩（此前直接崩）。"""
+    monkeypatch.setitem(sys.modules, "lpips", None)  # import 失败路径
+    gen = [np.ones((6, 8, 3), dtype=np.float32)]
+    tgt = [np.zeros((4, 4, 3), dtype=np.float32)]
+    val = gm.perceptual_loss(gen, tgt)
+    assert isinstance(val, float) and val >= 0.0

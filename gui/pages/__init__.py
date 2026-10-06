@@ -16,11 +16,13 @@ from gui.pages.predict import PredictPage
 from gui.pages.project import ProjectPage
 from gui.pages.settings import SettingsPage
 from gui.pages.train import TrainPage
+from gui.pages.train_history import TrainHistoryPage
 
 __all__ = [
     "LabelPage",
     "DataManagePage",
     "TrainPage",
+    "TrainHistoryPage",
     "PredictPage",
     "ProjectPage",
     "LoginPage",

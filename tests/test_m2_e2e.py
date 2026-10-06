@@ -185,7 +185,7 @@ class TestM2MainWindow:
         from gui.main import build_window
         win = build_window()
         # W1: 11 pages（flaw_gen 为 era-2 后新增）
-        assert win._stack.count() == 11
+        assert win._stack.count() == 12  # W1-2 增训练历史页
 
     def test_login_to_home_navigation(self, qapp) -> None:
         from gui.main import build_window

@@ -242,11 +242,14 @@ def run_generative_eval(
     gt_dir: str,
     task_key: str,
     translate: Translate = _identity,
-    max_images: int = 20,
+    max_images: int = 200,
 ) -> Rows:
     """生成式评估（FID/LPIPS）：model 为目录则递归取图，否则视为单文件。
 
-    W18（P3⑥）：样本帽参数化——max_images 默认 20，页侧不传行为不变。
+    W18（P3⑥）：样本帽参数化。
+    E5（2026-10-06 三轮审查）：默认 20 → 200——FID 协方差 2048 维，
+    20 张样本严重欠定（秩≤20），FID 恒有偏且噪声大；200 起步才有
+    统计意义（仍非充分，样本充足时应显式传更大值）。
     """
     from evaluation.generative_metrics import fid_score, perceptual_loss
 
@@ -270,11 +273,13 @@ def run_eval_task(
     translate: Translate = _identity,
     on_warn: Callable[[str], None] | None = None,
     logger: logging.Logger | None = None,
-    max_images: int = 20,
+    max_images: int = 200,
 ) -> Rows:
     """评估任务入口：按 task_key 分发生成式（fid/lpips）或监督式主流程。
 
-    W18（P3⑥）：max_images 透传生成式分支（默认 20，页侧不传行为不变）。
+    W18（P3⑥）：max_images 透传生成式分支。
+    E5（2026-10-06 三轮审查）：默认 20 → 200（FID 欠定修正，见
+    run_generative_eval docstring）。
     """
     if task_key in ("fid", "lpips"):
         return run_generative_eval(model, gt_dir, task_key, translate, max_images)

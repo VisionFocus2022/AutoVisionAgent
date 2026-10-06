@@ -276,6 +276,36 @@ class PredictPage(VideoSuperActionsMixin, ExportActionsMixin, QWidget):
         )
         if not path:
             return
+        self._load_model_from(path)
+
+    def apply_external_model(self, path: str, task: str | None = None) -> None:
+        """W1-2：外部指定权重加载（训练历史一键加载缝，无对话框）。
+
+        task 提供时先同步任务下拉（与权重任务一致），其余与手工加载
+        同链（含推理进行中拒载守卫）。
+        """
+        from gui.core.jobs import active_jobs
+
+        busy = [n for n in active_jobs() if n.startswith("predict_")]
+        if busy:
+            self.status_changed.emit(tr("推理进行中，禁止更换模型"), "!")
+            return
+        if task:
+            for i in range(self.cmb_task.count()):
+                data = self.cmb_task.itemData(i)
+                if getattr(data, "value", None) == task or data == task:
+                    self.cmb_task.setCurrentIndex(i)
+                    break
+        self._load_model_from(path)
+
+    def _load_model_from(self, path: str) -> None:
+        """加载权重的共享主体（对话框已在外层完成路径选择）。"""
+        from gui.core.jobs import active_jobs
+
+        busy = [n for n in active_jobs() if n.startswith("predict_")]
+        if busy:
+            self.status_changed.emit(tr("推理进行中，禁止更换模型"), "!")
+            return
         self._model_path = path
         task = self.cmb_task.currentData()
         try:

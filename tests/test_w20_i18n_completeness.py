@@ -136,7 +136,7 @@ def test_mode_label_keys_have_dict_entries():
 # 防字典无界膨胀（v6 P3-9 由 407 键长到 424 键时无人察觉的通道）。
 _DEAD_KEY_ALLOWLIST = frozenset({
     "...", "AutoVisionAgent", "ONNX", "SAM 全图", "SKolpha 复刻平台",
-    "TensorRT", "关键点 (pose)", "关闭", "分割 (seg)", "分类 (cls)",
+    "TensorRT", "关键点 (pose)", "分割 (seg)", "分类 (cls)",
     "切割完成", "切换主题", "切换语言", "划分完成", "删除完成", "单类",
     "实例分割", "实例分割 (pseg)", "导入完成",
     "将复制图像到 train/val/test 子目录（保留原文件）。确认？",
@@ -153,6 +153,8 @@ _DEAD_KEY_ALLOWLIST = frozenset({
     "选择工作空间", "选择批量推理目录",
     "选择数据目录", "选择标注文件夹", "选择模型", "选择模型权重",
     "选择视频", "选择许可证文件", "（未装引擎）", "（模拟）",
+    # W1-2：历史页表头经 tr(c) 列名循环动态消费（扫描器不可见）
+    "操作", "状态",
     # W1-3：populate_task_combo 经参数默认值透传 tr()（动态链，扫描器不可见）
     "（模拟训练）",
     "该任务暂未实装真训练：训练为模拟策略（假 loss，仅供流程验证）",

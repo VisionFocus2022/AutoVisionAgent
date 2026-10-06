@@ -25,9 +25,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PERMISSIONS = REPO_ROOT / "gui" / "core" / "permissions.py"
 
 _ALL_11_PAGES = {
-    "home", "label", "data_manage", "train", "predict",
+    "home", "label", "data_manage", "train", "history", "predict",
     "eval", "deploy", "flaw_gen", "project", "settings",
-}  # login 页不计入矩阵（恒允许）
+}  # login 页不计入矩阵（恒允许）；W1-2 增 history
 
 
 # ============================== 1. 纯函数矩阵（FR-1/3/4） ============================== #
@@ -54,7 +54,7 @@ def test_operator_page_matrix():
     """operator：现场操作页可见；系统/工程/发布页不可见（最小特权）。"""
     from gui.core.permissions import ROLE_OPERATOR, page_allowed
 
-    allowed = {"home", "label", "data_manage", "predict", "eval"}
+    allowed = {"home", "label", "data_manage", "history", "predict", "eval"}
     for page in _ALL_11_PAGES:
         expected = page in allowed
         assert page_allowed(ROLE_OPERATOR, page) is expected, (

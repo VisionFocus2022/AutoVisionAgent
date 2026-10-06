@@ -128,7 +128,9 @@ class TestAc3PageWiring:
         def _fake_invoke(widget, slot, *args):
             captured.append((widget, slot, args))
 
-        monkeypatch.setattr("gui.core.thread_bridge.invoke_main", _fake_invoke)
+        # W1-2 批：页内改为模块顶 import（绑定名在 page 命名空间），
+        # patch 目标须是消费方绑定而非源模块属性
+        monkeypatch.setattr("gui.pages.train.page.invoke_main", _fake_invoke)
         page._emit_epoch_progress({"epoch": 5, "total": 100})
         assert captured and captured[0][1] == "_on_epoch_progress_ui"
         assert captured[0][2][0]["epoch"] == 5

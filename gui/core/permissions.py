@@ -30,7 +30,7 @@ LOGIN_PAGE = "login"
 
 # 全部受门控页面（与 gui.main build_window 注册的 11 页一致）
 ALL_PAGES: frozenset[str] = frozenset({
-    "home", "label", "data_manage", "train", "predict",
+    "home", "label", "data_manage", "train", "history", "predict",
     "eval", "deploy", "flaw_gen", "project", "settings",
 }) | {LOGIN_PAGE}
 
@@ -41,7 +41,9 @@ _PAGE_MATRIX: dict[str, frozenset[str]] = {
     ROLE_ENGINEER: ALL_PAGES - {"settings"},
     # 操作员：标注/数据管理/推理/评估/主页；train/deploy/flaw_gen/project/settings 不可见
     ROLE_OPERATOR: frozenset({
-        "home", "label", "data_manage", "predict", "eval", LOGIN_PAGE,
+        # W1-2：训练历史（只读+一键加载推理）与 predict 同级开放
+        "home", "label", "data_manage", "history", "predict", "eval",
+        LOGIN_PAGE,
     }),
 }
 

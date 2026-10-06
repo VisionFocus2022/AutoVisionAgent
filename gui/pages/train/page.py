@@ -30,6 +30,7 @@ from core.interfaces_supervised import TaskType, TrainConfig
 from dataset.format_export import candidate_label_dirs, label_txt_files
 from gui.core.i18n import tr
 from gui.core.tasks_ui import populate_task_combo
+from gui.core.thread_bridge import invoke_main
 from gui.pages.train.strategy import EngineTrainStrategy  # W1-1 拆分（规模守卫）
 from gui.pages.train.worker import TrainWorker
 from gui.widgets.loss_chart import LossChartWidget
@@ -439,12 +440,10 @@ class TrainPage(QWidget):
 
     def _will_be_simulated(self, cfg: TrainConfig | None = None) -> bool:
         """本次启动是否将走模拟训练（W1-3：任务无真通道 或 未选数据集）。"""
-        cfg = cfg or self._build_config()
         from models.supervised.registry import task_supports_real_training
 
-        return (not task_supports_real_training(cfg.task)) or not (
-            getattr(cfg, "data_yaml", "") or ""
-        )
+        cfg = cfg or self._build_config()
+        return (not task_supports_real_training(cfg.task)) or not cfg.data_yaml
 
     def _confirm_simulated(self) -> bool:
         """模拟训练显式确认框（W1-3）。测试缝：覆写本方法绕开模态框。"""
@@ -484,8 +483,6 @@ class TrainPage(QWidget):
         cfg = self._build_config()
         # W69 启动守卫：任务与数据集标签格式不符（如检测+多边形数据）→
         # 自动纠正——此前该错配会让真通道失效/训练报错，用户侧表现为假训练
-        import dataclasses
-
         cfg, note = self._correct_task_for_dataset(cfg)
         if note:
             self.status_changed.emit(note, "!")
@@ -517,8 +514,6 @@ class TrainPage(QWidget):
                 logger.warning("AMP 预检失败，训练回退 FP32: %s", reason)
                 self.status_changed.emit(tr("AMP 预检失败，已回退 FP32"), reason[:40])
                 self.chk_amp.setChecked(False)
-                import dataclasses
-
                 cfg = dataclasses.replace(cfg, amp=False)
 
         # 构建训练器（延迟导入避免循环依赖）
@@ -571,6 +566,7 @@ class TrainPage(QWidget):
         """
         from training.generic_trainer import GenericTrainer
 
+        self._last_run_real = False  # W1-2：落账用（真路径置 True）
         # 尝试从注册表获取引擎并构建真实训练策略
         # registry 直连为 GUI 正式形态（v3 P2-7）
         try:
@@ -585,6 +581,7 @@ class TrainPage(QWidget):
                         # W1-1：逐轮进度钩子（回调在工作线程→invoke_main
                         # 派发主线程槽）+ 持引用供停止联动
                         self._active_engine = engine
+                        self._last_run_real = True
                         if hasattr(engine, "set_progress_callback"):
                             engine.set_progress_callback(self._emit_epoch_progress)
                         return GenericTrainer(cfg.task, EngineTrainStrategy(engine, cfg))
@@ -679,8 +676,6 @@ class TrainPage(QWidget):
 
     def _emit_epoch_progress(self, info: dict) -> None:
         """W1-1：引擎逐轮回调（训练工作线程）→ invoke_main 派发主线程。"""
-        from gui.core.thread_bridge import invoke_main
-
         invoke_main(self, "_on_epoch_progress_ui", dict(info))
 
     @Slot(dict)
@@ -693,12 +688,7 @@ class TrainPage(QWidget):
         if loss is not None:
             self.chart.append("loss", loss)
             self.chart.update()
-        eta = info.get("eta_s")
-        eta_txt = ""
-        if isinstance(eta, (int, float)) and eta > 0:
-            mm, ss = divmod(int(eta), 60)
-            eta_txt = f" · 剩余 {mm}:{ss:02d}"
-        self.lbl_log.setText(f"epoch {k}/{total}{eta_txt}")
+        self.lbl_log.setText(f"epoch {k}/{total}{_format_eta(info.get('eta_s'))}")
         self.status_changed.emit(tr("训练中"), f"{pct}%")
 
     def _on_finished(self, artifact) -> None:
@@ -740,6 +730,19 @@ class TrainPage(QWidget):
             )
         except (ImportError, OSError, TypeError, ValueError):
             logger.exception("训练完成审计写入失败")
+        self._append_history(artifact, n_epochs, pr_text)
+
+    def _append_history(self, artifact, n_epochs: int, pr_text: str) -> None:
+        """W1-2：训练完成落账（best-effort——失败告警不挡完成路径）。"""
+        try:
+            from core.train_history import append_record, record_from_artifact
+
+            append_record(record_from_artifact(
+                artifact, n_epochs, getattr(self, "_last_run_real", False)
+            ))
+            logger.info("训练历史已落账: %s %s", artifact.task.value, pr_text)
+        except Exception:  # noqa: BLE001  # 落账是观测件
+            logger.exception("训练历史落账失败（不影响训练结果）")
 
     def _on_failed(self, msg: str) -> None:
         """训练失败回调（O10：补 logger.exception 留痕——此前仅 UI 文案，
@@ -754,6 +757,14 @@ class TrainPage(QWidget):
     def retranslate(self) -> None:
         self.btn_start.setText(tr("开始训练"))
         self.btn_stop.setText(tr("强制结束"))
+
+
+def _format_eta(eta) -> str:
+    """ETA 秒 → " · 剩余 m:ss" 文案（W1-1）。"""
+    if isinstance(eta, (int, float)) and eta > 0:
+        mm, ss = divmod(int(eta), 60)
+        return f" · 剩余 {mm}:{ss:02d}"
+    return ""
 
 
 def _confirm_simulated_dialog(parent) -> bool:

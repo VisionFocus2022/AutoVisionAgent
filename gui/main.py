@@ -33,6 +33,7 @@ from gui.pages import (
     PredictPage,
     ProjectPage,
     SettingsPage,
+    TrainHistoryPage,
     TrainPage,
 )
 
@@ -167,60 +168,9 @@ def _wire_label_to_data_handoff(label_page, data_page) -> None:
     label_page.request_page.connect(_handoff)
 
 
-def _wire_data_to_train_handoff(data_page, train_page) -> None:
-    """W63：数据管理「下一步：训练」→ 数据集上下文交接。
-
-    只带最近一次 YOLO 导出的 data.yaml（COCO 无 yaml 不记、未导出为空串
-    零操作——训练页保持「未选择（模拟训练）」诚实回退，手动选择不被
-    无导出场景覆盖）。真实训练仍需显式「开始训练」。
-    """
-    def _handoff(key: str) -> None:
-        if key == "train" and data_page.last_dataset_yaml:
-            train_page.apply_external_dataset(data_page.last_dataset_yaml)
-
-    data_page.request_page.connect(_handoff)
-
-
-def build_window() -> MainWindow:
-    """构造主窗口并注册全部实装页面。"""
-    win = MainWindow("AutoVisionAgent")
-
-    # ---- 实例化所有页面 ----
-    login_page = LoginPage()
-    home_page = HomePage()
-    label_page = LabelPage()
-    data_page = DataManagePage()
-    train_page = TrainPage()
-    predict_page = PredictPage()
-    eval_page = EvalPage()
-    deploy_page = DeployPage()
-    flaw_gen_page = FlawGenPage()
-    project_page = ProjectPage()
-    settings_page = SettingsPage()
-
-    # ---- 状态栏联动 ----
-    def _connect_status(page) -> None:
-        page.status_changed.connect(
-            lambda text, accent: win.set_status(text, accent)
-        )
-
-    all_pages = [
-        login_page, home_page, label_page, data_page,
-        train_page, predict_page, eval_page, deploy_page,
-        flaw_gen_page, project_page, settings_page,
-    ]
-    for page in all_pages:
-        _connect_status(page)
-
-    # ---- 项目打开 → 通知工作页 ----
-    project_page.project_opened.connect(data_page.set_project_dir)
-    project_page.project_opened.connect(predict_page.set_project_dir)
-
-    # ---- W62/W63：向导目录交接（标注→数据管理→训练） ----
-    _wire_label_to_data_handoff(label_page, data_page)
-    _wire_data_to_train_handoff(data_page, train_page)
-
-    # ---- 项目打开 → 刷新仪表盘统计 ----
+# ---- 项目打开 → 刷新仪表盘统计（W24 规模拆分：模块级） ----
+def _make_home_stats_refresher(home_page):
+    """返回 project_opened 槽：项目打开→刷新主页统计（闭包仅持 home_page）。"""
     def _refresh_home_stats(project_dir: str) -> None:
         import os
         img_count = 0
@@ -249,7 +199,78 @@ def build_window() -> MainWindow:
             projects=1, images=img_count, models=model_count, gpu=gpu_status,
         )
 
-    project_page.project_opened.connect(_refresh_home_stats)
+    return _refresh_home_stats
+
+
+def _wire_history_to_predict(history_page, predict_page, win) -> None:
+    """W1-2：历史「加载推理」→ 推理页加载 + 切页（W63 模式）。"""
+    def _on_load(path: str, task: str) -> None:
+        predict_page.apply_external_model(path, task)
+        win.select("predict")
+
+    history_page.load_requested.connect(_on_load)
+
+
+def _wire_data_to_train_handoff(data_page, train_page) -> None:
+    """W63：数据管理「下一步：训练」→ 数据集上下文交接。
+
+    只带最近一次 YOLO 导出的 data.yaml（COCO 无 yaml 不记、未导出为空串
+    零操作——训练页保持「未选择（模拟训练）」诚实回退，手动选择不被
+    无导出场景覆盖）。真实训练仍需显式「开始训练」。
+    """
+    def _handoff(key: str) -> None:
+        if key == "train" and data_page.last_dataset_yaml:
+            train_page.apply_external_dataset(data_page.last_dataset_yaml)
+
+    data_page.request_page.connect(_handoff)
+
+
+def build_window() -> MainWindow:
+    """构造主窗口并注册全部实装页面。"""
+    win = MainWindow("AutoVisionAgent")
+
+    # ---- 实例化所有页面 ----
+    login_page = LoginPage()
+    home_page = HomePage()
+    label_page = LabelPage()
+    data_page = DataManagePage()
+    train_page = TrainPage()
+    history_page = TrainHistoryPage()
+    predict_page = PredictPage()
+    eval_page = EvalPage()
+    deploy_page = DeployPage()
+    flaw_gen_page = FlawGenPage()
+    project_page = ProjectPage()
+    settings_page = SettingsPage()
+
+    # ---- 状态栏联动 ----
+    def _connect_status(page) -> None:
+        page.status_changed.connect(
+            lambda text, accent: win.set_status(text, accent)
+        )
+
+    all_pages = [
+        login_page, home_page, label_page, data_page,
+        train_page, history_page, predict_page, eval_page, deploy_page,
+        flaw_gen_page, project_page, settings_page,
+    ]
+    for page in all_pages:
+        _connect_status(page)
+
+    # W1-2：训练历史一键加载 → 推理页（先加载后切页，状态在推理页呈现）
+    _wire_history_to_predict(history_page, predict_page, win)
+
+    # ---- 项目打开 → 通知工作页 ----
+    project_page.project_opened.connect(data_page.set_project_dir)
+    project_page.project_opened.connect(predict_page.set_project_dir)
+
+    # ---- W62/W63：向导目录交接（标注→数据管理→训练） ----
+    _wire_label_to_data_handoff(label_page, data_page)
+    _wire_data_to_train_handoff(data_page, train_page)
+
+    project_page.project_opened.connect(
+        _make_home_stats_refresher(home_page)
+    )
 
     # ---- 主页导航 ----
     home_page.navigate.connect(win.select)
@@ -268,6 +289,7 @@ def build_window() -> MainWindow:
     win.add_page("label", "label", tr("标注"), label_page)
     win.add_page("data_manage", "data", tr("数据管理"), data_page)
     win.add_page("train", "train", tr("训练"), train_page)
+    win.add_page("history", "history", tr("训练历史"), history_page)
     win.add_page("predict", "predict", tr("推理"), predict_page)
     win.add_page("eval", "eval", tr("评估"), eval_page)
     win.add_page("deploy", "deploy", tr("发布"), deploy_page)

@@ -36,7 +36,7 @@ def window(qapp):
 @pytest.mark.unit
 def test_window_registers_pages(window):
     # W1: 11 pages（flaw_gen 为 era-2 后新增，旧测试停在 10）
-    assert window._stack.count() == 11
+    assert window._stack.count() == 12  # W1-2 增训练历史页
     assert "label" in window._pages
 
 
