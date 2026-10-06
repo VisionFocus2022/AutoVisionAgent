@@ -501,6 +501,12 @@ _EN_US: dict[str, str] = {
     "未选择（模拟训练）": "Not selected (simulated training)",
     "选择数据集": "Select dataset",
     "未选择数据集，使用模拟训练": "No dataset selected, using simulated training",
+    "（模拟训练）": " (simulated training)",
+    "该任务暂未实装真训练：训练为模拟策略（假 loss，仅供流程验证）": "Real training not implemented for this task: simulated strategy (fake loss, flow validation only)",
+    "模拟训练确认": "Simulated Training Confirmation",
+    "即将执行模拟训练：该任务未实装真训练或未选择数据集，训练过程为假 loss 模拟，不会产生可用的真实模型。": "About to run SIMULATED training: task lacks real training or no dataset selected; fake-loss simulation, no usable model will be produced.",
+    "继续模拟训练": "Continue simulated training",
+    "模拟训练需确认": "Simulated training requires confirmation",
     "已取消": "Cancelled",
 }
 

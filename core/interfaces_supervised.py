@@ -91,6 +91,9 @@ class TrainConfig:
     # （保持旧行为）；>0 时 GenericTrainer.fit 入口统一设 random/numpy/
     # torch(+cuda) 种子
     seed: int = 0
+    # W1-6：小数据轮数自适应下限（N≤50 图时实际轮数=max(epochs, 该值)）。
+    # 0 = 关闭自适应（测试冒烟/性能敏感场景）；默认 100（W71 实证锚定）
+    small_data_epoch_floor: int = 100
 
 
 @dataclass

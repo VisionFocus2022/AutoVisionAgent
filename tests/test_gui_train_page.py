@@ -95,6 +95,10 @@ def train_page(qapp, monkeypatch):
     from gui.pages.train import page as train_mod
 
     monkeypatch.setattr(train_mod, "TrainWorker", FakeWorker)
+    # W1-3：绕开模拟训练确认模态框（单测默认放行；拒绝路径在
+    # tests/test_w1_3_simulated_explicit.py 专项覆盖）
+    monkeypatch.setattr(train_mod.TrainPage, "_confirm_simulated",
+                        lambda self: True)
     page = train_mod.TrainPage()
     msgs = []
     page.status_changed.connect(lambda t, a: msgs.append((t, a)))
@@ -438,6 +442,8 @@ def test_real_train_worker_parentless_and_reference_cleared(qapp, monkeypatch):
     from gui.pages.train.page import TrainPage
 
     page = TrainPage()
+    # W1-3：真链路测试绕开模拟确认模态框（无数据集=模拟启动形态）
+    monkeypatch.setattr(page, "_confirm_simulated", lambda: True)
 
     class _SlowTrainer:
         def fit(self, cfg, progress, should_stop):

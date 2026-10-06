@@ -2,11 +2,13 @@
 
 架构审查 P1-1：train/predict/eval 下拉恰好只暴露缺失的 det/seg/abdet，
 已实现的 6 个引擎反而不可从 GUI 到达。本模块按 TaskType 枚举构建下拉，
-并按注册表实况标注（训练页：缺引擎标"模拟"）或过滤（推理页：只列可用）。
+并按注册表实况标注（训练页：缺引擎标"未装引擎"、模拟训练任务灰显
+"（模拟训练）"——W1-3 引擎在≠能真训练）或过滤（推理页：只列可用）。
 """
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor
 
 from core.interfaces_supervised import TaskType
 from gui.core.i18n import tr
@@ -24,6 +26,9 @@ TASK_LABELS = {
     TaskType.SUPER: "超分辨率",
     TaskType.OCR: "文字识别",
 }
+
+# W1-3：模拟训练项的灰显前景色（保留可选——灰=视觉警示，硬门在启动确认）
+_SIMULATED_GRAY = QColor(156, 163, 175)
 
 
 def registered_tasks() -> set:
@@ -44,6 +49,11 @@ def populate_task_combo(
     only_available: bool = False,
     unavailable_suffix: str = "（未装引擎）",
     unavailable_tooltip: str = "该任务引擎未安装",
+    simulated: frozenset[TaskType] = frozenset(),
+    simulated_suffix: str = "（模拟训练）",
+    simulated_tooltip: str = (
+        "该任务暂未实装真训练：训练为模拟策略（假 loss，仅供流程验证）"
+    ),
     exclude: tuple = (),
 ) -> list[tuple[TaskType, bool]]:
     """按 TaskType 全量填充任务下拉框。
@@ -54,8 +64,10 @@ def populate_task_combo(
             极端情况下注册表整体不可用时退化为全量展示，避免空下拉。
         unavailable_suffix: 缺引擎项的标签后缀。
         unavailable_tooltip: 缺引擎项的悬浮提示。
-
-    exclude: 不列入的任务（训练页排除推理-only 任务如 OCR）。
+        simulated: W1-3 模拟训练任务集（引擎在但无真训练通道）——项
+            灰前景 + 后缀 + 说明；缺引擎项本就模拟，不叠加重复后缀。
+        simulated_suffix / simulated_tooltip: 模拟训练项的标签后缀/提示。
+        exclude: 不列入的任务（训练页排除推理-only 任务如 OCR）。
 
     Returns:
         [(TaskType, available), ...] 与下拉项一一对应（枚举序，DET 首项）。
@@ -72,12 +84,19 @@ def populate_task_combo(
         ok = task in available
         if only_available and not ok:
             continue
+        is_simulated = task in simulated
         label = f"{tr(TASK_LABELS.get(task, task.value))} ({task.value})"
         if not ok:
             label += tr(unavailable_suffix)
+        elif is_simulated:  # 引擎在但模拟训练（缺引擎已含模拟语义，不重复标）
+            label += tr(simulated_suffix)
         combo.addItem(label, task)
+        idx = combo.count() - 1
         if not ok:
-            combo.setItemData(combo.count() - 1, tr(unavailable_tooltip), Qt.ToolTipRole)
+            combo.setItemData(idx, tr(unavailable_tooltip), Qt.ToolTipRole)
+        elif is_simulated:
+            combo.setItemData(idx, tr(simulated_tooltip), Qt.ToolTipRole)
+            combo.setItemData(idx, QBrush(_SIMULATED_GRAY), Qt.ForegroundRole)
         items.append((task, ok))
     return items
 

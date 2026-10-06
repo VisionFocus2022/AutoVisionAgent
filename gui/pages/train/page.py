@@ -9,7 +9,7 @@ import dataclasses
 import logging
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,8 +27,10 @@ from PySide6.QtWidgets import (
 )
 
 from core.interfaces_supervised import TaskType, TrainConfig
+from dataset.format_export import candidate_label_dirs, label_txt_files
 from gui.core.i18n import tr
 from gui.core.tasks_ui import populate_task_combo
+from gui.pages.train.strategy import EngineTrainStrategy  # W1-1 拆分（规模守卫）
 from gui.pages.train.worker import TrainWorker
 from gui.widgets.loss_chart import LossChartWidget
 from models.supervised.amp_preflight import amp_preflight
@@ -75,6 +77,7 @@ class TrainPage(QWidget):
         super().__init__(parent)
         self.setObjectName("pageBody")
         self._worker: TrainWorker | None = None
+        self._active_engine = None  # W1-1：真训练引擎引用（停止联动）
         self._build_ui()
         self._wire()
 
@@ -150,13 +153,20 @@ class TrainPage(QWidget):
         self.cmb_preset.currentIndexChanged.connect(self._apply_preset)
 
         self.cmb_task = QComboBox(form_frame)
-        # W1: 下拉与引擎注册表实况对齐——全 9 项，缺引擎标"模拟"（首项保持 DET，兼容 UIA 默认）
+        # W1: 下拉与引擎注册表实况对齐——全 9 项，缺引擎标"未装引擎"（首项保持 DET，兼容 UIA 默认）
         # W32：OCR 推理-only（无训练语义）——训练页不列
+        # W1-3：非真训练任务（引擎在≠能真训练）灰显+后缀"（模拟训练）"
+        from models.supervised.registry import REAL_TRAIN_TASKS
+
         populate_task_combo(
             self.cmb_task,
             only_available=False,
-            unavailable_suffix="（模拟）",
+            unavailable_suffix="（未装引擎·模拟）",
             unavailable_tooltip="引擎未安装：训练将使用模拟策略（假 loss，仅供流程验证）",
+            simulated=frozenset(
+                t for t in TaskType
+                if t not in REAL_TRAIN_TASKS and t is not TaskType.OCR
+            ),
             exclude=(TaskType.OCR,),
         )
         form.addRow(tr("任务"), self.cmb_task)
@@ -348,36 +358,27 @@ class TrainPage(QWidget):
     def _detect_label_format(self, train_dir: str) -> str | None:
         """从训练目录推断标签格式：'seg'（>5 列）/ 'det'（5 列）/ None。
 
-        导出器按标注几何写行：矩形=5 列 det 行，多边形=6+ 列 seg 行；
-        YOLO 布局 labels/ 与 images/ 同级，非 images 命名目录则就地找。
+        导出器按标注几何写行：矩形=5 列 det 行，多边形=6+ 列 seg 行。
+        P0-1 起导出为划分布局 images/{train,val} + labels/{train,val}——
+        标签在 labels/train/ 子目录；旧平铺 labels/*.txt 兼容（W1-1 批
+        实证修复：平铺假设在布局升级后静默回退 det，多边形数据跑成检测）。
         """
-        if not train_dir or not os.path.isdir(train_dir):
-            return None
-        labels_dir = (
-            os.path.join(os.path.dirname(train_dir), "labels")
-            if os.path.basename(train_dir).lower() == "images"
-            else os.path.join(train_dir, "labels")
-        )
-        if not os.path.isdir(labels_dir):
-            return None
-        for name in sorted(os.listdir(labels_dir)):
-            if not name.endswith(".txt"):
-                continue
-            try:
-                with open(
-                    os.path.join(labels_dir, name), encoding="utf-8"
-                ) as fh:
-                    for line in fh:
-                        tokens = line.split()
-                        if not tokens:
-                            continue
-                        if len(tokens) > 5:
-                            return "seg"
-                        if len(tokens) == 5:
-                            return "det"
-                        return None  # 畸形行（<5 列）不猜
-            except OSError:
-                continue
+        for labels_dir in candidate_label_dirs(train_dir):
+            files = label_txt_files(labels_dir)
+            for path in files:
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        for line in fh:
+                            tokens = line.split()
+                            if not tokens:
+                                continue
+                            if len(tokens) > 5:
+                                return "seg"
+                            if len(tokens) == 5:
+                                return "det"
+                            return None  # 畸形行（<5 列）不猜
+                except OSError:
+                    continue
         return None
 
     def _set_task_combo(self, fmt: str) -> None:
@@ -436,6 +437,19 @@ class TrainPage(QWidget):
         except (OSError, ValueError):
             return None
 
+    def _will_be_simulated(self, cfg: TrainConfig | None = None) -> bool:
+        """本次启动是否将走模拟训练（W1-3：任务无真通道 或 未选数据集）。"""
+        cfg = cfg or self._build_config()
+        from models.supervised.registry import task_supports_real_training
+
+        return (not task_supports_real_training(cfg.task)) or not (
+            getattr(cfg, "data_yaml", "") or ""
+        )
+
+    def _confirm_simulated(self) -> bool:
+        """模拟训练显式确认框（W1-3）。测试缝：覆写本方法绕开模态框。"""
+        return _confirm_simulated_dialog(self)
+
     def _build_config(self) -> TrainConfig:
         """从表单构造 TrainConfig（R5-4: 补全全部字段）。"""
         raw_task = self.cmb_task.currentData()
@@ -475,6 +489,12 @@ class TrainPage(QWidget):
         cfg, note = self._correct_task_for_dataset(cfg)
         if note:
             self.status_changed.emit(note, "!")
+        # W1-3 显式确认：模拟训练（任务无真通道 或 未选数据集）在一切
+        # 状态变更前过用户确认——拒绝=零状态变更直接返回（按钮/表单原样）
+        if self._will_be_simulated(cfg) and not self._confirm_simulated():
+            self.status_changed.emit(tr("已取消"), tr("模拟训练需确认"))
+            logger.info("模拟训练确认被拒，未启动")
+            return
         # W67：反馈前置——AMP 预检（CUDA fp16 探针）跑在 UI 线程，冷驱动/
         # 上下文竞争时可秒级~分钟级阻塞；先亮状态禁按钮再探，杜绝静默假死
         self.chart.clear_all()
@@ -562,6 +582,11 @@ class TrainPage(QWidget):
                     # W58 真训练通道：真引擎还需选定数据集（data.yaml）——
                     # 未选时诚实回退模拟，避免 train_epoch 纵深防御抛错
                     if cfg.data_yaml:
+                        # W1-1：逐轮进度钩子（回调在工作线程→invoke_main
+                        # 派发主线程槽）+ 持引用供停止联动
+                        self._active_engine = engine
+                        if hasattr(engine, "set_progress_callback"):
+                            engine.set_progress_callback(self._emit_epoch_progress)
                         return GenericTrainer(cfg.task, EngineTrainStrategy(engine, cfg))
                     self._warn_simulated(tr("未选择数据集，使用模拟训练"))
                 else:
@@ -628,6 +653,12 @@ class TrainPage(QWidget):
         """
         if self._worker and self._worker.isRunning():
             self._worker.stop()
+            # W1-1：真训练一次性适配器下 should_stop 只在外层轮间隙生效=
+            # 内部 ultralytics 全程收不到——同步请求引擎破环（下一内部
+            # epoch 边界置 trainer.stop）
+            engine = getattr(self, "_active_engine", None)
+            if engine is not None and hasattr(engine, "request_stop"):
+                engine.request_stop()
             self.btn_stop.setEnabled(False)  # 防重复点击（完成回调统一复位）
             self.lbl_log.setText(tr("已请求停止，等待当前轮结束..."))
             self.status_changed.emit(tr("训练停止中"), "...")
@@ -644,6 +675,30 @@ class TrainPage(QWidget):
                  for k, v in metrics.items()]
         self.lbl_log.setText(f"epoch {int(ratio * self.spin_epochs.value())}: "
                              + "  ".join(parts))
+        self.status_changed.emit(tr("训练中"), f"{pct}%")
+
+    def _emit_epoch_progress(self, info: dict) -> None:
+        """W1-1：引擎逐轮回调（训练工作线程）→ invoke_main 派发主线程。"""
+        from gui.core.thread_bridge import invoke_main
+
+        invoke_main(self, "_on_epoch_progress_ui", dict(info))
+
+    @Slot(dict)
+    def _on_epoch_progress_ui(self, info: dict) -> None:
+        """W1-1：逐轮进度落地（主线程）——进度条/曲线/剩余时间。"""
+        k, total = info.get("epoch", 0), max(info.get("total", 1), 1)
+        pct = min(int(k / total * 100), 99)
+        self.progress_bar.setValue(pct)
+        loss = info.get("loss")
+        if loss is not None:
+            self.chart.append("loss", loss)
+            self.chart.update()
+        eta = info.get("eta_s")
+        eta_txt = ""
+        if isinstance(eta, (int, float)) and eta > 0:
+            mm, ss = divmod(int(eta), 60)
+            eta_txt = f" · 剩余 {mm}:{ss:02d}"
+        self.lbl_log.setText(f"epoch {k}/{total}{eta_txt}")
         self.status_changed.emit(tr("训练中"), f"{pct}%")
 
     def _on_finished(self, artifact) -> None:
@@ -701,6 +756,21 @@ class TrainPage(QWidget):
         self.btn_stop.setText(tr("强制结束"))
 
 
+def _confirm_simulated_dialog(parent) -> bool:
+    """模拟训练显式确认框（W1-3 拆自页面方法）。自定义中文按钮不依赖 Qt 翻译。"""
+    from PySide6.QtWidgets import QMessageBox
+
+    msg = QMessageBox(parent)
+    msg.setIcon(QMessageBox.Warning)
+    msg.setWindowTitle(tr("模拟训练确认"))
+    msg.setText(tr("即将执行模拟训练：该任务未实装真训练或未选择数据集，训练过程为假 loss 模拟，不会产生可用的真实模型。"))
+    btn_go = msg.addButton(tr("继续模拟训练"), QMessageBox.YesRole)
+    msg.addButton(tr("取消"), QMessageBox.NoRole)
+    msg.setDefaultButton(btn_go)
+    msg.exec()
+    return msg.clickedButton() is btn_go
+
+
 def _format_final_metrics(metrics: dict | None) -> str:
     """末轮 val 指标 → 完成状态文案（W1-6）。
 
@@ -716,69 +786,4 @@ def _format_final_metrics(metrics: dict | None) -> str:
         return ""
 
 
-__all__ = ["TrainPage", "EngineTrainStrategy"]
 
-
-class EngineTrainStrategy:
-    """真实引擎训练策略：对接有监督引擎的 train 方法。
-
-    若引擎提供 train() 方法则调用真实训练；否则回退到模拟策略。
-    """
-
-    def __init__(self, engine, cfg: TrainConfig) -> None:
-        self.task = cfg.task
-        self._engine = engine
-        self._cfg = cfg
-        self._epoch = 0
-
-    def train_epoch(self, epoch: int, cfg: TrainConfig):
-        """执行一轮真实训练。"""
-        self._epoch = epoch
-        if hasattr(self._engine, "train_epoch"):
-            metrics = self._engine.train_epoch(epoch, cfg)
-            return metrics if isinstance(metrics, dict) else {"loss": float(metrics)}
-        # 引擎不支持逐轮训练，回退
-        import math
-        return {"loss": round(1.0 * math.exp(-epoch * 0.05), 4)}
-
-    def save(self, path: str) -> None:
-        """保存训练权重。"""
-        if hasattr(self._engine, "save"):
-            self._engine.save(path)
-
-    def load_state(self, path: str) -> bool:
-        """P0-2（2026-10-05 二轮审查 R2）：从 checkpoint 恢复引擎权重。
-
-        引擎提供 load() 则调用（返回 True）；否则返回 False，trainer
-        将告警"从随机权重续训"。
-        """
-        if hasattr(self._engine, "load"):
-            try:
-                self._engine.load(path, device=getattr(self._engine, "_device", "cpu"))
-                return True
-            except Exception:
-                logger.exception("EngineTrainStrategy.load_state 装载失败: %s", path)
-                return False
-        return False
-
-    def get_optimizer(self):
-        """R5-4: 返回引擎的优化器（供 LR 调度器使用）。
-
-        优先从引擎获取；若引擎暴露 _model，则按 cfg 构建 SGD。
-        """
-        if hasattr(self._engine, "get_optimizer"):
-            return self._engine.get_optimizer()
-        model = getattr(self._engine, "_model", None)
-        cfg = self._cfg
-        if model is not None and hasattr(model, "parameters"):
-            try:
-                import torch.optim as optim
-                return optim.SGD(
-                    model.parameters(),
-                    lr=cfg.lr,
-                    momentum=cfg.momentum,
-                    weight_decay=cfg.weight_decay,
-                )
-            except (ImportError, RuntimeError):
-                pass
-        return None

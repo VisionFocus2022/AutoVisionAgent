@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import shutil
 from dataclasses import dataclass
@@ -173,6 +174,35 @@ def _prepare_split_dirs(out: Path, docs: list[dict], val_ratio: float, seed: int
     (out / "labels" / "train").mkdir(exist_ok=True)
     (out / "labels" / "val").mkdir(exist_ok=True)
     return split
+
+
+def candidate_label_dirs(train_dir: str) -> list[str]:
+    """train 图像目录 → 候选 labels 目录（P0-1 划分与旧平铺双兼容，W1-1 批）。
+
+    导出布局由本模块定义，布局逆向定位（训练页任务探测用）同源放此。
+    """
+    if not train_dir:
+        return []
+    d = os.path.normpath(train_dir)
+    parent = os.path.dirname(d)
+    return [
+        os.path.join(parent, "labels"),                    # images/ → ../labels（旧平铺）
+        os.path.join(parent, "labels", "train"),           # images/ → ../labels/train（P0-1）
+        os.path.join(d, "labels"),                         # 根目录就地（旧）
+        os.path.join(d, "labels", "train"),                # 根目录就地 train（P0-1）
+        os.path.join(os.path.dirname(parent), "labels", "train"),  # images/train → ../../labels/train
+    ]
+
+
+def label_txt_files(labels_dir: str) -> list[str]:
+    """labels 目录（平铺或含 train 子目录）→ 排序后的 txt 全路径。"""
+    for d in (labels_dir, os.path.join(labels_dir, "train")):
+        if os.path.isdir(d):
+            files = [os.path.join(d, n) for n in sorted(os.listdir(d))
+                     if n.endswith(".txt")]
+            if files:
+                return files
+    return []
 
 
 def labelme_dir_to_yolo(

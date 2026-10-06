@@ -98,6 +98,19 @@ class EngineRegistry:
 # 默认全局注册表
 _default_registry = EngineRegistry()
 
+# W1-3：真训练任务集（引擎实装 train_epoch 的任务单源）。
+# 引擎"已注册"≠"能真训练"——cls/pose 等引擎在但走模拟策略；训练页
+# 下拉灰显与启动确认以本集合为准。守护测试（tests/test_w1_3_*）逐引擎
+# 核验 hasattr(train_epoch) 与集合一致，防新引擎实装后漂移。
+REAL_TRAIN_TASKS: frozenset[TaskType] = frozenset(
+    {TaskType.DET, TaskType.SEG}
+)
+
+
+def task_supports_real_training(task: TaskType) -> bool:
+    """任务是否实装真训练通道（有 train_epoch 的引擎）。"""
+    return task in REAL_TRAIN_TASKS
+
 
 def register_engine(
     task_type: TaskType,

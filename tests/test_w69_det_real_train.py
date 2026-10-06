@@ -144,6 +144,7 @@ def test_det_real_train_channel_smoke(tmp_path):
     cfg = TrainConfig(
         task=TaskType.DET,
         epochs=1,
+        small_data_epoch_floor=0,  # W1-6：冒烟关闭自适应（cpu 100 轮过慢）
         batch_size=2,
         img_size=320,
         device="cpu",
@@ -247,3 +248,29 @@ def test_correct_task_noop_when_match(qapp, tmp_path):
 
     assert corrected.task == TaskType.DET
     assert note == ""
+
+
+# ====================== W1-1 批回归：P0-1 划分布局任务探测 ====================== #
+@pytest.mark.unit
+def test_detect_label_format_split_layout(qapp, tmp_path):
+    """P0-1 划分布局（labels/train/*.txt）下任务探测不静默回退 det。
+
+    回归锚：2026-10-06 实证多边形数据在划分布局下被训练成 det（平铺
+    listdir 假设失效）——修复后 images/train + labels/train 正确判 seg。
+    """
+    from gui.pages.train import page as train_mod
+
+    page = train_mod.TrainPage()
+    root = tmp_path / "yolo"
+    (root / "images" / "train").mkdir(parents=True)
+    (root / "labels" / "train").mkdir(parents=True)
+    (root / "labels" / "train" / "a.txt").write_text(
+        "0 0.1 0.1 0.2 0.2 0.3 0.3 0.4 0.4\n", encoding="utf-8"
+    )
+    assert page._detect_label_format(str(root / "images" / "train")) == "seg"
+    # 旧平铺布局仍工作
+    flat = tmp_path / "flat"
+    (flat / "images").mkdir(parents=True)
+    (flat / "labels").mkdir()
+    (flat / "labels" / "b.txt").write_text("0 0.1 0.1 0.2 0.2\n", encoding="utf-8")
+    assert page._detect_label_format(str(flat / "images")) == "det"

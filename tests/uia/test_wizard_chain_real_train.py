@@ -173,8 +173,9 @@ def test_wizard_chain_label_to_real_train(ready_admin_cfg, ava_app,
     logger.info("W65 自动导出+回填+W69 自动选任务: %s", stats)
     yaml_path = annotated_dir.parent / "_auto_export" / "yolo" / "data.yaml"
     assert yaml_path.is_file(), f"W65 自动导出产物缺失: {yaml_path}"
+    # P0-1 起划分布局 labels/{train,val}/*.txt——rglob 兼容新旧两种形态
     labels = list(
-        (yaml_path.parent / "labels").glob("*.txt")
+        (yaml_path.parent / "labels").rglob("*.txt")
     ) if (yaml_path.parent / "labels").is_dir() else []
     assert len(labels) == 2, (
         f"自动导出应含 2 个标签文件（样本数铁证），实得 {len(labels)}"
@@ -209,8 +210,16 @@ def test_wizard_chain_label_to_real_train(ready_admin_cfg, ava_app,
     assert "训练开始: task=seg" in log_tail, (
         f"应为真 seg 训练（W69 按多边形数据自动选任务），日志尾:\n{log_tail}"
     )
-    assert "epochs_completed=2" in log_tail, (
-        f"应完成 2 epochs，日志尾:\n{log_tail}"
+    # W1-6：小数据（N=2≤50）轮数自适应 2→100——完成口径以 epochs_effective
+    # 为准（一次性适配器外层计数会低估），并断言自适应留痕在日志
+    import re as _re
+
+    m = _re.search(r"epochs_completed=(\d+)", log_tail)
+    assert m and int(m.group(1)) == 100, (
+        f"W1-6 自适应后应完成 100 epochs，日志尾:\n{log_tail}"
+    )
+    assert "自适应提升" in log_tail, (
+        f"应有小数据自适应提升留痕，日志尾:\n{log_tail}"
     )
     from pathlib import Path
     seg_final = (
@@ -222,6 +231,6 @@ def test_wizard_chain_label_to_real_train(ready_admin_cfg, ava_app,
             "seg_final.pt"
     assert seg_final.is_file(), f"真训练产物缺失: {seg_final}"
     size = seg_final.stat().st_size
-    logger.info("真训练铁证: task=seg, 2 epochs, seg_final.pt=%.2f MB",
+    logger.info("真训练铁证: task=seg, 100 epochs(W1-6 自适应), seg_final.pt=%.2f MB",
                 size / 1048576)
     assert size > 1024 * 1024, f"权重过小疑似模拟产物: {size}"

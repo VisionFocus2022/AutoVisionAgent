@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import time
 from typing import Any
 
 from core.exceptions import SupervisedEngineError
@@ -61,6 +62,48 @@ def _count_train_labels(data_yaml: str) -> int:
         if d.is_dir():
             return len(list(d.glob("*.txt")))
     return 0
+
+
+def _install_epoch_callbacks(engine, model, epochs: int) -> None:
+    """W1-1：注册逐轮进度/停止回调（on_fit_epoch_end，工作线程触发）。
+
+    停止请求经 trainer.stop=True 破环（ultralytics 轮循检查点）；
+    进度 {epoch,total,loss,eta_s}——观测件异常不挡训练。
+    """
+    if engine._progress_cb is None and not engine._stop_requested:
+        return
+    t0 = time.time()
+
+    def _on_fit_epoch_end(trainer) -> None:
+        try:
+            if engine._stop_requested:
+                trainer.stop = True
+            if engine._progress_cb is not None:
+                k = int(getattr(trainer, "epoch", 0)) + 1
+                total = int(getattr(trainer, "epochs", epochs))
+                engine._progress_cb({
+                    "epoch": k, "total": total,
+                    "loss": _coerce_loss(getattr(trainer, "loss", None)),
+                    "eta_s": round((time.time() - t0) / k * (total - k), 1),
+                })
+        except Exception:  # noqa: BLE001  # 观测件不挡训练
+            logger.debug("epoch 进度回调失败", exc_info=True)
+
+    model.add_callback("on_fit_epoch_end", _on_fit_epoch_end)
+
+
+def _coerce_loss(val) -> float | None:
+    """ultralytics trainer.loss（float/tensor/loss_items）→ 纯 float。"""
+    if val is None:
+        return None
+    try:
+        return round(float(val), 6)
+    except (TypeError, ValueError):
+        pass
+    try:
+        return round(sum(float(x) for x in val), 6)
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_val_metrics(model) -> dict:
@@ -138,6 +181,20 @@ class _YoloSegBase(AbstractTaskEngine):
         self._train_model: Any = None
         self._train_metrics: dict[str, float] = {}
         self._train_output_dir: str = ""
+        # W1-1：逐轮进度钩子 + 协作停止（回调线程=训练工作线程）
+        self._progress_cb: Any = None
+        self._stop_requested: bool = False
+
+    def set_progress_callback(self, cb) -> None:
+        """W1-1：注册逐轮进度回调（工作线程调用，UI 侧需自行 marshal）。
+
+        cb(dict) 每内部 epoch 触发一次：{epoch, total, loss, eta_s}。
+        """
+        self._progress_cb = cb
+
+    def request_stop(self) -> None:
+        """W1-1：请求停止——下一内部 epoch 边界置 trainer.stop 破环。"""
+        self._stop_requested = True
 
     def load(self, weights_path: str, device: str = "cuda") -> None:
         """加载 YOLOv8-Seg 权重。"""
@@ -204,12 +261,15 @@ class _YoloSegBase(AbstractTaskEngine):
         # N≤50 图时轮数自适应提升（保用户更高值不动）
         n_train = _count_train_labels(data_yaml)
         epochs = cfg.epochs
-        if 0 < n_train <= _SMALL_DATA_MAX_IMAGES and epochs < _SMALL_DATA_EPOCH_FLOOR:
+        floor = int(getattr(cfg, "small_data_epoch_floor", _SMALL_DATA_EPOCH_FLOOR))
+        if 0 < n_train <= _SMALL_DATA_MAX_IMAGES and floor > 0 and epochs < floor:
             logger.info(
                 "小数据集 N=%d≤%d：训练轮数 %d→%d 自适应提升",
-                n_train, _SMALL_DATA_MAX_IMAGES, epochs, _SMALL_DATA_EPOCH_FLOOR,
+                n_train, _SMALL_DATA_MAX_IMAGES, epochs, floor,
             )
-            epochs = _SMALL_DATA_EPOCH_FLOOR
+            epochs = floor
+        epochs = max(1, epochs)
+        _install_epoch_callbacks(self, model, epochs)
         model.train(
             data=data_yaml,
             epochs=max(1, epochs),

@@ -39,6 +39,7 @@ try:
         app_log_path,
         click_button,
         click_nav,
+        confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
@@ -54,6 +55,7 @@ except ImportError:  # pragma: no cover - 顶层模式兜底
         app_log_path,
         click_button,
         click_nav,
+        confirm_dialog_if_present,
         draw_rectangle_on_canvas,
         enter_path_in_open_dialog,
         enter_path_in_save_dialog,
@@ -278,6 +280,11 @@ def _step_train(win) -> None:
     assert btn is not None, "未找到'开始训练'按钮"
     btn.Click()
     logger.info("已点击'开始训练'")
+
+    # W1-3（roadmap DoD）：模拟训练（无数据集回退形态）必须先过显式确认框
+    assert confirm_dialog_if_present(
+        "模拟训练确认", yes_texts=["继续模拟训练"], timeout=15
+    ), "模拟训练显式确认框未出现（W1-3 回归）"
 
     # 训练可能先出现"训练中"再"训练完成"；模拟模式失败时出现"训练失败"
     status = wait_any_status(win, ["训练完成", "训练失败"], T_TRAIN)

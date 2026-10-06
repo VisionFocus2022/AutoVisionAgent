@@ -82,6 +82,8 @@ def _wire_train_page(monkeypatch, preflight_result):
     from gui.pages.train.page import TrainPage
 
     page = TrainPage()
+    # W1-3：绕开模拟训练确认模态框（无数据集=模拟启动形态，单测注入放行）
+    monkeypatch.setattr(TrainPage, "_confirm_simulated", lambda self: True)
     page.chk_amp.setChecked(True)
     msgs = []
     page.status_changed.connect(lambda t, a: msgs.append((t, a)))
