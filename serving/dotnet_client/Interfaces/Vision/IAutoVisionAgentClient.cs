@@ -28,11 +28,16 @@ namespace VisionAgent.Shared.Interfaces.Vision
         (bool Success, string Error) UnloadModel(string task);
 
         /// <summary>用内联字节图像（小图）执行检测。</summary>
+        /// <param name="threshold">
+        /// H5（2026-10-05 proto presence 对账）：null = 不设置该字段（服务端用
+        /// 引擎默认阈值）；显式值（含 0）正常传输——工业低阈值/全召回场景
+        /// 传 0 不再被 proto3 标量默认值吞掉。
+        /// </param>
         DetectionResult? Detect(
             string task,
             byte[] imageBytes,
             string mode = "auto",
-            float threshold = 0.5f,
+            float? threshold = 0.5f,
             IList<string>? labels = null,
             IList<string>? prompts = null);
 
@@ -41,7 +46,7 @@ namespace VisionAgent.Shared.Interfaces.Vision
             string task,
             string imagePath,
             string mode = "auto",
-            float threshold = 0.5f,
+            float? threshold = 0.5f,
             IList<string>? labels = null,
             IList<string>? prompts = null);
 
@@ -50,7 +55,7 @@ namespace VisionAgent.Shared.Interfaces.Vision
             string task,
             SharedMemoryHandle imageShm,
             string mode = "auto",
-            float threshold = 0.5f,
+            float? threshold = 0.5f,
             IList<string>? labels = null,
             IList<string>? prompts = null);
 

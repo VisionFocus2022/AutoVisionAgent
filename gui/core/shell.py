@@ -394,15 +394,26 @@ class MainWindow(QMainWindow):
                         "终止，可能丢失未保存进度", key, _EXIT_WORKER_WAIT_MS,
                     )
 
-            for widget in self._pages.values():
-                pool = getattr(widget, "_thumb_pool", None)
-                if pool is None:
-                    continue
+        # O8（2026-10-05 二轮审查）：缩略图池清理无条件执行——此前仅在
+        # "有活跃任务"分支内，退出时无后台 job 但池中有排队缩略图任务
+        # 走不到清理（池随页面析构，Windows 上偶发警告）。SAM 卸载兜底
+        # 同样挂 MainWindow closeEvent（LabelPage 在 QStackedWidget 内
+        # 永远收不到自己的 closeEvent，其 closeEvent 兜底不可达）。
+        for widget in self._pages.values():
+            pool = getattr(widget, "_thumb_pool", None)
+            if pool is not None:
                 try:
                     pool.clear()  # 丢弃仍在排队的缩略图任务
                     pool.waitForDone(_EXIT_POOL_WAIT_MS)
                 except Exception:
                     _logger.debug("等待缩略图线程池退出时出错", exc_info=True)
+            # O8：页面级 SAM 卸载兜底（页面自身 closeEvent 不可达）
+            sam_unload = getattr(widget, "unload_sam", None)
+            if callable(sam_unload):
+                try:
+                    sam_unload()
+                except Exception:
+                    _logger.debug("退出时卸载 SAM 失败", exc_info=True)
 
         # 释放引擎缓存（GPU 显存）——registry 直连为 GUI 正式形态（v3 P2-7）
         try:

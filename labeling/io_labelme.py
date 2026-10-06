@@ -162,10 +162,14 @@ def save_labelme(
     p = Path(path)
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(
-            json.dumps(doc, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        # L2（2026-10-06 三轮审查）：改走 batch_tools.atomic_write_json 单源
+        # ——此前 p.write_text 是 truncate-then-write，写盘中途失败会把
+        # 既有标注截断且旧内容已丢（gui/pages/label 保存主链路受影响；
+        # 单源自称"P2-2 唯一实现"但主链路未吃到）。延迟导入防循环依赖
+        # （batch_tools 顶层 import 本模块）。
+        from labeling.batch_tools import atomic_write_json
+
+        atomic_write_json(str(p), doc)
     except (OSError, TypeError, ValueError) as exc:
         raise AnnotationIOError(
             f"写入 LabelMe 失败: {p}", path=str(p)

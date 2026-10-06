@@ -3,6 +3,41 @@
 > 发版产物：`dist/AutoVisionAgent/`（完整版，CUDA 支持）与 `dist/AutoVisionAgent-lite/`（CPU 版，<2GiB）。
 > 升级建议：覆盖安装前备份 `configs/`（users.json / user_settings.json）与项目工作区。
 
+## v2.2.0（工程审查清偿波）· 2026-10-06
+
+自 v2.1.0（M3）以来的变更——两轮全面工程审查（core/serving/gui/training/dataset/inference，84 项发现）+ 六批修复 + 三项基建。
+
+### ⚠️ 行为变更（升级必读）
+
+- **Detect threshold 改 proto3 optional presence**：显式 `threshold=0.0`（工业低阈值/全召回）此前被 proto3 标量语义当"未设置"回退默认 0.5，现在正常生效。**C# 客户端**：`Detect*` 系列 threshold 参数升级 `float?`——传 `null` 表示不设置（服务端用引擎默认），显式值（含 0）正常传输；旧调用方零改动兼容
+- **未知任务名 fail-closed（ADR-0006）**：Detect/LoadModel 收到未知 task 此前静默回退目标检测（fail-open），现在返回 `INVALID_ARGUMENT`（C# `MapTaskType` 抛 `ArgumentException`）。"vlm" 等 Python 侧不存在的任务名已从 C# 映射移除，sseg/sgan/super 已补
+- **数据集导出默认 train/val 分层划分（8:2）**：`labelme_dir_to_yolo` 默认按类别分层划分到 `images/{train,val}` 子目录——**mAP 不再在训练集上计算**（此前 train=val 同目录，指标虚高）。`val_ratio=0` 保持旧单目录布局（兼容逃生门）。存量数据集重新导出后训练指标会**真实下降**，这是修正而非退化
+- **损坏标注不再静默降级**：标注 JSON 损坏的样本此前降级为"无缺陷"负样本进训练（正样本被当背景教坏模型），现在跳过该样本并留痕
+- **UnloadModel 元数据一致（ADR-0005）**：卸载后 `Ping.loaded_tasks`/`GetTaskInfo.loaded` 立即同步（此前恒报 loaded=True）
+- **serving RPC 审计接入**：LoadModel/UnloadModel/Detect 成功失败均记 `serving_rpc` 审计事件（此前 gRPC 路径零审计）
+
+### 安全加固
+
+- **FetchRegion 任意文件读取封堵（S1）**：共享内存读取加白名单（shm 目录 + `ava_*.bin` 双条件），白名单外路径统一 NOT_FOUND（fail-closed 防路径探测）；`AVA_SHM_ALLOW_ANY_FILE=1` 逃生门
+- **恶意 RLE OOM 防护（S2）**：掩码解码三道闸（元素上限 2^30 / 4 字节对齐 / 负游程拒绝 + int64 求和防回绕）；`AVA_MASK_RLE_MAX_ELEMENTS` 可调
+- **LoadModel 权重路径白名单（H1）**：`AVA_MODEL_ROOTS` 环境变量（os.pathsep 分隔）配置允许根；未配置回退项目根/当前目录（开发态），生产部署应显式收紧
+
+### 训练可信度（三部曲 + 收尾）
+
+- train/val 分层划分（见行为变更）+ **真 resume**（ITrainStrategy.load_state 权重实际装载；策略不支持时明确告警"从随机权重续训"）+ 随机种子控制（TrainConfig.seed，统一 random/numpy/torch/cuda）
+- resume 后 LR 调度器步数回放（Cosine 相位连续）；早停优先监控 val_loss（一次性适配器不再误触发）
+- metrics.jsonl 逐 epoch 落盘（中断不丢历史）；checkpoint 原子写（.tmp + rename）
+- 推理中禁止更换模型（use-after-unload 防护）；停止训练不再冻结 UI 5 秒；单张推理结果请求 ID 守卫
+
+### 工程与质量
+
+- 门禁 1102→**1346 用例**（+244）；全量 92% 覆盖率门禁通过；core 包 91.2%→93.6%
+- **覆盖率棘轮地板**（scripts/coverage_floors.py，per-package 只升不降）+ proto 生成物对账（gen_proto.py --check）双双接入 CI
+- 线程契约文档（docs/threading-contract.md：五条契约 + PR 审查检查单）
+- 规模守卫三次真实拆分（labelme_dir_to_yolo / tile_infer / predict 页 ExportActionsMixin）；i18n 完整性保持（新词条全配 en_US）
+- 共享内存 H 簇修复：部分写循环（防 SIGBUS）、TOCTOU 锁内拷贝、负 offset 校验、端口绑定失败显式报错（防假启动）
+- image_io PIL 回退统一 BGR（消除同函数双通道语义根因）；批量产物 stem 哈希去重（跨目录同名不覆盖）
+
 ## v2.1.0（M3）· 2026-08-23
 
 自 v2.0.0（M2）以来的变更——SKolpha 3.3.2 对标九波（W26–W34）+ 架构复审 v5 清偿波（W35/W36）。

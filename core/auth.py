@@ -58,7 +58,19 @@ def verify_password(
     """
     if not stored_hash or not salt_hex:
         return False
-    calc_hash, _, _ = hash_password(password, salt_hex, stored_iterations)
+    # M7（2026-10-05 一轮审查）：users.json 半损坏（非法 hex）时
+    # bytes.fromhex 抛未捕获 ValueError，登录验证直接崩而非验证失败。
+    # 损坏凭据按"验证失败"处理（fail-safe），留痕可排查。
+    try:
+        calc_hash, _, _ = hash_password(password, salt_hex, stored_iterations)
+    except (ValueError, TypeError):
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "存储凭据损坏（非法 hex），按验证失败处理: salt_len=%d",
+            len(salt_hex),
+        )
+        return False
     return secrets.compare_digest(calc_hash, stored_hash)
 
 

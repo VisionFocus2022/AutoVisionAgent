@@ -481,9 +481,13 @@ def test_tool_export_yolo_and_coco(dm_page, fake_threads, monkeypatch,
 
 # ============================== 杂项 ============================== #
 @pytest.mark.unit
-def test_on_ratio_changed_no_crash(dm_page):
+def test_ratio_spinboxes_editable_without_linkage(dm_page):
+    """O12（2026-10-05）：联动已删除（划分时闸门校验语义），比例控件
+    可自由设置不触发任何崩溃/递归。"""
     dm_page.spin_train.setValue(0.7)
-    dm_page._on_ratio_changed()
+    dm_page.spin_val.setValue(0.2)
+    dm_page.spin_test.setValue(0.1)  # 和=1.0
+    assert dm_page.spin_train.value() == 0.7
 
 
 @pytest.mark.unit

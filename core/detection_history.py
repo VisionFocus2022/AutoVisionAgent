@@ -131,10 +131,16 @@ class DetectionHistory:
         return record
 
     def _persist_locked(self, record: DetectionRecord) -> None:
-        """将记录追加写入 JSONL 文件（需在锁内调用）。"""
-        self._history_dir.mkdir(parents=True, exist_ok=True)
+        """将记录追加写入 JSONL 文件（需在锁内调用）。
+
+        H3（2026-10-05 一轮审查）：mkdir 移入 try——此前在 try 块外，
+        历史目录不可写时每条 add_record 都从锁内抛 OSError 上炸调用方
+        （推理热路径）。与 audit_logger._flush_locked 同款处理（W39·v6
+        P3-3 已修同类，此处同步）。
+        """
         log_file = self._history_dir / f"history_{datetime.now().strftime('%Y%m%d')}.jsonl"
         try:
+            self._history_dir.mkdir(parents=True, exist_ok=True)
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(asdict(record), ensure_ascii=False, default=str) + "\n")
         except OSError:

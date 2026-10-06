@@ -140,7 +140,6 @@ def _invoke_if_status_stuck(win, button_text: str, settle: float = 8.0) -> None:
         time.sleep(1.0)
         if _last_status(win) != baseline:
             return
-    import uiautomation as _ua
 
     for c in _iter_descendants(win, max_depth=12):
         try:

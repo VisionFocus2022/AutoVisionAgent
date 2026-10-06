@@ -87,6 +87,10 @@ class TrainConfig:
     # R5-11: checkpoint 可配置
     checkpoint_every: int = 5            # 每 N epoch 保存 checkpoint
     max_checkpoints: int = 3             # 滚动保留最近 N 个 checkpoint
+    # M8（2026-10-05 二轮审查）：随机种子——全链路可复现性。0 = 不设种
+    # （保持旧行为）；>0 时 GenericTrainer.fit 入口统一设 random/numpy/
+    # torch(+cuda) 种子
+    seed: int = 0
 
 
 @dataclass
@@ -440,7 +444,10 @@ class AbstractTaskEngine(ISupervisedTaskEngine):
         import numpy as np
         if isinstance(image, str):
             from PIL import Image
-            return np.asarray(Image.open(image).convert("RGB"))
+            # M15（2026-10-05 二轮审查）：with 上下文管理——此前文件句柄
+            # 滞留至 GC，Windows 大批量推理时句柄占用叠加
+            with Image.open(image) as im:
+                return np.asarray(im.convert("RGB"))
         return np.asarray(image)
 
 
@@ -467,6 +474,21 @@ class ITrainStrategy(ABC):
         默认返回 None（策略未暴露优化器时不使用调度器）。
         """
         return None
+
+    def load_state(self, path: str) -> bool:
+        """P0-2（2026-10-05 二轮审查 R2）：从 checkpoint 装载模型权重。
+
+        供 GenericTrainer._resume 在恢复元数据后实际恢复权重——此前
+        resume 只恢复 epoch/best 元数据从不装载权重，"续训"实为从头
+        初始化 + epoch 跳号，产物语义完全错误。
+
+        默认返回 False（策略不支持权重恢复；trainer 将明确告警
+        "从随机权重续训"而非静默）。
+
+        Returns:
+            是否成功装载权重。
+        """
+        return False
 
 
 __all__ = [

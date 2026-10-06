@@ -90,6 +90,7 @@ class DataManagePage(QWidget):
         self._annotations_dir: str | None = None
         # W63：最近一次 YOLO 导出的 data.yaml（向导交接给训练页；COCO 不记）
         self._last_export_yaml: str = ""
+        self._auto_nav_pending: bool = False  # W65：自动导出补缺后待导航
         self._thumb_pool = QThreadPool(self)
         self._thumb_pool.setMaxThreadCount(4)
         self._thumb_items: dict[str, QListWidgetItem] = {}  # R5-5: path → item
@@ -211,7 +212,7 @@ class DataManagePage(QWidget):
         self.btn_export = QPushButton(tr("导出训练集"), bar)
         h.addWidget(self.btn_export)
         self.btn_goto_train = QPushButton(tr("下一步：训练"), bar)  # W59c 向导
-        self.btn_goto_train.clicked.connect(lambda: self.request_page.emit("train"))
+        self.btn_goto_train.clicked.connect(self._goto_train)  # W65 自动补缺
         h.addWidget(self.btn_goto_train)
 
     def _build_toolbar_version_group(self, bar: QWidget, h: QHBoxLayout) -> None:
@@ -301,17 +302,12 @@ class DataManagePage(QWidget):
         self.btn_snapshot.clicked.connect(self._tool_snapshot)
         self.btn_diff.clicked.connect(self._tool_version_diff)
 
-        # 比例联动：三者之和 = 1.0
-        self.spin_train.valueChanged.connect(self._on_ratio_changed)
-        self.spin_val.valueChanged.connect(self._on_ratio_changed)
-        self.spin_test.valueChanged.connect(self._on_ratio_changed)
-
-    def _on_ratio_changed(self) -> None:
-        """保持三者之和 = 1.0（调整最后一个自动补偿）。"""
-        total = self.spin_train.value() + self.spin_val.value() + self.spin_test.value()
-        if abs(total - 1.0) > 0.001 and total > 0:
-            # 归一化但不覆盖用户正在编辑的控件
-            pass  # 仅在划分时校验
+        # O12（2026-10-05 二轮审查）：删除误导性比例联动连接——原
+        # _on_ratio_changed 声称"自动补偿保持和=1.0"实为 pass 假实现。
+        # 设计取舍：不做实时联动（会令"比例之和≠1"的划分时闸门变成
+        # 不可达死代码，破坏既有测试契约），比例校验集中在
+        # _split_dataset 闸门 2 显式报错——用户可自由输入，错误在
+        # 划分时可见可改。
 
     # ============================== 行为 ============================== #
     def set_project_dir(self, path: str) -> None:
@@ -438,6 +434,11 @@ class DataManagePage(QWidget):
         btn = self._op_buttons.get(op)
         if btn is not None:
             btn.setEnabled(False)
+        # M14（2026-10-05 二轮审查）：导出进行中禁用导航按钮——此前
+        # export 期间 btn_goto_train 仍可点，_goto_train 可能读到陈旧的
+        # _last_export_yaml 走错分支（worker 尚未写完属性）。
+        if op == "export":
+            self.btn_goto_train.setEnabled(False)
 
         def _wrapper():
             try:
@@ -464,8 +465,13 @@ class DataManagePage(QWidget):
         btn = self._op_buttons.get(op)
         if btn is not None:
             btn.setEnabled(True)
+        if op == "export":
+            self.btn_goto_train.setEnabled(True)  # M14：恢复导航
         self._refresh()
         self.status_changed.emit(tr(_OP_TITLES.get(op, op)), msg)
+        if op == "export" and self._auto_nav_pending:
+            self._auto_nav_pending = False
+            self.request_page.emit("train")  # W65：自动补缺完成后进训练页
 
     @Slot(str, str)
     def _op_failed(self, op: str, err: str) -> None:
@@ -473,6 +479,9 @@ class DataManagePage(QWidget):
         btn = self._op_buttons.get(op)
         if btn is not None:
             btn.setEnabled(True)
+        if op == "export":
+            self.btn_goto_train.setEnabled(True)  # M14：失败路径恢复导航
+            self._auto_nav_pending = False  # W65：失败停留，不得残留导航意图
         self.status_changed.emit(tr("操作失败"), err[:60])
 
     def _refresh(self) -> None:
@@ -639,16 +648,43 @@ class DataManagePage(QWidget):
 
     def _tool_export_dataset(self) -> None:
         """导出训练集：LabelMe → YOLO/COCO（W5-T2，worker 线程执行）。"""
-        d = self._get_ann_dir()
-        if not d:
+        if not self._get_ann_dir():
             return
-        img_dir = self._image_dir or d
         out_root = pick_directory(self, "选择导出输出目录")
         if not out_root:
             # W58：取消/路径未接受不再静默——操作员需要知道为何没导出
             self.status_changed.emit(tr("已取消"), tr("导出训练集"))
             return
-        fmt = self.cmb_export_fmt.currentData() or "yolo"
+        self._run_export_worker(out_root)
+
+    def _goto_train(self) -> None:
+        """W65 向导自动补缺：导出过（产物在盘）直接进；有标注未导出 →
+        自动 YOLO 导出到图像目录兄弟 _auto_export 后进；无标注 → 空交接
+        （训练页模拟回退不变）。重启丢态由此消解——任何时候点都按需补。"""
+        if self._last_export_yaml and os.path.isfile(self._last_export_yaml):
+            self.request_page.emit("train")
+            return
+        d = self._get_ann_dir()
+        if not d or not any(f.endswith(".json") for f in os.listdir(d)):
+            self.request_page.emit("train")
+            return
+        parent = os.path.dirname(os.path.abspath(self._image_dir or d))
+        self._auto_nav_pending = True
+        self.status_changed.emit(tr("自动导出训练集中"), tr("导出训练集"))
+        self._run_export_worker(
+            os.path.join(parent, "_auto_export"), force_yolo=True
+        )
+
+    def _run_export_worker(self, out_root: str, force_yolo: bool = False) -> None:
+        """启动导出 worker（W65：手动对话框路径与向导自动补缺共用；
+        force_yolo——自动补缺无视格式组合框，训练页只吃 data.yaml）。"""
+        d = self._get_ann_dir()
+        if not d:
+            return
+        img_dir = self._image_dir or d
+        fmt = "yolo" if force_yolo else (
+            self.cmb_export_fmt.currentData() or "yolo"
+        )
         from dataset.format_export import labelme_dir_to_coco, labelme_dir_to_yolo
 
         if fmt == "coco":

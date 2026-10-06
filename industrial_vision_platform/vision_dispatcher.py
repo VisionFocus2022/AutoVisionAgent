@@ -145,6 +145,32 @@ class VisionModelDispatcher:
             logger.info("LRU 驱逐引擎: %s", _evicted_task.value)
         logger.info("有监督引擎已加载: %s → %s", task.value, weights_path)
 
+    def unload_supervised(self, task: TaskType) -> bool:
+        """卸载指定任务引擎并释放显存（ADR-0005，2026-10-06 单一所有者）。
+
+        此前 serving.UnloadModel 绕过本类直调 registry.clear_cache——
+        dispatcher._engines 仍持引擎（Ping/GetTaskInfo 恒报 loaded=True，
+        元数据失真）且属 serving→models 越层 import。现收敛：持锁摘除
+        _engines 条目 + 清 registry 缓存，锁外释放显存（与
+        load_supervised 驱逐路径同模式）。
+
+        Returns:
+            是否命中并卸载了引擎（False=该任务本就未加载，幂等）。
+        """
+        with self._lock:
+            engine = self._engines.pop(task, None)
+        if engine is None:
+            logger.info("卸载未加载的引擎（幂等 no-op）: %s", task.value)
+            return False
+        _release = getattr(engine, "release", None) or getattr(engine, "unload", None)
+        if callable(_release):
+            try:
+                _release()
+            except (RuntimeError, OSError):
+                logger.warning("卸载引擎 %s 时释放显存失败", task.value, exc_info=True)
+        logger.info("有监督引擎已卸载: %s", task.value)
+        return True
+
     def infer_supervised(
         self,
         task: TaskType,

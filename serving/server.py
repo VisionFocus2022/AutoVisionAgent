@@ -18,6 +18,7 @@ import argparse
 import logging
 import logging.handlers
 import os
+import threading
 from collections.abc import Iterator
 from concurrent import futures
 from typing import Any
@@ -37,11 +38,77 @@ logger = logging.getLogger(__name__)
 
 _SERVER_VERSION = "autovisionagent-serving/1.0"
 
+
+def _audit_rpc(rpc: str, task: str, success: bool, **extra) -> None:
+    """M6（2026-10-05 一轮审查）：serving RPC 审计留痕（best-effort）。
+
+    审计写失败不得阻断 RPC 主流程（与 gui 路径的 W39 约定一致），
+    仅 logger.warning 留排查线索。
+    """
+    try:
+        from core.audit_logger import log_serving_rpc
+
+        log_serving_rpc(rpc=rpc, task=task, success=success, **extra)
+    except Exception:
+        logger.warning("serving RPC 审计写入失败: rpc=%s task=%s", rpc, task,
+                       exc_info=True)
+
 # P2-9（W17 簇C）：回环地址白名单——非回环绑定须在绑定前告警（ADR-0001）
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 # W19（v3 第三波 FR-2 方向 B，PoC）：FetchRegion 服务端流分块大小（1 MiB）
 _FETCH_CHUNK_BYTES = 1024 * 1024
+
+# H1（2026-10-05 一轮审查）：LoadModel 权重路径白名单根（resolve 后须
+# 位于其一之下）。环境变量显式注入（AVA_MODEL_ROOTS，os.pathsep 分隔）；
+# 未配置时回退项目根/当前目录（开发态），生产部署应显式收紧。
+_MODEL_ROOTS_ENV = "AVA_MODEL_ROOTS"
+
+
+def _allowed_model_roots() -> list[str]:
+    """H1：解析允许的权重根目录列表（环境变量 > 项目根/当前目录回退）。"""
+    raw = os.environ.get(_MODEL_ROOTS_ENV, "")
+    if raw.strip():
+        import os.path as _osp
+
+        return [p.strip() for p in raw.split(_osp.pathsep) if p.strip()]
+    # 回退：项目根（serving/ 的上级）与当前目录——开发态宽口径，
+    # 部署态必须显式配置（生产检查项）
+    return [os.path.dirname(os.path.dirname(os.path.abspath(__file__))), os.getcwd()]
+
+
+def _validate_weights_path(weights_path: str) -> None:
+    """H1：权重路径白名单校验——resolve 后必须位于允许根目录之下。
+
+    防"无鉴权接口当文件存在性 oracle / 加载任意本机权重耗尽 GPU"。
+    回环威胁模型下（ADR-0001）本机任意进程可发 LoadModel。
+    """
+    from pathlib import Path
+
+    target = Path(weights_path).resolve()
+    for root in _allowed_model_roots():
+        try:
+            target.relative_to(Path(root).resolve())
+            return  # 命中允许根
+        except ValueError:
+            continue
+    raise ValueError(
+        f"权重路径不在允许的模型根目录内: {weights_path}"
+        f"（{_MODEL_ROOTS_ENV} 可配置）"
+    )
+
+
+# ADR-0006：合法 task 名单——以 core TaskType 为单一事实源（服务端）
+def _known_task_names() -> frozenset[str]:
+    """TaskType 全部合法值（小写）。"""
+    from core.interfaces_supervised import TaskType
+
+    return frozenset(t.value.lower() for t in TaskType)
+
+
+def _is_known_task(name: str) -> bool:
+    """task 名是否在 TaskType 值域内（fail-closed 校验依据）。"""
+    return name.lower() in _known_task_names()
 
 
 class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
@@ -54,6 +121,10 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
     ) -> None:
         self._dispatcher = dispatcher
         self._shm = shm or SharedMemoryManager()
+        # H8（2026-10-05 一轮审查）：模型生命周期 RPC 串行化——gRPC 8
+        # worker 并发下 load/unload 与 infer 交错行为未定义（引擎线程
+        # 安全未证实）。互斥锁保证生命周期变更不与推理/彼此并发。
+        self._lifecycle_lock = threading.Lock()
 
     # ----------------------------- 健康 & 元数据 ---------------------------- #
 
@@ -109,29 +180,52 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
     # ------------------------------- 模型生命周期 ---------------------------- #
 
     def LoadModel(self, request: pb.LoadModelRequest, context: grpc.ServicerContext) -> pb.LoadModelResponse:
+        # M6（2026-10-05 一轮审查）：serving RPC 审计接入——对外暴露面
+        # 不再是审计盲区（成功失败均留痕；失败含 error 摘要）
         try:
             task = str_to_task_type(request.task)
             device = request.device or "cuda"
-            self._dispatcher.load_supervised(task, request.weights_path, device=device)
+            # H1：权重路径白名单（防任意路径探测/加载）
+            _validate_weights_path(request.weights_path)
+            # H8：生命周期 RPC 串行化（不与 UnloadModel/其他 Load 并发）
+            with self._lifecycle_lock:
+                self._dispatcher.load_supervised(task, request.weights_path, device=device)
+            _audit_rpc("LoadModel", request.task, success=True)
             return pb.LoadModelResponse(success=True)
         except Exception as e:
             logger.exception("LoadModel 失败 task=%s", request.task)
+            _audit_rpc("LoadModel", request.task, success=False, error=str(e)[:120])
             return pb.LoadModelResponse(success=False, error=str(e))
 
     def UnloadModel(self, request: pb.UnloadModelRequest, context: grpc.ServicerContext) -> pb.UnloadModelResponse:
         try:
             task = str_to_task_type(request.task)
-            # VisionModelDispatcher 没有公开 unload 单任务接口，借助 registry 释放缓存
-            from models.supervised.registry import get_default_registry
-            get_default_registry().clear_cache(task)
+            # ADR-0005（2026-10-06）：dispatcher.unload_supervised 单一所有者
+            # ——此前绕过 dispatcher 直调 registry.clear_cache（越层 import），
+            # 卸载后 dispatcher._engines 仍持引擎，Ping/GetTaskInfo 持续报
+            # loaded=True（元数据失真）。现收敛为 dispatcher 公共接口。
+            with self._lifecycle_lock:
+                self._dispatcher.unload_supervised(task)
+            _audit_rpc("UnloadModel", request.task, success=True)
             return pb.UnloadModelResponse(success=True)
         except Exception as e:
             logger.exception("UnloadModel 失败 task=%s", request.task)
+            _audit_rpc("UnloadModel", request.task, success=False, error=str(e)[:120])
             return pb.UnloadModelResponse(success=False, error=str(e))
 
     # ---------------------------------- 推理 -------------------------------- #
 
     def Detect(self, request: pb.DetectRequest, context: grpc.ServicerContext) -> pb.DetectResponse:
+        # ADR-0006（2026-10-06）：task 未知值 fail-closed——此前未知 task
+        # 静默回退 DET（fail-open），客户端发错任务名会静默跑目标检测，
+        # 错误路由无任何信号。现显式拒绝（INVALID_ARGUMENT），proto 的
+        # additive 演进依赖"显式拒绝 + 新增"而非宽容吞并。
+        task_name = (request.task or "det").lower()
+        if not _is_known_task(task_name):
+            context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                f"未知任务类型: {request.task!r}（支持: {', '.join(_known_task_names())}）",
+            )
         try:
             image = decode_request_image(request, self._shm)
         except Exception as e:
@@ -140,7 +234,9 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
 
         # 组装 kwargs
         kwargs: dict[str, Any] = {}
-        if request.threshold:
+        # H5（2026-10-05 一轮审查）：proto3 optional presence——显式
+        # threshold=0.0（工业低阈值/全召回）不再被当未设置吞掉
+        if request.HasField("threshold"):
             kwargs["threshold"] = float(request.threshold)
         if request.labels:
             kwargs["labels"] = list(request.labels)
@@ -153,14 +249,20 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
             result = self._dispatcher.infer(task, image, mode=mode, **kwargs)
         except Exception as e:
             logger.exception("推理失败 task=%s", task)
+            _audit_rpc("Detect", task, success=False, error=str(e)[:120])
             return pb.DetectResponse(success=False, error=str(e))
 
         try:
             proto = detection_result_to_proto(result, self._shm)
         except Exception as e:
             logger.exception("结果序列化失败")
+            _audit_rpc("Detect", task, success=False, error=f"serialization: {str(e)[:80]}")
             return pb.DetectResponse(success=False, error=f"结果序列化失败: {e}")
 
+        _audit_rpc(
+            "Detect", task, success=True,
+            count=len(proto.boxes_flat) // 4 if proto.box_count else 0,
+        )
         return pb.DetectResponse(success=True, result=proto)
 
     # ------------------------------ 共享内存回收 ----------------------------- #
@@ -223,6 +325,18 @@ class AutoVisionAgentServicer(pb_grpc.AutoVisionAgentServiceServicer):
                     f"共享内存区域不存在或已被回收: {request.file_path}",
                 )
                 return  # 静态检查友好；abort 已抛出终止异常
+            except ValueError as e:
+                # S1（安全审查 2026-10-05）：白名单外路径 → 拒绝读取。
+                # 统一按 NOT_FOUND 呈现（fail-closed）：不向对端泄露
+                # "路径不合法"与"区域不存在"的区分信号，防路径探测。
+                logger.warning(
+                    "FetchRegion 拒绝白名单外路径: %s (%s)", request.file_path, e
+                )
+                context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"共享内存区域不存在或已被回收: {request.file_path}",
+                )
+                return
             if len(data) != n:
                 # 短读：文件被截断（异常态），按区域已损坏终止
                 context.abort(
@@ -343,7 +457,14 @@ def create_server(
     pb_grpc.add_AutoVisionAgentServiceServicer_to_server(
         AutoVisionAgentServicer(dispatcher, shm), server
     )
-    server.add_insecure_port(f"{host}:{port}")
+    # H2（2026-10-05 一轮审查）：add_insecure_port 返回 0 表示绑定失败
+    # （端口被占用等）。此前返回值未检查——server.start() 后实际未监听，
+    # serve() 打"已启动"日志后永久假运行。
+    ret = server.add_insecure_port(f"{host}:{port}")
+    if ret == 0:
+        raise RuntimeError(
+            f"gRPC 端口绑定失败: {host}:{port}（端口可能被占用）"
+        )
     return server
 
 

@@ -88,7 +88,11 @@ message UnloadModelResponse {
 message DetectRequest {
   string task = 1;            // cls/det/seg/pseg/pose/sseg/abdet/sgan/super/zero_shot
   string mode = 2;            // auto / zero_shot / supervised
-  float threshold = 3;
+  // H5（2026-10-05 一轮审查）：optional 启用 presence——proto3 标量默认
+  // 无 presence，服务端 if request.threshold: 会把显式 threshold=0.0
+  // （工业低阈值/全召回场景）当未设置回退默认 0.5。optional + HasField
+  // 区分"未设置"与"显式 0"。对旧客户端向后兼容（不传 = 未设置）。
+  optional float threshold = 3;
   repeated string labels = 4;
   repeated string prompts = 5;  // 零样本提示词
   // 输入图像源（三选一，优先级：image_shm > image_path > image_bytes）

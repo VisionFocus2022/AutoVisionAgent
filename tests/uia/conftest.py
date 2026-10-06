@@ -67,6 +67,35 @@ LICENSE_KEY = CONFIG_DIR / "license.key"
 
 # ================================ 启动应用 ================================ #
 
+def _pin_chinese_language() -> None:
+    """W70 回归防护：每次启动被测应用前，把全部 config 目录（含 W68 起
+    exe 实际读取的 %APPDATA%）的 user_settings.json 语言钉回 ch_CN。
+
+    动机：i18n 用例切 EN 后若中途失败，还原步不执行；W68 持久化后该
+    设置跨实例存活，殃及全套件的中文锚（实测 18 连败）。其余键（主题/
+    设备）保留原值，只钉语言。
+    """
+    import json
+
+    for d in _uia_config_dirs():
+        settings = d / "user_settings.json"
+        try:
+            doc = (
+                json.loads(settings.read_text(encoding="utf-8"))
+                if settings.is_file() else {}
+            )
+            if doc.get("language") == "ch_CN":
+                continue
+            doc["language"] = "ch_CN"
+            settings.parent.mkdir(parents=True, exist_ok=True)
+            settings.write_text(
+                json.dumps(doc, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except (OSError, ValueError):
+            logger.warning("语言钉回失败: %s", settings, exc_info=True)
+
+
 @pytest.fixture()
 def ava_app():
     """启动 AutoVisionAgent 并返回主窗口控件，测试结束后关闭进程。
@@ -88,6 +117,7 @@ def ava_app():
     python 模式下解析到仓库根的 ``configs/``，两处都会创建。
     """
     license_created = _ensure_license_key()
+    _pin_chinese_language()  # W70：i18n 泄漏防护（见函数 docstring）
 
     source = os.environ.get("AVA_UIA_SOURCE", "exe").lower()
     proc = _launch_app(source)
@@ -428,11 +458,19 @@ _UIA_ADMIN_PWD_LOCAL = "UiaFlow#2026"  # 与 uia_helpers.UIA_ADMIN_PWD 同源
 
 
 def _uia_config_dirs() -> list:
-    """UIA 可用的应用 config 目录（python 源码模式 + exe 模式双覆盖）。"""
-    return [
+    """UIA 可用的应用 config 目录（python 源码模式 + exe 模式双覆盖）。
+
+    W68：exe 冻结态 CONFIG_DIR 已迁至 %APPDATA%/AutoVisionAgent/configs
+    （重建不丢），exe 模式的凭据/license 预置以它为准；_internal/configs
+    保留（迁移源，旧数据衔接仍覆盖）。"""
+    dirs = [
         _REPO_ROOT / "configs",
         _REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs",
     ]
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        dirs.append(Path(appdata) / "AutoVisionAgent" / "configs")
+    return dirs
 
 
 @pytest.fixture()

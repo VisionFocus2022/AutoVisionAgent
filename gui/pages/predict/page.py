@@ -5,8 +5,6 @@
 from __future__ import annotations
 
 import contextlib
-import csv
-import json
 import logging
 import os
 
@@ -33,21 +31,25 @@ from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.permissions import check_action  # W35：动作门控
 from gui.core.thread_bridge import invoke_main, ui_on_error
+from gui.pages.predict.export_actions import ExportActionsMixin  # W24 规模拆分
 from gui.pages.predict.video_super_actions import VideoSuperActionsMixin  # W34
 from gui.pages.predict.workers import (
     batch_save_dir,
     collect_images,
     result_to_record,
     row_display_fields,
-    sanitize_csv_cell,
 )
-from gui.widgets.file_dialog import pick_directory, pick_open_file, pick_save_file
+from gui.widgets.file_dialog import (
+    pick_directory,
+    pick_open_file,
+    pick_save_file,  # noqa: F401  测试缝：既有 monkeypatch 经本模块名引用（export_actions._pick_save_file 转发解析）
+)
 from inference.sv_bridge import render_result  # W33：批量叠加图（页面级绑定保测试缝）
 
 logger = logging.getLogger(__name__)
 
 
-class PredictPage(VideoSuperActionsMixin, QWidget):
+class PredictPage(VideoSuperActionsMixin, ExportActionsMixin, QWidget):
     """推理页：加载模型 → 单张/批量推理 → 结果表 → 导出。"""
 
     status_changed = Signal(str, str)
@@ -61,6 +63,11 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         self._engine = None  # ISupervisedTaskEngine 实例
         self._results: list[dict] = []  # 批量结果缓存
         self._batch_cancel = False  # 批量推理取消标志
+        # P1-R4：单张推理请求 ID 与结果槽（跨线程传递契约，见 _single_infer
+        # docstring）——请求 ID 单调递增，_single_done 校验后才消费结果，
+        # 防止"快速连点两次推理时第一次结果被第二次静默覆盖丢失"
+        self._single_req_id: int = 0
+        self._pending_single: tuple[int, str, DetectionResult] | None = None
         # W21：预览原始图（全分辨率）——按预览区自适应缩放，resize 时重适配
         self._preview_source: QPixmap | None = None
 
@@ -247,7 +254,22 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
             self._models_dir = models
 
     def _load_model(self) -> None:
-        """加载模型权重。"""
+        """加载模型权重。
+
+        P0-3（2026-10-05 二轮审查 R3）：推理任务进行中禁止换模型——
+        批量/单张推理的 worker 线程正持有 self._engine 做 infer，此处
+        unload() 旧引擎会造成子线程 use-after-unload（崩溃或 CUDA 非法
+        访存）。入口守卫 + 按钮态双保险。
+        """
+        # 入口守卫：任何推理 job 在册时拒绝加载（防旁路入口）
+        from gui.core.jobs import active_jobs
+
+        busy = [n for n in active_jobs() if n.startswith("predict_")]
+        if busy:
+            self.status_changed.emit(
+                tr("推理进行中，禁止更换模型"), "!"
+            )
+            return
         path = pick_open_file(
             self, "选择模型权重",
             "Weights (*.pt *.pth *.onnx *.ckpt)"
@@ -300,15 +322,35 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
                 SupervisedEngineError) as exc:
             # W28 审计折入：坏 checkpoint 时引擎 load 抛 SupervisedEngineError
             # （AppError 子类）——旧元组漏收则逃出槽函数且引擎残留半加载态
+            # O9（P1，2026-10-05 二轮审查）：except 分支必须清理残留的半加载
+            # 引擎——此前 self._engine 仍是 reg.get(task) 返回的实例（非空），
+            # 用户失败后直接点"单张推理"会通过引擎预检然后 infer 崩溃。
             self.lbl_model.setText(tr("加载失败"))
             self.status_changed.emit(tr("模型加载失败"), str(exc)[:40])
+            if self._engine is not None:
+                with contextlib.suppress(RuntimeError, AttributeError):
+                    self._engine.unload()
+                self._engine = None
+                with contextlib.suppress(Exception):
+                    from models.supervised.registry import get_default_registry
+                    get_default_registry().clear_cache(task=task)
+                logger.info("已清理半加载引擎（加载失败路径）")
 
     def _threshold(self) -> float:
         """当前推理阈值（单张/批量共用，W28）。"""
         return round(self.spin_threshold.value(), 2)
 
     def _single_infer(self) -> None:
-        """单张推理（W3-T3: 推理移出 UI 线程，结果经 invoke_main 回主线程）。"""
+        """单张推理（W3-T3: 推理移出 UI 线程，结果经 invoke_main 回主线程）。
+
+        P1-R4 跨线程传递契约（2026-10-05 二轮审查）：
+        worker 写 self._pending_single = (req_id, path, result) 后调
+        invoke_main 排队 _single_done；QueuedConnection 的排队顺序提供
+        happens-before（同请求的写先于主线程读）。请求 ID 单调递增，
+        _single_done 只消费"最新请求"的结果——旧请求迟到的回调被 ID
+        校验拒绝，不再出现结果静默覆盖。btn_single 在推理期间禁用，
+        正常路径本就无并发；该守卫覆盖取消/异常竞态的边界窗口。
+        """
         if not self._engine:
             self.status_changed.emit(tr("请先加载模型"), "!")
             return
@@ -321,6 +363,10 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
 
         self.btn_single.setEnabled(False)
         self.btn_single.setText(tr("推理中..."))
+        # P0-3：单张推理中禁用换模型（use-after-unload 防护，与批量一致）
+        self.btn_load_model.setEnabled(False)
+        self._single_req_id += 1
+        req_id = self._single_req_id
         self._pending_single = None
         threshold = self._threshold()  # W28 审计折入：UI 线程捕获（与批量对齐）
 
@@ -335,7 +381,7 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
                     img, threshold=threshold
                 )
                 score = float(result.score) if result.score else 0.0
-                self._pending_single = (path, result)
+                self._pending_single = (req_id, path, result)
                 invoke_main(self, "_single_done", os.path.basename(path), score)
             except (RuntimeError, OSError, ValueError,
                     SupervisedEngineError) as exc:
@@ -346,12 +392,24 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
 
     @Slot(str, float)
     def _single_done(self, basename: str, score: float) -> None:
-        """槽：单张推理完成（主线程）——显示结果/记录行/审计。"""
+        """槽：单张推理完成（主线程）——显示结果/记录行/审计。
+
+        P1-R4：请求 ID 校验——仅当 pending 结果属于最新请求时消费；
+        旧请求迟到的结果丢弃并留痕（可见性而非静默吞）。
+        """
         self.btn_single.setEnabled(True)
         self.btn_single.setText(tr("单张推理"))
+        self.btn_load_model.setEnabled(True)  # P0-3：恢复换模型入口
         if self._pending_single is None:
             return
-        path, result = self._pending_single
+        pending_id, path, result = self._pending_single
+        if pending_id != self._single_req_id:
+            logger.warning(
+                "丢弃过期单张推理结果 (req %d != 当前 %d): %s",
+                pending_id, self._single_req_id, path,
+            )
+            self._pending_single = None
+            return
         self._pending_single = None
 
         # 在预览区显示原图 + 叠加检测框
@@ -386,6 +444,7 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         """槽：单张推理失败（主线程）。"""
         self.btn_single.setEnabled(True)
         self.btn_single.setText(tr("单张推理"))
+        self.btn_load_model.setEnabled(True)  # P0-3：失败路径同样恢复
         self.status_changed.emit(tr("推理失败"), err)
 
     def _batch_infer(self) -> None:
@@ -416,6 +475,7 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         self._batch_cancel = False
         self.btn_batch.setEnabled(False)
         self.btn_batch.setText(tr("推理中..."))
+        self.btn_load_model.setEnabled(False)  # P0-3：批量推理中禁用换模型
         if hasattr(self, "_btn_cancel_batch"):
             self._btn_cancel_batch.setVisible(True)
         if hasattr(self, "_progress"):
@@ -469,6 +529,7 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         logger.info("批量推理完成: %d/%d (cancelled=%s)", count, total, cancelled)
         self.btn_batch.setEnabled(True)
         self.btn_batch.setText(tr("批量推理"))
+        self.btn_load_model.setEnabled(True)  # P0-3：恢复换模型入口
         if hasattr(self, "_btn_cancel_batch"):
             self._btn_cancel_batch.setVisible(False)
         if hasattr(self, "_progress"):
@@ -500,6 +561,7 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         logger.error("批量推理异常终止: %s", err)
         self.btn_batch.setEnabled(True)
         self.btn_batch.setText(tr("批量推理"))
+        self.btn_load_model.setEnabled(True)  # P0-3：失败路径同样恢复
         if hasattr(self, "_btn_cancel_batch"):
             self._btn_cancel_batch.setVisible(False)
         if hasattr(self, "_progress"):
@@ -608,151 +670,9 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         info = f"{n} {tr('框')}" if n else ""
         self.table.setItem(row, 3, QTableWidgetItem(info))
 
-    def _export_csv(self) -> None:
-        """导出 CSV。"""
-        if not self._results:
-            self.status_changed.emit(tr("无数据可导出"), "!")
-            return
-        path = pick_save_file(
-            self, "导出CSV", "CSV (*.csv)"
-        )
-        if not path:
-            return
-        with open(path, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["file", "task", "score", "labels"])
-            for r in self._results:
-                writer.writerow([
-                    sanitize_csv_cell(r["file"]),
-                    sanitize_csv_cell(r["task"]),
-                    r.get("score", ""),
-                    sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
-                ])
-        logger.info("导出CSV: %s", path)
-        self.status_changed.emit(tr("已导出"), os.path.basename(path))
-
-    def _show_stats(self) -> None:
-        """弹出统计报表对话框（R3-11）：总检测数/缺陷数/缺陷率/类别分布。"""
-        if not self._results:
-            self.status_changed.emit(tr("无数据可统计"), "!")
-            return
-        total_imgs = len(self._results)
-        total_dets = sum(
-            len(r.get("boxes") or []) for r in self._results
-        )
-        defective = sum(
-            1 for r in self._results if r.get("boxes")
-        )
-        defect_rate = (defective / total_imgs * 100) if total_imgs else 0.0
-
-        # 类别分布
-        from collections import Counter
-        label_counter: Counter = Counter()
-        for r in self._results:
-            labels = r.get("labels") or []
-            for lbl in labels:
-                label_counter[str(lbl)] += 1
-
-        # 构建摘要文本
-        lines = [
-            f"{tr('总图像数')}: {total_imgs}",
-            f"{tr('总检测数')}: {total_dets}",
-            f"{tr('缺陷图像数')}: {defective}",
-            f"{tr('缺陷率')}: {defect_rate:.1f}%",
-        ]
-        if label_counter:
-            lines.append("")
-            lines.append(tr("类别分布") + ":")
-            for lbl, cnt in label_counter.most_common():
-                lines.append(f"  {lbl}: {cnt}")
-
-        from PySide6.QtWidgets import QMessageBox
-        msg = QMessageBox(self)
-        msg.setIcon(QMessageBox.Information)
-        msg.setWindowTitle(tr("统计报表"))
-        msg.setText("\n".join(lines))
-        msg.exec()
-
-        self.status_changed.emit(
-            tr("统计"), f"{defective}/{total_imgs} ({defect_rate:.1f}%)"
-        )
-
-    def _export_excel(self) -> None:
-        """导出 Excel (.xlsx)（R3-11）。openpyxl 不可用时回退到 CSV。"""
-        if not self._results:
-            self.status_changed.emit(tr("无数据可导出"), "!")
-            return
-        path = pick_save_file(
-            self, "导出Excel", "Excel (*.xlsx)"
-        )
-        if not path:
-            return
-        try:
-            from openpyxl import Workbook
-        except ImportError:
-            # 回退到 CSV
-            self.status_changed.emit(tr("openpyxl未安装，导出CSV"), "!")
-            csv_path = path.rsplit(".", 1)[0] + ".csv"
-            with open(csv_path, "w", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                writer.writerow(["file", "task", "score", "labels"])
-                for r in self._results:
-                    writer.writerow([
-                        sanitize_csv_cell(r["file"]),
-                        sanitize_csv_cell(r["task"]),
-                        r.get("score", ""),
-                        sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
-                    ])
-            self.status_changed.emit(tr("已导出CSV"), os.path.basename(csv_path))
-            logger.info("导出Excel回退CSV: %s", csv_path)
-            return
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = tr("推理结果")
-        # 表头
-        headers = [tr("文件"), tr("任务"), tr("分数"), tr("标签"), tr("检测框数")]
-        ws.append(headers)
-        # 数据行
-        for r in self._results:
-            ws.append([
-                sanitize_csv_cell(r["file"]),
-                sanitize_csv_cell(r.get("task", "")),
-                round(r.get("score", 0) or 0, 4),
-                sanitize_csv_cell(", ".join(r.get("labels", []) or [])),
-                len(r.get("boxes") or []),
-            ])
-
-        # 统计摘要表
-        ws2 = wb.create_sheet(tr("统计"))
-        total_imgs = len(self._results)
-        total_dets = sum(len(r.get("boxes") or []) for r in self._results)
-        defective = sum(1 for r in self._results if r.get("boxes"))
-        defect_rate = (defective / total_imgs * 100) if total_imgs else 0.0
-        ws2.append([tr("指标"), tr("数值")])
-        ws2.append([tr("总图像数"), total_imgs])
-        ws2.append([tr("总检测数"), total_dets])
-        ws2.append([tr("缺陷图像数"), defective])
-        ws2.append([tr("缺陷率"), f"{defect_rate:.1f}%"])
-
-        wb.save(path)
-        logger.info("导出Excel: %s", path)
-        self.status_changed.emit(tr("已导出"), os.path.basename(path))
-
-    def _export_json(self) -> None:
-        """导出 JSON。"""
-        if not self._results:
-            self.status_changed.emit(tr("无数据可导出"), "!")
-            return
-        path = pick_save_file(
-            self, "导出JSON", "JSON (*.json)"
-        )
-        if not path:
-            return
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self._results, f, ensure_ascii=False, indent=2)
-        logger.info("导出JSON: %s", path)
-        self.status_changed.emit(tr("已导出"), os.path.basename(path))
+    # W24 规模拆分：_export_csv/_show_stats/_export_excel/_export_json 的
+    # 实现移至 ExportActionsMixin（本类继承命中，勿在此定义同名存根——
+    # 会按 MRO 优先遮蔽 Mixin 实现）。
 
     def retranslate(self) -> None:
         self.btn_load_model.setText(tr("加载模型"))
@@ -761,8 +681,7 @@ class PredictPage(VideoSuperActionsMixin, QWidget):
         self.chk_overlay.setText(tr("叠加图"))
         self.btn_single.setText(tr("单张推理"))
         self.btn_batch.setText(tr("批量推理"))
-        self.btn_video_super.setText(tr("视频超分"))
-        self.btn_video_super.setText(tr("视频超分"))
+        self.btn_video_super.setText(tr("视频超分"))  # L1：去重复行
         self.btn_export_csv.setText(tr("导出CSV"))
         self.btn_export_json.setText(tr("导出JSON"))
         self.btn_export_excel.setText(tr("导出Excel"))

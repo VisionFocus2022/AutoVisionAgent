@@ -116,7 +116,24 @@ class SamSessionMixin:
         return self._sam_state != self._SAM_IDLE
 
     def _sam_set_state(self, state: str) -> None:
-        """状态迁移（str 赋值 GIL 原子，与旧布尔同线程安全水位）。"""
+        """状态迁移（O7·契约 C4，2026-10-05 二轮审查）。
+
+        状态机迁移收敛主线程：worker 线程调用时经 invoke_main 排队
+        （QueuedConnection 顺序保证 = 迁移与 worker 后续回调同序），
+        主线程调用时立即执行。此前 worker 直接写 _sam_state——str 赋值
+        GIL 原子无数据撕裂，但与主线程守卫的时序契约脆弱（守卫通过与
+        迁移执行之间无屏障）。
+        """
+        import threading
+
+        if threading.current_thread() is not threading.main_thread():
+            invoke_main(self, "_sam_set_state_main", state)
+        else:
+            self._sam_state = state
+
+    @Slot(str)
+    def _sam_set_state_main(self, state: str) -> None:
+        """槽：状态迁移（主线程执行，O7·契约 C4）。"""
         self._sam_state = state
 
     def _ensure_sam(self) -> None:
@@ -169,13 +186,15 @@ class SamSessionMixin:
         def _work():
             # W21：device 走 resolve_device 契约（W19 已接 7 个 torch 引擎，
             # 本处补齐）——cuda 可用透传、不可用回退 cpu（lite exe 安全）
+            # O7·契约 C2 模式②：adapter 经 pending 属性 + invoke_main 由
+            # 主线程槽赋值（worker 不再直接写 self._sam_adapter）
             from models.supervised.device import resolve_device
             err = ""
             try:
                 adapter.load(ckpt, device=resolve_device("cuda"))
             except (ImportError, RuntimeError, OSError, ValueError) as exc:
                 err = str(exc)
-            self._sam_adapter = adapter
+            self._pending_sam_adapter = adapter
             self._sam_set_state(self._SAM_IDLE)
             if err:
                 invoke_main(self, "_sam_failed", err)
@@ -205,13 +224,15 @@ class SamSessionMixin:
         self._sam_set_state(self._SAM_LOADING)
 
         def _work():
+            # O7·契约 C2 模式②：同 SAM1 路径——adapter 经 pending 属性
+            # 由主线程槽赋值
             from models.supervised.device import resolve_device
             err = ""
             try:
                 adapter.load(model_dir, device=resolve_device("cuda"))
             except (ImportError, RuntimeError, OSError, ValueError) as exc:
                 err = str(exc)
-            self._sam_adapter = adapter
+            self._pending_sam_adapter = adapter
             self._sam_set_state(self._SAM_IDLE)
             if err:
                 invoke_main(self, "_sam_failed", err)
@@ -224,7 +245,12 @@ class SamSessionMixin:
 
     @Slot()
     def _sam_warmed(self) -> None:
-        """槽：权重加载完成（主线程）——继续预热当前帧。"""
+        """槽：权重加载完成（主线程）——消费 pending adapter（O7·契约 C2
+        模式②）后继续预热当前帧。"""
+        pending = getattr(self, "_pending_sam_adapter", None)
+        if pending is not None:
+            self._sam_adapter = pending  # 主线程赋值（契约 C4）
+            self._pending_sam_adapter = None
         self._warm_sam()
 
     def _warm_sam(self) -> None:
@@ -344,7 +370,13 @@ class SamSessionMixin:
                     and getattr(self._sam_adapter, "loaded", False)):
                 self._sam_adapter.unload()
         except Exception:  # noqa: BLE001
-            pass
+            # L5（2026-10-05 二轮审查）：兜底吞异常须留痕（全仓约定），
+            # 不改写关闭语义（debug 级——进程退出本身也会回收显存）。
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "closeEvent SAM 卸载兜底失败", exc_info=True
+            )
         super().closeEvent(event)
 
     def _on_labeler_feedback(self, kind: str, msg: str) -> None:

@@ -182,7 +182,10 @@ def test_stop_training_flags_worker(train_page):
     train_page._worker._running = True
     train_page._stop_training()
     assert train_page._worker.stopped is True
-    assert any(t == "训练中止" for t, _ in train_page._msgs)
+    # P1-R5（2026-10-05）：状态文案改为"训练停止中"（协作式，不再 wait 阻塞）；
+    # 停止按钮同步禁用防重复点击，由完成回调统一复位
+    assert any(t == "训练停止中" for t, _ in train_page._msgs)
+    assert not train_page.btn_stop.isEnabled()
 
     train_page._worker._running = False
     train_page._stop_training()  # 未运行 no-op

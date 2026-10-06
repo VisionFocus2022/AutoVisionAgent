@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -150,7 +150,7 @@ class HomePage(QWidget):
             self._recent_list.addItem(item)
         if not dirs:
             empty = QListWidgetItem(tr("暂无最近项目"))
-            empty.setFlags(empty.flags() & ~empty.flags())
+            empty.setFlags(Qt.NoItemFlags)  # L4：等价旧 flags()&~flags() 的直写
             self._recent_list.addItem(empty)
 
     def refresh_history(self) -> None:

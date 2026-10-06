@@ -283,7 +283,9 @@ def test_single_done_audit_records_logged_in_user(predict_qapp, monkeypatch):
     )
 
     page = PredictPage()
-    page._pending_single = ("missing.jpg", _FakeResult())
+    # P1-R4（2026-10-05）：pending_single 升为 (req_id, path, result) 三元组
+    page._single_req_id = 1
+    page._pending_single = (1, "missing.jpg", _FakeResult())
     set_current_user("engineer")
     try:
         page._single_done("missing.jpg", 0.5)

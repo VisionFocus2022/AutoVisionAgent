@@ -117,18 +117,19 @@ class TestAbdetAuroc:
         assert result == pytest.approx(1.0, abs=1e-4)
 
     def test_all_positive(self):
-        """全正样本 → AUROC = 0.0（无负样本）。"""
+        """全正样本 → AUROC = NaN（无负样本=无法计算；E10 契约：
+        NaN 走 N/A 显示，不再误读为 0"模型反向"）。"""
         scores = [0.5, 0.6, 0.7]
         labels = [1, 1, 1]
         result = abdet_auroc(scores, labels)
-        assert result == 0.0
+        assert result != result  # NaN
 
     def test_all_negative(self):
-        """全负样本 → AUROC = 0.0（无正样本）。"""
+        """全负样本 → AUROC = NaN（无正样本=无法计算，E10 同上）。"""
         scores = [0.1, 0.2, 0.3]
         labels = [0, 0, 0]
         result = abdet_auroc(scores, labels)
-        assert result == 0.0
+        assert result != result  # NaN
 
     def test_mixed_scores(self):
         """部分混淆（异常分数与正常分数有重叠）→ 0 < AUROC < 1。"""
@@ -138,8 +139,9 @@ class TestAbdetAuroc:
         assert 0.0 < result < 1.0
 
     def test_insufficient_samples(self):
-        """不足 2 个样本 → AUROC = 0.0。"""
-        assert abdet_auroc([0.5], [0]) == 0.0
+        """不足 2 个样本 → AUROC = NaN（无法计算，E10 契约）。"""
+        result = abdet_auroc([0.5], [0])
+        assert result != result  # NaN
 
 
 # ============================== evaluate_supervised ============================== #

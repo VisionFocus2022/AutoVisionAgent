@@ -18,6 +18,7 @@ import os
 import tempfile
 from typing import Any
 
+from core.exceptions import AppError  # L1（2026-10-06 三轮审查）：AnnotationIOError 基类
 from labeling.io_labelme import load_labelme
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,11 @@ def batch_replace_label(
         path = os.path.join(json_dir, f)
         try:
             doc = load_labelme(path)
-        except (json.JSONDecodeError, OSError, KeyError, ValueError):
+        except (AppError, json.JSONDecodeError, OSError, KeyError, ValueError):
+            # L1（2026-10-06 三轮审查）：load_labelme 对损坏 JSON 抛
+            # AnnotationIOError（AppError 子类）——旧元组捕不到，坏文件
+            # 会击穿"跳过"意图崩掉整个批量任务（实测复现）。AppError
+            # 覆盖全部标注 IO 异常族。
             logger.debug("跳过损坏标注文件: %s", path)
             continue
         changed = False
@@ -105,8 +110,8 @@ def label_data_statistics(json_dir: str) -> dict[str, int]:
         path = os.path.join(json_dir, f)
         try:
             doc = load_labelme(path)
-        except (json.JSONDecodeError, OSError, KeyError, ValueError):
-            logger.debug("跳过损坏标注文件: %s", path)
+        except (AppError, json.JSONDecodeError, OSError, KeyError, ValueError):
+            logger.debug("跳过损坏标注文件: %s", path)  # L1：同 batch_replace_label
             continue
         for s in doc.get("shapes", []):
             label = s.get("label", "unknown")
@@ -136,8 +141,8 @@ def batch_delete_labels(
         path = os.path.join(json_dir, f)
         try:
             doc = load_labelme(path)
-        except (json.JSONDecodeError, OSError, KeyError, ValueError):
-            logger.debug("跳过损坏标注文件: %s", path)
+        except (AppError, json.JSONDecodeError, OSError, KeyError, ValueError):
+            logger.debug("跳过损坏标注文件: %s", path)  # L1：同 batch_replace_label
             continue
         original_len = len(doc.get("shapes", []))
         doc["shapes"] = [

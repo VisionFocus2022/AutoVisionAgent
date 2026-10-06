@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 import os
 
@@ -301,6 +302,8 @@ class TrainPage(QWidget):
 
         只数文件不解析标签（轻量）；{split} 与 {split}/images 两目录形态
         均认；清单缺键/路径无效/文件不可读诚实提示。
+        W69：顺带按标签格式自动选任务（>5 列=分割，5 列=检测）——杜绝
+        「多边形数据集配检测任务」的静默假训练错配。
         """
         try:
             from yaml import safe_load
@@ -309,6 +312,7 @@ class TrainPage(QWidget):
                 doc = safe_load(fh) or {}
             base = os.path.dirname(os.path.abspath(yaml_path))
             parts: list[str] = []
+            train_dir = ""
             for split in ("train", "val"):
                 rel = doc.get(split)
                 if not isinstance(rel, str):
@@ -318,6 +322,8 @@ class TrainPage(QWidget):
                     os.path.join(base, rel, "images"),
                 ):
                     if os.path.isdir(cand):
+                        if split == "train":
+                            train_dir = cand
                         n = sum(
                             1 for f in os.listdir(cand)
                             if f.lower().endswith(
@@ -332,8 +338,103 @@ class TrainPage(QWidget):
                 self.status_changed.emit(
                     tr("数据集清单读取失败"), "train/val 键缺失或路径无效"
                 )
+            # W69：任务自动识别（统计回显是浏览/向导两条路的公共漏斗）
+            fmt = self._detect_label_format(train_dir)
+            if fmt is not None:
+                self._set_task_combo(fmt)
         except (OSError, ValueError) as exc:
             self.status_changed.emit(tr("数据集清单读取失败"), str(exc)[:60])
+
+    def _detect_label_format(self, train_dir: str) -> str | None:
+        """从训练目录推断标签格式：'seg'（>5 列）/ 'det'（5 列）/ None。
+
+        导出器按标注几何写行：矩形=5 列 det 行，多边形=6+ 列 seg 行；
+        YOLO 布局 labels/ 与 images/ 同级，非 images 命名目录则就地找。
+        """
+        if not train_dir or not os.path.isdir(train_dir):
+            return None
+        labels_dir = (
+            os.path.join(os.path.dirname(train_dir), "labels")
+            if os.path.basename(train_dir).lower() == "images"
+            else os.path.join(train_dir, "labels")
+        )
+        if not os.path.isdir(labels_dir):
+            return None
+        for name in sorted(os.listdir(labels_dir)):
+            if not name.endswith(".txt"):
+                continue
+            try:
+                with open(
+                    os.path.join(labels_dir, name), encoding="utf-8"
+                ) as fh:
+                    for line in fh:
+                        tokens = line.split()
+                        if not tokens:
+                            continue
+                        if len(tokens) > 5:
+                            return "seg"
+                        if len(tokens) == 5:
+                            return "det"
+                        return None  # 畸形行（<5 列）不猜
+            except OSError:
+                continue
+        return None
+
+    def _set_task_combo(self, fmt: str) -> None:
+        """把任务下拉设为与数据格式一致并状态告知（W69）。"""
+        target = TaskType.SEG if fmt == "seg" else TaskType.DET
+        if self.cmb_task.currentData() == target:
+            return
+        for i in range(self.cmb_task.count()):
+            if self.cmb_task.itemData(i) == target:
+                self.cmb_task.setCurrentIndex(i)
+                name = tr("分割") if fmt == "seg" else tr("检测")
+                self.status_changed.emit(
+                    tr("任务已按数据格式自动选择"), name
+                )
+                return
+
+    def _correct_task_for_dataset(self, cfg: TrainConfig):
+        """W69 启动守卫：任务与数据格式不符 → 纠正任务并返回提示。
+
+        Returns:
+            (cfg, note)——note 非空时调用方发状态警告；数据格式未知时
+            原样返回（不猜）。
+        """
+        fmt = self._detect_label_format_from_yaml(cfg.data_yaml)
+        if fmt is None:
+            return cfg, ""
+        target = TaskType.SEG if fmt == "seg" else TaskType.DET
+        if cfg.task is target:
+            return cfg, ""
+        name = tr("分割") if fmt == "seg" else tr("检测")
+        return (
+            dataclasses.replace(cfg, task=target),
+            tr("任务与数据集格式不符，已自动纠正为") + name,
+        )
+
+    def _detect_label_format_from_yaml(self, yaml_path: str) -> str | None:
+        """从 data.yaml 解析 train 图像目录后探标签格式（守卫用）。"""
+        if not yaml_path or not os.path.isfile(yaml_path):
+            return None
+        try:
+            from yaml import safe_load
+
+            with open(yaml_path, encoding="utf-8") as fh:
+                doc = safe_load(fh) or {}
+            rel = doc.get("train")
+            if not isinstance(rel, str):
+                return None
+            base = os.path.dirname(os.path.abspath(yaml_path))
+            for cand in (
+                os.path.join(base, rel),
+                os.path.join(base, rel, "images"),
+            ):
+                if os.path.isdir(cand):
+                    return self._detect_label_format(cand)
+            return None
+        except (OSError, ValueError):
+            return None
 
     def _build_config(self) -> TrainConfig:
         """从表单构造 TrainConfig（R5-4: 补全全部字段）。"""
@@ -358,16 +459,40 @@ class TrainPage(QWidget):
 
     def _start_training(self) -> None:
         """启动训练线程。"""
+        # W67 留痕：入口即记（此前点击→预检→建训练器全链零日志，卡住无从
+        # 定位——用户实测「一直在等待开始」即 AMP 预检在 UI 线程卡 CUDA）
+        logger.info("训练启动流程进入")
         # 检查旧线程是否仍在运行
         if self._worker is not None and self._worker.isRunning():
             self.status_changed.emit(tr("请等待上一轮训练结束"), "!")
             return
 
         cfg = self._build_config()
+        # W69 启动守卫：任务与数据集标签格式不符（如检测+多边形数据）→
+        # 自动纠正——此前该错配会让真通道失效/训练报错，用户侧表现为假训练
+        import dataclasses
+
+        cfg, note = self._correct_task_for_dataset(cfg)
+        if note:
+            self.status_changed.emit(note, "!")
+        # W67：反馈前置——AMP 预检（CUDA fp16 探针）跑在 UI 线程，冷驱动/
+        # 上下文竞争时可秒级~分钟级阻塞；先亮状态禁按钮再探，杜绝静默假死
+        self.chart.clear_all()
+        self.chart.add_series("loss", "#ef4444")
+        self.progress_bar.setValue(0)
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        # M17（2026-10-05 二轮审查）：训练期间锁定表单——_on_progress 用
+        # 当前 spin_epochs 值反推 epoch，训练中改表单会让日志行 epoch
+        # 错乱；改了也只影响下次启动但用户无感知。锁定全部配置控件组。
+        self._set_form_enabled(False)
+        self.lbl_log.setText(tr("训练中..."))
         # W31 AMP 预检：cuda 侧 fp16 前向+反向有限性探针；失败=警告+回退
         # FP32（cpu/lite 静默跳过，不随包 checkamp.pt 资产）
         if cfg.amp:
+            logger.info("AMP 预检开始: device=%s", cfg.device)
             ok, reason = amp_preflight(cfg.device)
+            logger.info("AMP 预检结束: ok=%s reason=%s", ok, reason)
             if not ok:
                 logger.warning("AMP 预检失败，训练回退 FP32: %s", reason)
                 self.status_changed.emit(tr("AMP 预检失败，已回退 FP32"), reason[:40])
@@ -375,17 +500,15 @@ class TrainPage(QWidget):
                 import dataclasses
 
                 cfg = dataclasses.replace(cfg, amp=False)
-        self.chart.clear_all()
-        self.chart.add_series("loss", "#ef4444")
-        self.progress_bar.setValue(0)
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.lbl_log.setText(tr("训练中..."))
 
         # 构建训练器（延迟导入避免循环依赖）
+        # O10（2026-10-05 二轮审查）：except 元组收窄——裸 Exception 会把
+        # _make_trainer 内的编码 bug（AttributeError 等）也变成"训练失败"
+        # 文案，掩盖真实缺陷。_on_failed 已补 logger.exception 留痕。
         try:
             trainer = self._make_trainer(cfg)
-        except Exception as exc:
+        except (ImportError, RuntimeError, OSError, ValueError) as exc:
+            logger.exception("_make_trainer 构建失败")
             self._on_failed(str(exc))
             return
 
@@ -476,14 +599,38 @@ class TrainPage(QWidget):
         self.status_changed.emit(message, "warn")
         self.lbl_log.setText(tr("警告：") + message)
 
+    def _set_form_enabled(self, enabled: bool) -> None:
+        """M17（2026-10-05 二轮审查）：训练期间锁定/恢复表单配置控件。
+
+        训练中改 spin_epochs 等会让 _on_progress 的 epoch 反推错乱，且
+        用户无感知"改了只影响下次启动"。锁定的是配置输入面（btn_start/
+        btn_stop 由训练状态机单独管理，不在此列）。
+        """
+        for attr in (
+            "cmb_task", "spin_epochs", "spin_batch", "spin_lr",
+            "edit_dataset", "chk_amp", "cmb_device", "cmb_scheduler",
+            "spin_patience",
+        ):
+            widget = getattr(self, attr, None)
+            if widget is not None:
+                widget.setEnabled(enabled)
+
     def _stop_training(self) -> None:
-        """请求强制结束。"""
+        """请求停止（P1-R5：协作式，不再 UI 线程阻塞 wait）。
+
+        此前 self._worker.wait(5000) 在主线程同步等训练线程至多 5 秒：
+        fit() 处于长 epoch 中不检查 stop_flag 时 UI 冻结，且"正在停止..."
+        文案在 wait 之后才可能渲染（事件循环已停转）。
+
+        现改为：置 stop 标志 → 禁用停止按钮防重复点击 → 状态栏即时反馈。
+        线程退出由 finished_sig/failed 信号正常回调 _on_finished/_on_failed
+        复位 UI（协作取消依赖 fit 循环周期性检查 should_stop）。
+        """
         if self._worker and self._worker.isRunning():
             self._worker.stop()
-            self.lbl_log.setText(tr("正在停止..."))
-            self.status_changed.emit(tr("训练中止"), "...")
-            # 等待线程退出（最多 5 秒）
-            self._worker.wait(5000)
+            self.btn_stop.setEnabled(False)  # 防重复点击（完成回调统一复位）
+            self.lbl_log.setText(tr("已请求停止，等待当前轮结束..."))
+            self.status_changed.emit(tr("训练停止中"), "...")
 
     def _on_progress(self, ratio: float, metrics: dict) -> None:
         """进度回调（主线程，经信号槽）。"""
@@ -508,6 +655,7 @@ class TrainPage(QWidget):
         )
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        self._set_form_enabled(True)  # M17：训练结束恢复表单
         self.progress_bar.setValue(100)
         self.lbl_log.setText(
             tr("训练完成") + f": {artifact.epochs_completed} " + tr("轮")
@@ -531,9 +679,12 @@ class TrainPage(QWidget):
             logger.exception("训练完成审计写入失败")
 
     def _on_failed(self, msg: str) -> None:
-        """训练失败回调。"""
+        """训练失败回调（O10：补 logger.exception 留痕——此前仅 UI 文案，
+        日志不可见，失败根因无迹可查）。"""
+        logger.error("训练失败: %s", msg, exc_info=True)
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        self._set_form_enabled(True)  # M17：失败路径同样恢复表单
         self.lbl_log.setText(tr("训练失败") + f": {msg}")
         self.status_changed.emit(tr("训练失败"), "ERROR")
 
@@ -571,6 +722,21 @@ class EngineTrainStrategy:
         """保存训练权重。"""
         if hasattr(self._engine, "save"):
             self._engine.save(path)
+
+    def load_state(self, path: str) -> bool:
+        """P0-2（2026-10-05 二轮审查 R2）：从 checkpoint 恢复引擎权重。
+
+        引擎提供 load() 则调用（返回 True）；否则返回 False，trainer
+        将告警"从随机权重续训"。
+        """
+        if hasattr(self._engine, "load"):
+            try:
+                self._engine.load(path, device=getattr(self._engine, "_device", "cpu"))
+                return True
+            except Exception:
+                logger.exception("EngineTrainStrategy.load_state 装载失败: %s", path)
+                return False
+        return False
 
     def get_optimizer(self):
         """R5-4: 返回引擎的优化器（供 LR 调度器使用）。

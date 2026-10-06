@@ -151,7 +151,8 @@ def _array_payload(
     shape = tuple(int(s) for s in arr.shape)
 
     if rle and os.environ.get("AVA_SHM_MASK_RLE", "1") == "1":
-        from serving.mask_codec import encode_mask_rle
+        # L7（2026-10-05 一轮审查）：直连 core（W45 下沉后的正式入口）
+        from core.mask_codec import encode_mask_rle
 
         payload = encode_mask_rle(arr)
         wire_dtype = "bool_rle"

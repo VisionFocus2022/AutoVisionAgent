@@ -107,16 +107,34 @@ def filter_result_by_labels(result, allowed_labels):
     )
 
 
+def _dedup_stem(img_path: str) -> str:
+    """O13（2026-10-05 二轮审查）：批量产物 stem 冲突防御。
+
+    不同子目录同名图像（a/img1.jpg 与 b/img1.jpg）会令 masks_img1.npz /
+    overlay_img1.jpg 互相静默覆盖。以完整路径的稳定哈希（8 位 hex）作
+    后缀去重：stem 冲突时产物名可区分；无冲突时保持原名（哈希仍然附加，
+    保证确定性且与历史产物名解耦）。
+    """
+    import hashlib
+
+    stem = os.path.splitext(os.path.basename(img_path))[0]
+    digest = hashlib.sha1(
+        os.path.normpath(img_path).encode("utf-8", errors="replace")
+    ).hexdigest()[:8]
+    return f"{stem}_{digest}"
+
+
 def save_batch_artifacts(save_dir: str, img_path: str, result, overlay=None) -> None:
     """批量产物补齐（W33）：masks RLE 持久化 + 调用方渲染好的叠加图。
 
     - result.masks 非 None 且非空 → masks_{stem}.npz（逐实例 RLE，可经
       core.mask_codec.decode_mask_rle 恢复——现状批量 seg masks 丢失）；
     - overlay（BGR ndarray）非 None → overlay_{stem}.jpg；
+    - O13：stem 加路径哈希后缀，防跨子目录同名静默覆盖；
     - 失败只记 WARNING 不炸整批（产物是增益件，批结果 JSON 仍原子落盘）。
     """
     try:
-        stem = os.path.splitext(os.path.basename(img_path))[0]
+        stem = _dedup_stem(img_path)
         if getattr(result, "masks", None) is not None and len(result.masks):
             import numpy as np
 

@@ -55,6 +55,13 @@ class FakeDispatcher:
         self.load_calls.append((task, weights_path, device))
         self.loaded.append(task.value)
 
+    def unload_supervised(self, task):
+        """ADR-0005：dispatcher 单一所有者接口（假实现记录调用）。"""
+        if task.value in self.loaded:
+            self.loaded.remove(task.value)
+            return True
+        return False
+
     def infer(self, task, image, mode="auto", **kwargs):
         if self.fail_infer:
             raise RuntimeError("引擎未加载")
@@ -171,29 +178,26 @@ def test_load_model_defaults_and_failure(servicer):
 
 
 @pytest.mark.unit
-def test_unload_model_via_registry_cache(servicer, monkeypatch):
-    cleared = []
-
-    import models.supervised.registry as reg_mod
-
-    class _FakeReg:
-        def clear_cache(self, task):
-            cleared.append(task)
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", lambda: _FakeReg())
+def test_unload_model_via_dispatcher_single_owner(servicer, monkeypatch):
+    """ADR-0005（2026-10-06）：UnloadModel 经 dispatcher.unload_supervised
+    单一所有者——不再绕过 dispatcher 直调 registry（越层 import +
+    Ping/GetTaskInfo 元数据失真根因）。"""
     resp = servicer.UnloadModel(pb.UnloadModelRequest(task="det"), _ctx())
     assert resp.success is True
-    assert cleared == [TaskType.DET]
+    # 元数据一致性：卸载后 loaded 列表同步摘除（旧路径不摘 → 恒 True）
+    assert "det" not in servicer._dispatcher.loaded
+
+    # 幂等：卸载未加载的任务也成功（no-op 语义）
+    resp2 = servicer.UnloadModel(pb.UnloadModelRequest(task="det"), _ctx())
+    assert resp2.success is True
 
 
 @pytest.mark.unit
 def test_unload_model_failure(servicer, monkeypatch):
-    import models.supervised.registry as reg_mod
+    def _boom(task):
+        raise RuntimeError("unload boom")
 
-    def _boom():
-        raise RuntimeError("no registry")
-
-    monkeypatch.setattr(reg_mod, "get_default_registry", _boom)
+    monkeypatch.setattr(servicer._dispatcher, "unload_supervised", _boom)
     resp = servicer.UnloadModel(pb.UnloadModelRequest(task="det"), _ctx())
     assert resp.success is False
     assert resp.error

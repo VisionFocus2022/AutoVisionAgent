@@ -69,6 +69,11 @@ class VisionDataset:
             pass  # PIL 路径读出的已是 RGB
 
         # 加载标注
+        # O1（P1，2026-10-05 二轮审查）：标注 JSON 损坏时此前仅 logger.exception
+        # 后静默降级为空 boxes 的"无缺陷"负样本——缺陷检测中关键正样本标注
+        # 损坏会被当成背景教坏模型。现改为：标注文件存在但解析失败 → 抛错
+        # 让 DataLoader 跳过该样本（torch 原生 skip 机制）并在 warning 留痕，
+        # 而非伪造空标注混入训练。
         annotation = {"boxes": [], "labels": [], "shapes": []}
         if ann_path and os.path.exists(ann_path):
             try:
@@ -86,7 +91,13 @@ class VisionDataset:
                         annotation["labels"].append(s.get("label", "unknown"))
                         annotation["shapes"].append(s)
             except (json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
-                logger.exception("标注加载失败: %s", ann_path)
+                logger.warning(
+                    "标注损坏，跳过该样本（不降级为空标注负样本）: %s", ann_path,
+                    exc_info=True,
+                )
+                raise ValueError(
+                    f"标注文件损坏（已跳过，请修复后重新训练）: {ann_path}"
+                ) from None
 
         # 应用 transform
         if self._transform:
@@ -99,6 +110,37 @@ class VisionDataset:
         }
 
 
+# M1（2026-10-05 二轮审查）：_TorchVisionDataset 原是 create_dataloader
+# 内的局部类——Windows spawn 模式下 num_workers>0 需 pickle dataset，
+# 子进程反序列化局部类必崩（Can't pickle local object）。现延迟构建一次
+# 并缓存到模块级 _TORCH_DATASET_CLS（进程内可 pickle；spawn 子进程首次
+# import 本模块时会重新执行此构建，类身份在各进程内自洽）。
+_TORCH_DATASET_CLS: type | None = None
+
+
+def _get_torch_dataset_cls(dataset: VisionDataset) -> type:
+    """构建（并缓存）torch Dataset 包装类（模块级，spawn 可 pickle）。"""
+    global _TORCH_DATASET_CLS
+    if _TORCH_DATASET_CLS is not None:
+        return _TORCH_DATASET_CLS
+    from torch.utils.data import Dataset as TorchDataset
+
+    class TorchVisionDatasetWrapper(TorchDataset):
+        """模块级包装类（M1：自 dataset/vision_dataset.py 可导入）。"""
+
+        def __init__(self, ds):
+            self._ds = ds
+
+        def __len__(self):
+            return len(self._ds)
+
+        def __getitem__(self, idx):
+            return self._ds[idx]
+
+    _TORCH_DATASET_CLS = TorchVisionDatasetWrapper
+    return _TORCH_DATASET_CLS
+
+
 def create_dataloader(
     dataset: VisionDataset,
     batch_size: int = 8,
@@ -109,19 +151,15 @@ def create_dataloader(
     """创建 DataLoader（延迟导入 torch，避免无 torch 环境报错）。
 
     消费 core/config.py 中 InferenceConfig 的 num_workers / batch_size。
+    M1：包装类经 _get_torch_dataset_cls 模块级构建——Windows spawn 多
+    worker 下可 pickle（此前局部类在子进程反序列化必崩）。
     """
     try:
         from torch.utils.data import DataLoader
-        from torch.utils.data import Dataset as TorchDataset
-        # 包装为 torch Dataset 兼容
-        class _TorchVisionDataset(TorchDataset):
-            def __len__(self):
-                return len(dataset)
-            def __getitem__(self, idx):
-                return dataset[idx]
 
+        wrapper_cls = _get_torch_dataset_cls(dataset)
         return DataLoader(
-            _TorchVisionDataset(),
+            wrapper_cls(dataset),
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=num_workers,

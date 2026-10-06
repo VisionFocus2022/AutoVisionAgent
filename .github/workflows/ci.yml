@@ -42,6 +42,14 @@ jobs:
         shell: bash
         run: bash scripts/check-naming.sh
 
+      # L8（2026-10-05 一轮审查）：proto 生成物漂移对账——重生成到临时
+      # 目录与入库 pb2 diff，proto 改动而未跑 gen_proto.py 即红（防人肉
+      # 步骤漂移）。轻量（grpcio-tools 小包），适合放 lint job 秒级反馈。
+      - name: proto 生成物对账（gen_proto --check）
+        run: |
+          python -m pip install grpcio-tools
+          python scripts/gen_proto.py --check
+
   # python 门禁 job：lock 钉 torch==2.5.1+cu121——换 cpu 索引装不出带 +cu121
   # 本地标签的轮子（须同步把 lock 的 torch/torchvision 行改成 PyPI 版本号才行），
   # 故保留 cu121 索引；cu121 轮子下载较大（约 2.5GB，最大耗时项），已开
@@ -68,6 +76,12 @@ jobs:
         run: python -m pytest
         env:
           QT_QPA_PLATFORM: offscreen
+
+      # M16（2026-10-05 一轮审查 Tessa 建议）：per-package 覆盖率棘轮地板
+      # ——全局 92% 存在分母稀释（core 单独 91.2% 被抬过线），地板只升
+      # 不降（scripts/coverage_floors.py 的 _FLOORS 表），低于地板即红。
+      - name: 覆盖率棘轮地板（per-package floors）
+        run: python scripts/coverage_floors.py --from-existing
 
   # C# 共享库门禁（W18 簇 F / FR-007）：与 python 门禁并行、互不阻塞，失败可独立定位。
   dotnet-test:

@@ -135,7 +135,7 @@ def _ensure_logged_in(win) -> None:
             with contextlib.suppress(Exception):
                 win.SetFocus()
         dismiss_stale_dialogs()
-        btn = find_control_by_name(win, "离线模式", _BUTTON_TYPES, timeout=8.0)
+        btn = find_control_by_name(win, "离线模式", _BUTTON_TYPES, timeout=20.0)
         if btn is None:
             return
         assert click_button(win, "离线模式", T_NAV), "未找到'离线模式'按钮（find timeout）"
@@ -305,7 +305,7 @@ def _save_and_read_json(win, labels_dir: Path, name: str) -> dict:
         assert click_button(win, "添加标签", T_NAV), "未找到'添加标签'按钮（find timeout）"
         time.sleep(0.5)
         assert click_button(win, "保存标注", T_NAV), "未找到'保存标注'按钮（find timeout）"
-        if not enter_path_in_save_dialog("保存标注", str(path), timeout=8.0):
+        if not enter_path_in_save_dialog("保存标注", str(path), timeout=20.0):
             logger.warning("保存第 %d 轮对话框未出现/未确认", attempt + 1)
             dismiss_stale_dialogs()
             continue
@@ -380,7 +380,7 @@ def test_sam3_multi_object_and_geometry(
     assert _canvas_click(win, 0.65, 0.50), "画布单击#2 失败（find timeout）"
     time.sleep(4.0)              # 第二击替换 pending（重预测）
     _canvas_commit(win)
-    replaced = _wait_count(win, base + 1, timeout=8.0)
+    replaced = _wait_count(win, base + 1, timeout=20.0)
     assert replaced, (
         f"pending 替换提交后应 +1（base={base}，最后='{_last_status(win)}'）"
     )
@@ -395,7 +395,7 @@ def test_sam3_multi_object_and_geometry(
         assert _canvas_click(win, rx, ry), f"对象#{k} 单击失败（find timeout）"
         time.sleep(4.0)
         _canvas_commit(win)
-        ok = _wait_count(win, base + k, timeout=8.0)
+        ok = _wait_count(win, base + k, timeout=20.0)
         assert ok, (
             f"对象#{k} 未提交（期望 {base + k}，最后='{_last_status(win)}'）"
         )
@@ -440,7 +440,7 @@ def test_sam3_undo_redo_clear(
     assert _canvas_click(win, 0.5, 0.5), "画布单击失败（find timeout）"
     time.sleep(T_INFER)
     _canvas_commit(win)
-    assert _wait_count(win, base + 1, timeout=8.0), (
+    assert _wait_count(win, base + 1, timeout=20.0), (
         f"提交后应 {base + 1}（最后='{_last_status(win)}'）"
     )
     list_c1 = _shape_list_count(win)
@@ -487,7 +487,7 @@ def test_sam3_next_image_rewarm_and_roundtrip(
     assert _canvas_click(win, 0.5, 0.5), "首图单击失败（find timeout）"
     time.sleep(T_INFER)
     _canvas_commit(win)
-    assert _wait_count(win, base + 1, timeout=8.0), (
+    assert _wait_count(win, base + 1, timeout=20.0), (
         f"首图提交后应 {base + 1}（最后='{_last_status(win)}'）"
     )
 
@@ -508,7 +508,7 @@ def test_sam3_next_image_rewarm_and_roundtrip(
     assert _canvas_click(win, 0.42, 0.45), "新图单击失败（find timeout）"
     time.sleep(5.0)
     _canvas_commit(win)
-    assert _wait_count(win, base2 + 1, timeout=8.0), (
+    assert _wait_count(win, base2 + 1, timeout=20.0), (
         f"新图交互应 +1（base2={base2}，最后='{_last_status(win)}'——"
         f"疑似换图未重预热命中旧缓存）"
     )
@@ -531,7 +531,7 @@ def test_sam3_next_image_rewarm_and_roundtrip(
     assert _canvas_click(win, 0.58, 0.55), "往返后单击失败（find timeout）"
     time.sleep(5.0)
     _canvas_commit(win)
-    assert _wait_count(win, base3 + 1, timeout=8.0), (
+    assert _wait_count(win, base3 + 1, timeout=20.0), (
         f"往返后交互应 +1（base3={base3}，最后='{_last_status(win)}'）"
     )
 

@@ -40,6 +40,7 @@ _EN_US: dict[str, str] = {
     "请先选择项目": "Please select a project",
     "请先选择目录": "Please select a directory",
     "请先加载模型": "Please load a model first",
+    "推理进行中，禁止更换模型": "Inference in progress, model change blocked",
     "请输入项目名": "Please enter project name",
     "框": "boxes",
 
@@ -143,8 +144,9 @@ _EN_US: dict[str, str] = {
     "训练曲线": "Training Curve",
     "训练中...": "Training...",
     "训练已启动": "Training Started",
-    "正在停止...": "Stopping...",
-    "训练中止": "Training Aborted",
+    # P1-R5（2026-10-05）：协作式停止文案（替换"正在停止..."/"训练中止"）
+    "已请求停止，等待当前轮结束...": "Stop requested, waiting for current epoch...",
+    "训练停止中": "Training Stopping",
     "训练中": "Training",
     "训练完成": "Training Complete",
     "训练失败": "Training Failed",
@@ -396,6 +398,10 @@ _EN_US: dict[str, str] = {
     # ---- W1 新增（任务下拉与引擎注册表实况对齐） ----
     "检测": "Detection",
     "分割": "Segmentation",
+    "任务已按数据格式自动选择": "Task auto-set from dataset format",
+    "任务与数据集格式不符，已自动纠正为": (
+        "Task mismatched dataset format, auto-corrected to"
+    ),
     "分类": "Classification",
     "实例分割": "Instance Segmentation",
     "语义分割": "Semantic Segmentation",
@@ -453,6 +459,7 @@ _EN_US: dict[str, str] = {
 
     # ---- W5 新增（训练集导出） ----
     "导出训练集": "Export Training Set",
+    "自动导出训练集中": "Auto-exporting training set",
     "选择导出输出目录": "Select export output directory",
     "跳过": "skipped",
     "YOLO 格式": "YOLO",

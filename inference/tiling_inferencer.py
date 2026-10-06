@@ -39,7 +39,19 @@ def compute_tiles(
 
     Returns:
         [(x1, y1, x2, y2), ...] 瓦片坐标列表（原图绝对坐标）。
+
+    Raises:
+        ValueError: M6（P1）——参数非法（overlap >= tile_size 时 step<=0
+            会导致内层 while 死循环挂死；tile_size <= 0 同理）。
     """
+    if tile_size <= 0:
+        raise ValueError(f"tile_size 必须 > 0，收到 {tile_size}")
+    if not 0 <= overlap < tile_size:
+        raise ValueError(
+            f"overlap 必须满足 0 <= overlap < tile_size"
+            f"（收到 overlap={overlap}, tile_size={tile_size}，"
+            f"否则步长非正会死循环）"
+        )
     step = tile_size - overlap
     tiles = []
 
@@ -96,25 +108,74 @@ def tile_infer(
                 w, h, len(tiles), tile_size, tile_size, overlap)
 
     all_results = []
-    all_boxes = []       # 汇集所有瓦片的检测框
-    all_meta = []        # 对应的 score/labels/extra 等元信息
+
+    all_boxes, all_meta, _result_cls = _infer_all_tiles(
+        image, tiles, engine, threshold
+    )
+
+    # 跨瓦片 NMS：消除重叠区域的重复检测框
+    # O6（P1，2026-10-05 二轮审查）：按类别分组抑制——工业多类别缺陷常
+    # 空间共现（裂纹旁伴生气孔），全局 IoU 抑制会误删低分类别的重叠框。
+    if all_boxes and merge_iou > 0:
+        all_boxes, keep_idx = _nms(
+            all_boxes,
+            [m["score"] for m in all_meta],
+            merge_iou,
+            labels=[m.get("label") for m in all_meta],
+        )
+        all_meta = [all_meta[i] for i in keep_idx]
+
+    # 重建合并后的 DetectionResult 列表
+    # M5（P1）：显式记录结果类型，不依赖 for 循环变量泄漏（此前 type(result)
+    # 绑定的是最后一个成功瓦片的结果类型，行为碰巧正确但脆弱）
+    if all_boxes:
+        import numpy as _np
+        task = all_meta[0]["task"] if all_meta else None
+        merged = _result_cls(
+            task=task,
+            boxes=_np.array(all_boxes),
+            scores=tuple(m["score"] for m in all_meta),
+            labels=tuple(m["label"] for m in all_meta),
+            extra={
+                "tiles_total": len(tiles),
+                "tiles_ok": len(all_meta),
+                "merged": True,
+            },
+        )
+        all_results.append(merged)
+
+    return all_results
+
+
+def _infer_all_tiles(image, tiles, engine, threshold):
+    """逐瓦片推理并汇集（W24 规模拆分，自 tile_infer 抽出）。
+
+    坐标映射回原图绝对坐标；单瓦片异常仅留痕继续（可观测性字段由
+    调用方 tiles_total/tiles_ok 呈现）。返回 (all_boxes, all_meta,
+    result_cls)——result_cls 为首个成功结果类型（M5：不依赖循环变量
+    泄漏）。
+    """
+    import numpy as _np  # noqa: F401  拆分缝：_infer_all_tiles 内使用
+
+    all_boxes = []
+    all_meta = []
+    result_cls = None
 
     for x1, y1, x2, y2 in tiles:
         tile = image[y1:y2, x1:x2]
         if tile.size == 0:
             continue
-
         try:
             result = engine.infer(tile, threshold=threshold)
             if result and result.boxes is not None:
-                import numpy as _np
+                result_cls = type(result)
                 boxes = _np.asarray(result.boxes).copy()
                 if len(boxes) > 0:
                     # 将瓦片内坐标映射回原图绝对坐标
-                    boxes[:, 0] += x1  # x1
-                    boxes[:, 1] += y1  # y1
-                    boxes[:, 2] += x1  # x2
-                    boxes[:, 3] += y1  # y2
+                    boxes[:, 0] += x1
+                    boxes[:, 1] += y1
+                    boxes[:, 2] += x1
+                    boxes[:, 3] += y1
                     n = len(boxes)
                     scores = _np.asarray(result.scores) if result.scores else \
                              _np.full(n, result.score)
@@ -129,38 +190,48 @@ def tile_infer(
         except Exception:
             logger.exception("瓦片推理失败 (%d,%d,%d,%d)", x1, y1, x2, y2)
 
-    # 跨瓦片 NMS：消除重叠区域的重复检测框
-    if all_boxes and merge_iou > 0:
-        all_boxes, keep_idx = _nms(all_boxes, [m["score"] for m in all_meta], merge_iou)
-        all_meta = [all_meta[i] for i in keep_idx]
-
-    # 重建合并后的 DetectionResult 列表
-    if all_boxes:
-        import numpy as _np
-        task = all_meta[0]["task"] if all_meta else None
-        merged = type(result)(
-            task=task,
-            boxes=_np.array(all_boxes),
-            scores=tuple(m["score"] for m in all_meta),
-            labels=tuple(m["label"] for m in all_meta),
-            extra={"tiles": len(tiles), "merged": True},
-        )
-        all_results.append(merged)
-
-    return all_results
+    return all_boxes, all_meta, result_cls
 
 
-def _nms(boxes: list, scores: list, iou_threshold: float = 0.45):
+def _nms(boxes: list, scores: list, iou_threshold: float = 0.45,
+         labels: list | None = None):
     """非极大值抑制（NMS），返回保留的 boxes 和索引。
+
+    O6（P1，2026-10-05 二轮审查）：``labels`` 提供时按类别分组抑制
+    （class-aware NMS）——只在同类别框之间做 IoU 抑制，不同类别空间
+    共现的框互不干扰；``labels`` 为 None 时退回全局抑制（旧行为，
+    兼容既有调用方）。
 
     Args:
         boxes: [(x1, y1, x2, y2), ...] 列表或 numpy 数组。
         scores: 对应的置信度列表。
         iou_threshold: IoU 超过此阈值则抑制低分框。
+        labels: 对应的类别标签列表（可选）。
 
     Returns:
         (kept_boxes, kept_indices)
     """
+    if len(boxes) == 0:
+        return [], []
+
+    if labels is not None and len(labels) == len(boxes):
+        # class-aware：分组索引 → 各组独立 NMS → 合并保持原始索引
+        groups: dict = {}
+        for idx, lbl in enumerate(labels):
+            groups.setdefault(lbl, []).append(idx)
+        keep: list[int] = []
+        for group_idx in groups.values():
+            g_boxes = [boxes[i] for i in group_idx]
+            g_scores = [scores[i] for i in group_idx]
+            _, g_keep = _nms_global(g_boxes, g_scores, iou_threshold)
+            keep.extend(group_idx[i] for i in g_keep)
+        keep.sort()
+        return [boxes[i] for i in keep], keep
+    return _nms_global(boxes, scores, iou_threshold)
+
+
+def _nms_global(boxes: list, scores: list, iou_threshold: float = 0.45):
+    """全局 NMS（同类内抑制，_nms 的原始实现）。"""
     import numpy as np
 
     if len(boxes) == 0:

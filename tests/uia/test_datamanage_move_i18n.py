@@ -147,6 +147,13 @@ def _settings_path() -> Path:
     src = os.environ.get("AVA_UIA_SOURCE", "exe").lower()
     if src == "python":
         return REPO_ROOT / "configs" / "user_settings.json"
+    # W68 起冻结态读 %APPDATA%/AutoVisionAgent/configs
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        return (
+            Path(appdata) / "AutoVisionAgent" / "configs"
+            / "user_settings.json"
+        )
     return REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs" / "user_settings.json"
 
 

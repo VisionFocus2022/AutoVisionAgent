@@ -108,8 +108,13 @@ class SupervisedExporter:
             self._try_simplify(out_path)
 
         # 量化
+        # X7（2026-10-06 三轮审查）：int8 产物写在 .int8.onnx，此前仍返回
+        # 原 fp32 路径——调用方（GUI/审计）报告的文件与实际产物不符。
+        # 现以 _try_quantize 返回的实际产物路径为准。
         if precision in ("fp16", "int8"):
-            self._try_quantize(out_path, precision, input_shape)
+            quantized = self._try_quantize(out_path, precision, input_shape)
+            if quantized is not None:
+                return str(quantized)
 
         return str(out_path)
 
@@ -211,7 +216,13 @@ class SupervisedExporter:
             logger.debug("onnxsim 未安装，跳过简化")
 
     def _try_quantize(self, path: Path, precision: str,
-                      input_shape: tuple | None = None) -> None:
+                      input_shape: tuple | None = None) -> Path | None:
+        """X7：返回实际量化产物路径（None=未量化/依赖缺失跳过）。
+
+        int8 写 .int8.onnx；fp16 原地覆盖返回原路径。
+        X8 注：int8 静态量化当前用随机数据校准（占位）——精度风险由
+        调用方 WARNING 提示（完整修复需校准样本注入接口，另行排期）。
+        """
         try:
             if precision == "fp16":
                 import onnx
@@ -221,6 +232,7 @@ class SupervisedExporter:
                 model_fp16 = float16.convert_float_to_float16(model)
                 onnx.save(model_fp16, str(path))
                 logger.info("FP16 量化成功")
+                return path
             elif precision == "int8":
                 # 优先使用静态量化（精度更高），回退到动态量化
                 try:
@@ -256,6 +268,7 @@ class SupervisedExporter:
                         calibrate_method=CalibrationMethod.MinMax,
                     )
                     logger.info("INT8 静态量化成功")
+                    return int8_path
                 except Exception:
                     # 回退到动态量化（仅权重量化）
                     from onnxruntime.quantization import QuantType, quantize_dynamic
@@ -263,8 +276,10 @@ class SupervisedExporter:
                     quantize_dynamic(str(path), str(int8_path),
                                      weight_type=QuantType.QUInt8)
                     logger.info("INT8 动态量化成功（静态不可用）")
+                    return int8_path
         except ImportError:
             logger.debug("量化依赖未安装，跳过 %s 量化", precision)
+            return None
 
 
 def export_supervised_engine(

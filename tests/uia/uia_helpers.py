@@ -923,8 +923,6 @@ def login_admin(win) -> None:
         logger.warning(
             "登录点击后表单未消失（第 %d 次），改 Invoke 补击", attempt + 1
         )
-        import uiautomation as _ua
-
         for c in _iter_descendants(win, max_depth=12):
             try:
                 if type(c).__name__ == "ButtonControl" \

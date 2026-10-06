@@ -33,14 +33,23 @@ class PolygonLabeler(AbstractLabeler):
     def on_press(self, pt: Point) -> None:
         self._active = True
         # 检查是否点击起点闭合
+        # L4（2026-10-06 三轮审查）：命中闭合区时直接提交而非静默吞点
+        # ——此前 return 后既不加点也不闭合，用户以为"点击失灵"。
+        # 现同步完成闭合提交（era-2 语义：commit 自动首尾相接）。
+        # （旧 `pt[0] is not None` 对 float 恒真，属死代码已删。）
         if (
             len(self._points) >= 3
-            and pt[0] is not None
             and abs(pt[0] - self._points[0][0]) < self._close_threshold
             and abs(pt[1] - self._points[0][1]) < self._close_threshold
         ):
-            return  # 不添加新点，等待 commit
+            self._close_requested = True  # 由 controller 的 commit 流程消费
+            return
         self._points.append(pt)
+
+    @property
+    def close_requested(self) -> bool:
+        """L4：用户已点击闭合区（controller 据此立即触发 commit）。"""
+        return getattr(self, "_close_requested", False)
 
     def commit(self) -> Shape | None:
         if not self._can_commit():
@@ -49,6 +58,11 @@ class PolygonLabeler(AbstractLabeler):
         shape = self._build(close_polygon(tuple(self._points)))
         self.reset()
         return shape
+
+    def reset(self) -> None:
+        """L4：连同闭合请求标志一并复位。"""
+        self._close_requested = False
+        super().reset()
 
 
 __all__ = ["PolygonLabeler"]

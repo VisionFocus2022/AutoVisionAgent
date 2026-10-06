@@ -7,13 +7,72 @@ seg/pseg 共享 load/infer 逻辑，子类只覆写 task 与 mask 处理顺序�
 """
 from __future__ import annotations
 
+import logging
 import os
+import sys
 from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
 from models.supervised import AbstractTaskEngine
 from models.supervised.device import resolve_device
+
+logger = logging.getLogger(__name__)
+
+# ultralytics 自带 AMP 检查的探针资产（check_amp 按运行 CWD 解析，缺文件
+# 即联网下载——离线/弱网工位会悬挂训练，W70 exe 实证）
+_AMP_CHECK_ASSET = "yolo26n.pt"
+
+
+def _ensure_amp_asset() -> bool:
+    """W70：冻结态把 AMP 检查资产从 _MEIPASS 落到运行 CWD（幂等）。
+
+    ultralytics 的 check_amp 用 yolo26n.pt 做 fp16 探针，查找口径是运行
+    CWD（不走 _resolve_backbone）——权重打包进 _internal 后 CWD 永远
+    miss → attempt_download_asset 联网 → 弱网悬挂训练。
+    """
+    if not getattr(sys, "frozen", False):
+        return False
+    if os.path.isfile(_AMP_CHECK_ASSET):
+        return False
+    bundled = os.path.join(getattr(sys, "_MEIPASS", ""), _AMP_CHECK_ASSET)
+    if os.path.isfile(bundled):
+        import shutil
+
+        shutil.copy2(bundled, _AMP_CHECK_ASSET)
+        logger.info("AMP 检查资产已落运行目录: %s", _AMP_CHECK_ASSET)
+        return True
+    return False
+
+
+def _resolve_backbone(backbone: str, seg: bool = True) -> str:
+    """骨干名/路径 → ultralytics 模型路径（W58 契约 + W65/W69 回退）。
+
+    .pt 路径原样透传（现成权重微调，免下载）；裸骨干名按任务归一化
+    （seg → -seg.pt，det → .pt）。冻结态（PyInstaller 6 datas 落
+    _internal=sys._MEIPASS）下 ultralytics 按运行 CWD 解析裸名会 miss
+    转联网下载（W64 复盘的下载失败形态）——_MEIPASS 命中随包权重即
+    绝对化。CWD 就近优先（手拷 dist 根形态兼容）。
+    W69：det 侧裸名（如 yolov8n.pt）无本地权重时回退随包 yolo26n.pt
+    （同量级检测骨干，离线开箱即用）——杜绝检测训练静默转联网。
+    """
+    if not backbone.endswith(".pt"):
+        backbone = f"{backbone}-seg.pt" if seg else f"{backbone}.pt"
+    if not os.path.isfile(backbone):
+        bundled = os.path.join(getattr(sys, "_MEIPASS", ""), backbone)
+        if os.path.isfile(bundled):
+            return bundled
+        if not seg:
+            det_fallback = os.path.join(
+                getattr(sys, "_MEIPASS", ""), "yolo26n.pt"
+            )
+            if os.path.isfile(det_fallback):
+                logger.warning(
+                    "检测骨干 %s 无随包权重，回退 yolo26n.pt（离线可用）",
+                    backbone,
+                )
+                return det_fallback
+    return backbone
 
 
 class _YoloSegBase(AbstractTaskEngine):
@@ -76,17 +135,18 @@ class _YoloSegBase(AbstractTaskEngine):
         from ultralytics import YOLO
 
         backbone = cfg.backbone or "yolov8n"
-        # .pt 路径原样使用（现成权重微调口径，免下载）；骨干名归一化 -seg.pt
-        if not backbone.endswith(".pt"):
-            backbone = f"{backbone}-seg.pt"
+        backbone = _resolve_backbone(backbone, seg=self.task is TaskType.SEG)
         model = YOLO(backbone)
+        # W70：ultralytics 自带 AMP 检查按 CWD 找 yolo26n.pt，miss 即联网
+        # 下载（弱网悬挂训练）——冻结态先落一份随包资产
+        if cfg.amp:
+            _ensure_amp_asset()
         # project 必须绝对化：相对路径触发 ultralytics 的 {runs_dir}/{task}/
         # 嵌套落点（W58 探针实证 runs/segment/outputs/train），产物位置随
         # cwd/版本漂移——绝对路径钉死 {output_dir}/train/
         # workers 冻结态清零：PyInstaller exe 下 DataLoader 多进程会重_exec
         # 自身（经典冻结态崩溃，exe 模式实证：训练启动即失败且无异常日志；
         # python 模式不受影响）
-        import sys
         workers = 0 if getattr(sys, "frozen", False) else cfg.workers
         model.train(
             data=data_yaml,

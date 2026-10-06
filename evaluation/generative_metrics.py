@@ -102,7 +102,9 @@ def fid_score(
         covmean = covmean.real
 
     fid = diff @ diff + np.trace(sigma_g + sigma_r - 2 * covmean)
-    return float(fid)
+    # E20（2026-10-06 三轮审查）：trace 项数值误差可微负（-1e-16 量级）
+    # 致 FID 显示 -0.00xx——数学上 FID ≥ 0，钳位防误读。
+    return float(max(fid, 0.0))
 
 
 def _sqrtm(mat: np.ndarray, eps: float = 1e-6) -> tuple[np.ndarray, bool]:

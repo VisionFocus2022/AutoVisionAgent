@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 
 from PySide6.QtCore import Qt
@@ -50,11 +51,38 @@ class AnnotationController:
         return self._mode
 
     def set_mode(self, mode: AnnotationMode) -> None:
-        """切换标注模式。"""
+        """切换标注模式。
+
+        L3（2026-10-06 三轮审查）：切换前检查旧标注器是否有进行中状态
+        （pending 多边形/半途顶点/已定区域）——此前直接换新实例静默
+        蒸发用户进度。有 pending 时经 feedback 通道提示（info 级，
+        不阻断切换——用户可能有意放弃；提示让"丢失"从静默变知情）。
+        """
         if mode == self._mode and self._labeler is not None:
             return
+        old = self._labeler
+        if old is not None and self._has_pending_work(old):
+            _logger.info("切换模式 %s→%s：丢弃未提交标注", self._mode, mode)
+            if self._feedback_cb is not None:
+                with contextlib.suppress(Exception):
+                    self._feedback_cb("info", "已切换模式，未完成的标注已丢弃")
         self._mode = mode
         self._make_labeler()
+
+    @staticmethod
+    def _has_pending_work(labeler) -> bool:
+        """L3：标注器是否有进行中的未提交状态（保守探测，属性缺省视为无）。"""
+        for attr in ("pending_count", "has_pending", "points"):
+            val = getattr(labeler, attr, None)
+            if callable(val):
+                try:
+                    if val():
+                        return True
+                except Exception:  # noqa: BLE001
+                    continue
+            elif isinstance(val, (list, tuple)) and val:
+                return True
+        return False
 
     def set_label(self, label: str) -> None:
         """设置当前标签名。"""
@@ -173,6 +201,12 @@ class AnnotationController:
         if self._labeler is None:
             return
         self._labeler.on_press(pt)
+        # L4（2026-10-06 三轮审查）：多边形标注器请求闭合（点击首点
+        # 附近）时立即走提交流程——"点击闭合"即时生效，不再表现失灵
+        if getattr(self._labeler, "close_requested", False):
+            self.handle_commit()
+            self._canvas._redraw()
+            return
         shape = self._labeler.preview()
         self._canvas._redraw()
         if shape:
@@ -208,13 +242,19 @@ class AnnotationController:
         shape = self._labeler.commit()
         if shape is not None:
             self._commit_shape(shape)
-        else:
-            # AI 模式可能通过 commit 逐个返回队列中的形状
-            while True:
-                shape = self._labeler.commit()
-                if shape is None:
-                    break
-                self._commit_shape(shape)
+            return
+        # AI 模式可能通过 commit 逐个返回队列中的形状
+        # L6（2026-10-06 三轮审查）：while True → 上限迭代——AUTO 队列
+        # 若被异步 deliver 边消费边回填，无限循环会拉长/冻结 GUI。
+        # 快照 pending_count 作硬上限（正常路径 commit 返回 None 早退，
+        # 行为不变）。
+        limit = getattr(self._labeler, "pending_count", None)
+        limit = limit if isinstance(limit, int) and limit > 0 else 1000
+        for _ in range(limit):
+            shape = self._labeler.commit()
+            if shape is None:
+                break
+            self._commit_shape(shape)
 
     def cancel(self) -> None:
         """取消当前标注操作。"""

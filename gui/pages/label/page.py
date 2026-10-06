@@ -181,6 +181,9 @@ class LabelPage(SamSessionMixin, QWidget):
         # W56·v7 P2-5：SAM 状态机，_sam_busy 为 mixin 只读兼容属性
         self._sam_state = "idle"
         self._pending_sam_image = None
+        # O7·契约 C2 模式②（2026-10-05）：SAM 加载 worker → 主线程槽的
+        # adapter 传递 pending 属性（worker 不直接写 _sam_adapter）
+        self._pending_sam_adapter = None
 
         self._build_ui()
         self._wire()

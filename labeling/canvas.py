@@ -35,8 +35,13 @@ class AnnotationCanvas(QGraphicsScene):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._shapes: list[Shape] = []
-        self._undo_stack: list[list[Shape]] = []
-        self._redo_stack: list[list[Shape]] = []
+        # L5（2026-10-06 三轮审查）：撤销/重做栈加上限——此前 list 无界，
+        # 长会话（上千次编辑 × 每图几十 Shape 引用，SAM 多边形数百点）
+        # 内存无限增长。100 步足够覆盖常规误操作回溯。
+        from collections import deque
+
+        self._undo_stack: deque[list[Shape]] = deque(maxlen=100)
+        self._redo_stack: deque[list[Shape]] = deque(maxlen=100)
         self._pixmap_item: QGraphicsPixmapItem | None = None
         self._show_shapes: bool = True
         self._image_pixmap: QPixmap | None = None

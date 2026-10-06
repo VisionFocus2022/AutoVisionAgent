@@ -173,6 +173,31 @@ namespace VisionAgent.Shared.Tests.Vision
             Assert.Equal(new[] { "a", "b" }, _fake.LastDetectRequest!.Labels.ToArray());
         }
 
+        // ------------------- H5（2026-10-05 proto presence 对账）------------------- //
+
+        [Fact]
+        public void Detect_WithExplicitZeroThreshold_SetsPresence()
+        {
+            // 工业低阈值/全召回场景：显式 0 必须作为"已设置"传输，
+            // 不得被 proto3 标量默认值语义吞掉
+            _client!.Detect("det", new byte[] { 1, 2 }, threshold: 0f);
+
+            var req = _fake.LastDetectRequest!;
+            Assert.True(req.HasThreshold, "显式 0 必须设置 presence（H5）");
+            Assert.Equal(0f, req.Threshold);
+        }
+
+        [Fact]
+        public void Detect_WithNullThreshold_LeavesFieldUnset()
+        {
+            // null = 不设置：服务端回退引擎默认阈值
+            _client!.Detect("det", new byte[] { 1, 2 }, threshold: null);
+
+            var req = _fake.LastDetectRequest!;
+            Assert.False(req.HasThreshold, "null 不得设置 presence（H5）");
+            Assert.Equal(0f, req.Threshold); // 未设置时读值为默认 0（proto3 语义）
+        }
+
         [Fact]
         public void Detect_FromFile_ForwardsImagePath()
         {

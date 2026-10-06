@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -80,10 +81,15 @@ def op_seed():
         "password_hash": h, "salt": s, "role": "operator",
         "iterations": iters, "must_change": False,
     }}
+    # W68 起 exe 冻结态读 %APPDATA%/AutoVisionAgent/configs——三处全覆盖
     cfg_dirs = [
         _REPO_ROOT / "configs",
         _REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs",
     ]
+    if os.environ.get("APPDATA"):
+        cfg_dirs.append(
+            Path(os.environ["APPDATA"]) / "AutoVisionAgent" / "configs"
+        )
     touched: list = []
     try:
         for cfg in cfg_dirs:

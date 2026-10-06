@@ -2,6 +2,8 @@
 目标检测引擎（ultralytics YOLOv8）— FR-A2（W2 自兄弟树移植）
 
 注意：ultralytics 为 AGPL-3.0 许可（R-5，已由项目决策接受）。
+W69：继承 ultralytics 训练基座（train_epoch/save）——补齐检测任务真
+训练通道（此前检测必落模拟回退，用户实测 100 轮秒完假曲线）。
 """
 from __future__ import annotations
 
@@ -10,13 +12,14 @@ from typing import Any
 
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
-from models.supervised import AbstractTaskEngine, register_engine
+from models.supervised import register_engine
 from models.supervised.device import resolve_device
+from models.supervised.engines._yolo_seg_base import _YoloSegBase
 
 
 @register_engine(TaskType.DET)
-class DetYoloEngine(AbstractTaskEngine):
-    """YOLOv8 检测引擎。"""
+class DetYoloEngine(_YoloSegBase):
+    """YOLOv8 检测引擎（W69 起具备真训练通道）。"""
 
     def __init__(self) -> None:
         super().__init__(TaskType.DET)

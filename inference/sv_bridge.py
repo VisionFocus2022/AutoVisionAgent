@@ -15,8 +15,14 @@ from typing import Any
 import numpy as np
 
 
-def result_to_detections(result: Any) -> Any:
-    """DetectionResult → sv.Detections（缺 sv 时抛 ImportError，由调用方降级）。"""
+def result_to_detections(result: Any, class_names: list[str] | None = None) -> Any:
+    """DetectionResult → sv.Detections（缺 sv 时抛 ImportError，由调用方降级）。
+
+    M7（2026-10-05 二轮审查）：``class_names`` 提供时按全集类别表驱动
+    class_id 映射（与 format_export 的 data.yaml 字典序全集一致）——
+    此前按"本次推理出现的类别子集"重排，同模型跨图类别子集不同时
+    class_id/配色漂移。None 时回退单图 sorted（旧行为，兼容）。
+    """
     import supervision as sv
 
     boxes = getattr(result, "boxes", None)
@@ -31,9 +37,17 @@ def result_to_detections(result: Any) -> Any:
     )
 
     labels = [str(x) for x in (getattr(result, "labels", None) or ())]
-    class_names = sorted(set(labels))
+    # M7：全集字典序驱动（data.yaml 同源）；None 回退单图 sorted（旧行为）
+    universe = (
+        sorted(set(class_names)) if class_names is not None
+        else sorted(set(labels))
+    )
+    # 子集外的新类别（模型输出漂移）防御：追加到表尾，保持稳定序
+    for lbl in labels:
+        if lbl not in universe:
+            universe.append(lbl)
     class_id = (
-        np.array([class_names.index(x) for x in labels], dtype=np.int64)
+        np.array([universe.index(x) for x in labels], dtype=np.int64)
         if labels else None
     )
 

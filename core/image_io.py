@@ -43,7 +43,14 @@ def imread_unicode(path: str | Any, flags: int | None = None) -> Any | None:
         from PIL import Image
 
         with Image.open(p) as im:
-            return np.asarray(im.convert("RGB"))
+            # M9（2026-10-05 二轮审查·根因修复）：PIL 回退统一转 BGR——
+            # 此前同函数两种通道语义（cv2 路径 BGR、PIL 路径 RGB），下游
+            # 按任一语义消费都会在另一条路径上颜色错乱（vision_dataset
+            # 的 cvtColor(BGR2RGB) 在 PIL 路径上会把 RGB 翻成 BGR 即其
+            # 下游受害点）。契约收敛：本函数恒返回 BGR（模块 docstring
+            # 已如此声明，此处使实现对齐声明）。
+            rgb = np.asarray(im.convert("RGB"))
+            return rgb[..., ::-1]  # RGB → BGR（零拷贝视图翻转）
     except Exception:  # noqa: BLE001 —— 与 cv2.imread 契约对齐：失败返回 None
         return None
 

@@ -112,6 +112,17 @@ class GenericTrainer:
         start_epoch = 1
         metrics_history: list = []
 
+        # M10（一轮审查）：同一 trainer 实例二次 fit（非 resume）时
+        # _best_metric/_best_epoch 沿用上一会话值，best_metric 语义错乱。
+        # 无条件重置，resume 分支再从 checkpoint 覆盖。
+        self._best_metric = float("inf")
+        self._best_epoch = 0
+
+        # M8（2026-10-05 二轮审查）：随机种子控制——训练可信度三部曲
+        # （train/val 划分 + 真 resume + 种子）收尾。seed>0 时统一设
+        # random/numpy/torch(+cuda)，使训练可复现；0 保持旧行为（不设种）。
+        self._seed_everything(cfg.seed)
+
         # 断点恢复
         if cfg.resume_from and os.path.exists(cfg.resume_from):
             start_epoch = self._resume(cfg.resume_from, cfg)
@@ -119,6 +130,7 @@ class GenericTrainer:
 
         # R4-9: 构建 LR 调度器 + 预热
         scheduler = self._build_scheduler(cfg)
+        self._replay_scheduler_steps(scheduler, start_epoch)
 
         no_improve = 0
         artifact = TrainArtifact(task=cfg.task, config=cfg)
@@ -139,6 +151,10 @@ class GenericTrainer:
             # 执行一个 epoch（前向/损失反传在 strategy.train_epoch 内）
             metrics = self._train_one_epoch(epoch, cfg)
             metrics_history.append(metrics)
+            # O3（2026-10-05 二轮审查）：逐 epoch 追加 metrics.jsonl——此前
+            # history 仅存内存、中断全丢，GUI 曲线只靠实时回调。追加写失败
+            # 仅告警（观测件不阻断训练）。
+            self._append_metrics_jsonl(cfg, metrics)
             self._step_scheduler(scheduler, cfg, metrics)
 
             # 更新最佳指标 + 早停判定
@@ -169,6 +185,70 @@ class GenericTrainer:
             completed, self._best_metric, final_path,
         )
         return artifact
+
+    @staticmethod
+    def _seed_everything(seed: int) -> None:
+        """M8：统一设种（random / numpy / torch / cuda）。
+
+        seed<=0 时不设（保持旧行为）；任一库缺失均不影响其余（best-effort，
+        缺库场景不影响训练主流程）。留痕设种结果便于复现排查。
+        """
+        if seed <= 0:
+            return
+        import random
+
+        random.seed(seed)
+        try:
+            import numpy as np
+
+            np.random.seed(seed)
+        except ImportError:
+            pass
+        try:
+            import torch
+
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+        except ImportError:
+            pass
+        logger.info("训练随机种子已设置: seed=%d (random/numpy/torch/cuda)", seed)
+
+    @staticmethod
+    def _replay_scheduler_steps(scheduler: Any | None, start_epoch: int) -> None:
+        """O2（2026-10-05 二轮审查）：resume 后 LR 调度器步数回放。
+
+        此前全新构建且不回放步数，Cosine 相位从 0 重启，续训前几轮 LR
+        回到高位、退火轨迹与首轮不连续。将 last_epoch 对齐到续训起点；
+        plateau 型无步数概念（监控式）豁免（W24 规模拆分自主体内抽出）。
+        """
+        if scheduler is None or start_epoch <= 1:
+            return
+        try:
+            from torch.optim.lr_scheduler import ReduceLROnPlateau
+
+            if isinstance(scheduler, ReduceLROnPlateau):
+                return
+            scheduler.last_epoch = start_epoch - 1
+            logger.debug("LR 调度器步数回放: last_epoch=%d", start_epoch - 1)
+        except Exception:
+            logger.debug("LR 调度器步数回放失败（非致命）", exc_info=True)
+
+    @staticmethod
+    def _append_metrics_jsonl(cfg: TrainConfig, metrics: dict[str, Any]) -> None:
+        """O3：单 epoch metrics 追加写 output_dir/metrics.jsonl（best-effort）。"""
+        try:
+            path = os.path.join(cfg.output_dir, "metrics.jsonl")
+            os.makedirs(cfg.output_dir, exist_ok=True)
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(
+                    {k: v for k, v in metrics.items()
+                     if isinstance(v, (int, float, str, bool))},
+                    ensure_ascii=False,
+                ) + "\n")
+        except (OSError, TypeError, ValueError):
+            logger.warning("metrics.jsonl 追加失败（观测件，不阻断训练）",
+                           exc_info=True)
 
     def _train_one_epoch(self, epoch: int, cfg: TrainConfig) -> dict[str, Any]:
         """执行单个 epoch 的前向/损失/反传（strategy.train_epoch 内）并计时。
@@ -204,10 +284,21 @@ class GenericTrainer:
         """更新最佳指标并推进早停计数（loss 越小越好；无条件追踪——
         best_metric 是训练产物字段，不应依赖早停是否启用。W4-T1 RED→GREEN 修复）。
 
+        M11（2026-10-05 二轮审查）：监控指标优先级 val_loss > val_map 的
+        负值（若提供）> loss。此前只看训练 loss——真训练一次性适配器
+        （W58：首轮全量 ultralytics，后续轮返同值）下 loss 恒定，patience>=1
+        时必然在第 patience+1 轮误触发早停。适配器未提供 val 指标时保持
+        旧行为（监控 loss），但对该场景给出一次性告警提示。
+
         Returns:
             (新的 no_improve 计数, 是否触发早停)。
         """
-        current_metric = metrics.get("loss", float("inf"))
+        # M11：val 指标优先（P0-1 的 train/val 划分让 val_loss 有了来源）
+        current_metric = metrics.get("val_loss")
+        if current_metric is None:
+            # mAP 场景（越大越好）不在此处理——当前策略协议只产 loss 型
+            # 指标，val_map 接入时需扩展方向参数
+            current_metric = metrics.get("loss", float("inf"))
         if current_metric < self._best_metric:
             self._best_metric = current_metric
             self._best_epoch = epoch
@@ -225,7 +316,12 @@ class GenericTrainer:
         return no_improve, False
 
     def _save_epoch_checkpoint(self, epoch: int, cfg: TrainConfig) -> None:
-        """R5-11: 定期保存 checkpoint（每 checkpoint_every epoch 或最后一轮）。"""
+        """R5-11: 定期保存 checkpoint（每 checkpoint_every epoch 或最后一轮）。
+
+        M2（2026-10-05 二轮审查）：原子写——先写 .pt.tmp 成功后 os.replace
+        改名，中途崩溃不再留半成品 .pt（含 meta 与权重不一致的组合），
+        resume 不会读到坏权重。
+        """
         ckpt_interval = getattr(cfg, "checkpoint_every", 5)
         if epoch % ckpt_interval != 0 and epoch != cfg.epochs:
             return
@@ -233,8 +329,10 @@ class GenericTrainer:
         ckpt_dir = os.path.join(cfg.output_dir, "checkpoints")
         os.makedirs(ckpt_dir, exist_ok=True)
         ckpt_path = os.path.join(ckpt_dir, f"epoch_{epoch}.pt")
+        tmp_path = ckpt_path + ".tmp"
         try:
-            self._strategy.save(ckpt_path)
+            self._strategy.save(tmp_path)
+            os.replace(tmp_path, ckpt_path)  # M2：原子改名
             # 保存元数据 sidecar（epoch / best_metric / best_epoch）
             self._save_meta(ckpt_path, epoch, cfg,
                             best_metric=self._best_metric,
@@ -245,6 +343,10 @@ class GenericTrainer:
         except Exception:
             # best-effort：周期 checkpoint 只是断点恢复的加速手段，
             # 失败不中断训练（最终权重保存失败才致命，见 _save_final_weights）。
+            # M2：清理可能残留的 tmp（半成品不得留在盘上）。
+            with contextlib.suppress(OSError):
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
             logger.exception("保存 checkpoint 失败")
 
     def _save_final_weights(self, cfg: TrainConfig) -> str:
@@ -320,11 +422,16 @@ class GenericTrainer:
             logger.debug("保存元数据失败: %s", meta_path, exc_info=True)
 
     def _resume(self, ckpt_path: str, cfg: TrainConfig) -> int:
-        """从 checkpoint 恢复训练状态。
+        """从 checkpoint 恢复训练状态（P0-2：元数据 + 权重双重恢复）。
 
         优先读取 sidecar ``.meta.json`` 元数据（包含 epoch/best_metric/best_epoch）；
         若不存在则回退到直接解析权重文件中的元字典。
-        同时尝试通过 ``strategy.load_state()`` 恢复模型权重（若策略支持）。
+
+        P0-2（2026-10-05 二轮审查 R2）：此前只恢复 epoch/best 元数据，
+        从不装载模型权重——docstring 声称调 strategy.load_state() 但实现
+        无任何调用。现通过 ``strategy.load_state(path)`` 实际装载；策略
+        不支持或装载失败时**明确告警**"从随机权重续训"（不再静默），
+        用户可据此判断续训产物可信度。
 
         Returns:
             起始 epoch 编号。
@@ -353,13 +460,32 @@ class GenericTrainer:
             except Exception:
                 logger.debug("权重文件无训练元数据", exc_info=True)
 
+        # 3) P0-2：实际装载模型权重（此前缺失的核心步骤）
+        weights_loaded = False
+        try:
+            weights_loaded = bool(self._strategy.load_state(ckpt_path))
+        except Exception:
+            logger.exception("strategy.load_state 装载权重失败")
+        if weights_loaded:
+            logger.info("已从 checkpoint 装载模型权重: %s", ckpt_path)
+        else:
+            # 明确告警而非静默：续训语义 = 随机权重 + epoch 跳号，产物
+            # 可信度由用户知情决定
+            logger.warning(
+                "策略不支持/未能装载权重（%s）——本次续训将从随机权重"
+                "开始（epoch 编号继续），训练产物等效重新训练，请知悉",
+                ckpt_path,
+            )
+
         if meta:
             self._best_metric = meta.get("best_metric", float("inf"))
             self._best_epoch = meta.get("best_epoch", 0)
             resumed_epoch = meta.get("epoch", 0)
             logger.info(
-                "恢复训练状态: epoch=%d, best_metric=%.4f, best_epoch=%d",
+                "恢复训练状态: epoch=%d, best_metric=%.4f, best_epoch=%d, "
+                "weights_loaded=%s",
                 resumed_epoch, self._best_metric, self._best_epoch,
+                weights_loaded,
             )
             return resumed_epoch + 1
 

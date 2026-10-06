@@ -178,11 +178,15 @@ namespace VisionAgent.Shared.Services.Vision
 
         // ----------------------------------- 推理 -------------------------------- #
 
+        // H5（2026-10-05 proto presence 对账）：threshold 参数升级 float?——
+        // null = 不设置（服务端引擎默认）；显式值（含 0）正常传输。
+        // 旧调用方不改动行为不变（默认 0.5f 仍显式传输）。
+
         public DetectionResult? Detect(
             string task,
             byte[] imageBytes,
             string mode = "auto",
-            float threshold = 0.5f,
+            float? threshold = 0.5f,
             IList<string>? labels = null,
             IList<string>? prompts = null)
         {
@@ -195,7 +199,7 @@ namespace VisionAgent.Shared.Services.Vision
             string task,
             string imagePath,
             string mode = "auto",
-            float threshold = 0.5f,
+            float? threshold = 0.5f,
             IList<string>? labels = null,
             IList<string>? prompts = null)
         {
@@ -208,7 +212,7 @@ namespace VisionAgent.Shared.Services.Vision
             string task,
             SharedMemoryHandle imageShm,
             string mode = "auto",
-            float threshold = 0.5f,
+            float? threshold = 0.5f,
             IList<string>? labels = null,
             IList<string>? prompts = null)
         {
@@ -272,15 +276,17 @@ namespace VisionAgent.Shared.Services.Vision
         // ---------------------------------- 内部 --------------------------------- #
 
         private static DetectRequest BuildRequest(
-            string task, string mode, float threshold,
+            string task, string mode, float? threshold,
             IList<string>? labels, IList<string>? prompts)
         {
             var req = new DetectRequest
             {
                 Task = task,
                 Mode = mode,
-                Threshold = threshold,
             };
+            // H5：null 不赋值（presence 未设置 → 服务端引擎默认）；
+            // 显式值（含 0）赋值即设置 presence，正常传输
+            if (threshold.HasValue) req.Threshold = threshold.Value;
             if (labels is not null) req.Labels.AddRange(labels);
             if (prompts is not null) req.Prompts.AddRange(prompts);
             return req;

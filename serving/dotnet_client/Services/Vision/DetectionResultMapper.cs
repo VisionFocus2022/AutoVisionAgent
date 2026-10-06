@@ -123,18 +123,29 @@ namespace VisionAgent.Shared.Services.Vision
         }
 
         /// <summary>Python TaskType 字符串 → C# <see cref="DetectionTaskType"/>。</summary>
+        /// <remarks>
+        /// ADR-0006（2026-10-06 枚举对账）：与 Python TaskType 值域对齐——
+        /// 移除 Python 侧不存在的 "vlm"（错误路由源），补 sseg/sgan/super。
+        /// 未知值此前静默回退 Det（fail-open：错误任务名被吞成目标检测），
+        /// 现抛 ArgumentException 显式拒绝（fail-closed，与服务端同语义）。
+        /// </remarks>
         public static DetectionTaskType MapTaskType(string task)
         {
-            return (task ?? string.Empty).ToLowerInvariant() switch
+            var name = (task ?? string.Empty).ToLowerInvariant();
+            return name switch
             {
                 "cls" => DetectionTaskType.Cls,
                 "det" => DetectionTaskType.Det,
                 "seg" => DetectionTaskType.Seg,
                 "pseg" => DetectionTaskType.Seg,   // YOLOv8-seg 归入实例分割
                 "pose" => DetectionTaskType.Pose,
+                "sseg" => DetectionTaskType.Seg,   // 语义分割归入 Seg 展示
+                "sgan" => DetectionTaskType.Det,   // 缺陷生成检测归入 Det 展示
+                "super" => DetectionTaskType.Det,  // 超分增强检测归入 Det 展示
                 "abdet" => DetectionTaskType.Abnormality,
-                "vlm" => DetectionTaskType.Vlm,
-                _ => DetectionTaskType.Det,
+                _ => throw new ArgumentException(
+                    $"未知任务类型: {task ?? "(null)"}（与 Python TaskType 值域对账失败）",
+                    nameof(task)),
             };
         }
     }

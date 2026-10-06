@@ -328,6 +328,18 @@ def _load_user_settings() -> dict:
 def main() -> int:
     setup_logging()
 
+    # W68：冻结首启迁移随包旧用户态（users.json/许可证/设置——密码跨
+    # 重建/升级无缝衔接）；源码模式零操作
+    from core.constants import migrate_legacy_configs
+
+    migrated = migrate_legacy_configs()
+    if migrated:
+        import logging
+
+        logging.getLogger(__name__).info(
+            "已迁移旧用户数据到持久目录: %s", ", ".join(migrated)
+        )
+
     # 加载持久化设置（主题/语言），回退到默认值
     settings = _load_user_settings()
     set_language(settings.get("language", "ch_CN"))

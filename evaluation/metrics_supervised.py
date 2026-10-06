@@ -226,22 +226,34 @@ def abdet_auroc(
     s = np.asarray(scores, dtype=np.float64)
     y = np.asarray(labels, dtype=np.int32)
     if len(s) < 2 or len(set(y.tolist())) < 2:
-        return 0.0  # 样本不足或全是同一类
+        # E10（2026-10-06 三轮审查）：样本不足/单标签的语义是"无法计算"
+        # 而非"0 分"（0 会误导读为模型反向）——NaN 走 eval_flow 的
+        # format_metric_rows 既有 N/A 显示通道。
+        return float("nan")
 
-    # 按 score 降序排列
+    # 按 score 降序排列（E11：并列分数按组处理——argsort 稳定序下并列
+    # 组内任意排序会使梯形积分结果依赖输入序，与 WMW 语义不符）
     order = np.argsort(-s)
     y_sorted = y[order]
 
     n_pos = float(np.sum(y == 1))
     n_neg = float(np.sum(y == 0))
     if n_pos == 0 or n_neg == 0:
-        return 0.0
+        return float("nan")  # E10：同上
 
     # Wilcoxon-Mann-Whitney 统计量
+    # E11：并列分数取平均 TPR/FPR 再积分——把同分组在 (fpr, tpr) 平面
+    # 折成单点，梯形法结果与组内排序无关
+    s_sorted = s[order]
     tp_cum = np.cumsum(y_sorted == 1)
     fp_cum = np.cumsum(y_sorted == 0)
-    tpr = tp_cum / n_pos
-    fpr = fp_cum / n_neg
+    tpr_all = np.concatenate(([0.0], tp_cum / n_pos))
+    fpr_all = np.concatenate(([0.0], fp_cum / n_neg))
+    # 组边界：并列分数段末端（含首点 0）
+    tie_ends = np.where(np.diff(s_sorted, append=np.inf) != 0)[0] + 1
+    idx = np.concatenate(([0], tie_ends))
+    tpr = tpr_all[idx]
+    fpr = fpr_all[idx]
 
     # 梯形法积分（numpy 2.0 移除了 trapz，用 trapezoid）
     trapz_fn = getattr(np, "trapezoid", None) or np.trapz
@@ -271,10 +283,27 @@ def evaluate_supervised(
     if task == "det":
         return det_map(preds, gts, **kwargs)
     elif task == "seg":
-        ious = [seg_iou(p, g) for p, g in zip(preds, gts, strict=True)]
-        return {"mIoU": float(np.mean(ious)) if ious else 0.0}
+        # E1（2026-10-06 三轮审查）：旧实现把 list[dict] 直喂 seg_iou
+        # （np.asarray(dict) 必抛 TypeError）——GUI 靠 TypeError 兜底
+        # 掩盖了"从未打通"的事实。现显式拒绝并指明所需形态，打通
+        # 前不给用户假象（mask 栅格化路径待 eval_flow 供给）。
+        items = [p for p in preds if p is not None]
+        if items and hasattr(items[0], "ndim"):
+            ious = [seg_iou(p, g) for p, g in zip(preds, gts, strict=True)]
+            return {"mIoU": float(np.mean(ious)) if ious else 0.0}
+        raise ValueError(
+            "seg 评估暂未接入 eval_flow 的 mask 栅格化供给："
+            "preds/gts 需为 ndarray 掩码序列（当前为 dict 列表形态，"
+            "评估页暂不支持 seg 任务，请使用 det 任务）"
+        )
     elif task == "abdet":
-        # preds 为 scores list, gts 为 labels list
+        # E1：同上——dict 列表当 scores/labels 传必抛 TypeError。
+        # 支持标量序列（image-level score）形态；dict 形态显式拒绝。
+        if preds and isinstance(preds[0], dict):
+            raise ValueError(
+                "abdet 评估需 image-level 标量分数序列（当前为 dict 列表"
+                "形态，评估页暂不支持 abdet 任务）"
+            )
         return {"AUROC": abdet_auroc(preds, gts, **kwargs)}
     else:
         raise ValueError(f"不支持的任务类型: {task}")

@@ -128,13 +128,17 @@ class TestVisionDataset:
         assert item["annotation"]["boxes"] == []
 
     def test_corrupted_annotation(self, tmp_path):
-        """损坏的标注文件不崩溃。"""
+        """损坏的标注文件不崩溃——O1（2026-10-05 二轮审查）后契约：
+        抛 ValueError 让 DataLoader 跳过（不再静默降级为空标注负样本，
+        防止关键正样本标注损坏被当背景教坏模型）。"""
         from dataset.vision_dataset import VisionDataset
 
         (tmp_path / "bad_ann.jpg").write_bytes(_png_bytes())
         (tmp_path / "bad_ann.json").write_text("{invalid json!!!", encoding="utf-8")
 
         ds = VisionDataset(str(tmp_path), str(tmp_path))
-        # 不应崩溃，返回空标注
-        item = ds[0]
-        assert item["annotation"]["boxes"] == []
+        # O1：损坏标注 → ValueError（DataLoader 原生 skip 机制依据此信号）
+        import pytest as _pytest
+
+        with _pytest.raises(ValueError, match="标注文件损坏"):
+            ds[0]

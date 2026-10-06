@@ -75,6 +75,36 @@ _DEFAULT_MAX_REGIONS = 64
 _REGION_TTL_ENV = "AVA_SHM_REGION_TTL_SECONDS"
 _DEFAULT_REGION_TTL_SECONDS = 300.0
 
+# S1（安全审查 2026-10-05）：对端文件读取白名单。
+# 默认开启：read_* 系列按文件路径读「对端创建的文件」时，仅允许位于
+# base_dir 下且文件名匹配 ava_*.bin 的区域文件，杜绝把本模块当作任意
+# 文件读取原语（FetchRegion 链路回环无鉴权，见 ADR-0001）。本进程在册
+# 区域不受影响（其路径必为自建 ava_*.bin）。AVA_SHM_ALLOW_ANY_FILE=1
+# 可显式放宽（测试/特殊部署需要，默认拒绝）。
+_AVA_SHM_ALLOW_ANY_FILE_ENV = "AVA_SHM_ALLOW_ANY_FILE"
+
+
+def _shm_path_allowed(file_path: str, base_dir: Path) -> bool:
+    """S1：校验对端文件路径是否位于白名单内（base_dir 下 + ava_*.bin）。
+
+    - 路径 resolve 后必须位于 base_dir 内（拒绝对端送来的绝对路径指向
+      系统任意文件，如 users.json / license.key）；
+    - 文件名必须匹配 ``ava_*.bin``（与双端命名契约一致，见
+      dotnet_client AutoVisionAgentClient 的 ava_{Guid:N}.bin）；
+    - 环境变量 AVA_SHM_ALLOW_ANY_FILE=1 可显式放宽（测试/特殊部署需要，
+      默认拒绝）。
+    """
+    if os.environ.get(_AVA_SHM_ALLOW_ANY_FILE_ENV, "") == "1":
+        return True
+    p = Path(file_path)
+    if p.name.startswith("ava_") and p.suffix == ".bin":
+        try:
+            p.resolve().relative_to(base_dir.resolve())
+            return True
+        except (ValueError, OSError):
+            return False
+    return False
+
 
 @dataclass(frozen=True)
 class SharedMemoryHandle:
@@ -316,7 +346,9 @@ class SharedMemoryManager:
         arr = np.asarray(masks)
         if arr.dtype != np.bool_:
             arr = arr.astype(np.bool_)
-        from serving.mask_codec import encode_mask_rle
+        # L7（2026-10-05 一轮审查）：直连 core（W45 下沉后的正式入口），
+        # 不再经 serving.mask_codec shim
+        from core.mask_codec import encode_mask_rle
 
         payload = encode_mask_rle(arr)
         return self._write_raw(payload, "bool_rle", tuple(int(s) for s in arr.shape))
@@ -335,8 +367,20 @@ class SharedMemoryManager:
             flags |= os.O_BINARY
         fd = os.open(path, flags, 0o600)
         try:
-            os.write(fd, raw)
-            os.fsync(fd)
+            # H4（2026-10-05 一轮审查）：os.write 单次调用可能部分写
+            # （POSIX 下 >2GB 载荷或被信号中断时短写）——文件实际长度
+            # < len(raw) 时 mmap(length) 超出文件尾，访问即 SIGBUS 直接
+            # 杀进程（不可捕获）。循环写满（与 path_io.py:63-69 同款）。
+            view = memoryview(raw)
+            while view:
+                written = os.write(fd, view)
+                view = view[written:]
+            # M4（2026-10-05 一轮审查）：fsync 改可配置——36MB 大图热路径
+            # 每次落盘同步刷写吞吐显著下降；MMF 同机读取由页缓存保证一致，
+            # 崩溃残留由 2 小时启动清扫兜底。默认关闭；特殊部署需要磁盘
+            # 级持久性时 AVA_SHM_FSYNC=1 开启。
+            if os.environ.get("AVA_SHM_FSYNC", "0") == "1":
+                os.fsync(fd)
             length = len(raw)
             mm = mmap.mmap(fd, length, access=mmap.ACCESS_READ)
         except Exception:
@@ -366,18 +410,41 @@ class SharedMemoryManager:
 
     # ---------- 读入 ----------
 
+    @staticmethod
+    def _validate_range(offset: int, length: int, region_len: int, file_path: str) -> None:
+        """H7（2026-10-05 一轮审查）：读区间合法性校验。
+
+        负 offset 此前未被拒绝——mm[-1000:1000] 按 Python 尾部偏移语义
+        静默拼接错位数据（检测结果错乱而非报错）。统一在入口显式拒绝。
+        """
+        if offset < 0 or length < 0:
+            raise ValueError(
+                f"共享内存读区间非法: offset={offset}, length={length}"
+                f"（须 >= 0）: {file_path}"
+            )
+        if offset + length > region_len:
+            raise ValueError(
+                f"共享内存读区间越界: offset+length={offset + length}"
+                f" > 区域长度 {region_len}: {file_path}"
+            )
+
     def read_array(self, handle) -> numpy.ndarray:
         """按句柄读取并重建为 numpy 数组。
 
         适用于任意句柄（本进程或对端进程创建）。dtype=="bool_rle" 时
         经 mask_codec 解码还原 bool 掩码（W6-T2）。
+
+        H6（2026-10-05 一轮审查）：本进程映射的读切片改在锁内完成拷贝
+        ——此前锁内快照 entry 后锁外用 mm，并发线程 release 同区域时
+        mm.close() 已执行，mm[...] 抛 ValueError 使请求崩溃（TOCTOU）。
         """
         import numpy as np
 
         h = _coerce_handle(handle)
 
         if h.dtype == "bool_rle":
-            from serving.mask_codec import decode_mask_rle
+            # L7：直连 core（同 write_mask_compact）
+            from core.mask_codec import decode_mask_rle
 
             data = self.read_bytes(h)
             return decode_mask_rle(data, h.shape)
@@ -387,15 +454,24 @@ class SharedMemoryManager:
 
         np_dtype = np.dtype(_DTYPE_MAP[h.dtype])
 
-        # 优先复用本进程已映射的区域，否则按路径打开对端创建的文件
+        # 优先复用本进程已映射的区域，否则按路径打开对端创建的文件；
+        # H6：锁内切片拷贝，防并发 release 关闭映射的竞态
         with self._lock:
             entry = self._regions.get(h.file_path)
 
         if entry is not None:
             _fd, mm, _created = entry
-            data = mm[h.offset : h.offset + h.length]
+            with self._lock:
+                # 双检：快照后到加锁前可能已被 release 摘除
+                if self._regions.get(h.file_path) is not entry:
+                    raise FileNotFoundError(
+                        f"共享内存区域已被并发回收: {h.file_path}"
+                    )
+                self._validate_range(h.offset, h.length, mm.size(), h.file_path)
+                data = bytes(mm[h.offset : h.offset + h.length])
         else:
-            data = _read_range_from_file(h.file_path, h.offset, h.length)
+            # S1：对端文件读取走白名单校验（本进程在册区域不受影响）
+            data = _read_range_from_file(h.file_path, h.offset, h.length, base_dir=self._base_dir)
 
         arr = np.frombuffer(data, dtype=np_dtype)
         if h.shape:
@@ -403,14 +479,15 @@ class SharedMemoryManager:
         return arr
 
     def read_bytes(self, handle) -> bytes:
-        """按句柄读取为裸字节。"""
+        """按句柄读取为裸字节（H6：锁内拷贝防 TOCTOU）。"""
         h = _coerce_handle(handle)
         with self._lock:
             entry = self._regions.get(h.file_path)
-        if entry is not None:
-            _fd, mm, _created = entry
-            return bytes(mm[h.offset : h.offset + h.length])
-        return _read_range_from_file(h.file_path, h.offset, h.length)
+            if entry is not None:
+                _fd, mm, _created = entry
+                self._validate_range(h.offset, h.length, mm.size(), h.file_path)
+                return bytes(mm[h.offset : h.offset + h.length])
+        return _read_range_from_file(h.file_path, h.offset, h.length, base_dir=self._base_dir)
 
     def read_range(self, file_path: str, offset: int, length: int) -> bytes:
         """按绝对区间读区域字节（W19 v3 第三波 FR-2 方向 B：FetchRegion 分块用）。
@@ -418,13 +495,18 @@ class SharedMemoryManager:
         优先复用本进程已映射区域，否则按路径读文件；文件不存在时抛
         FileNotFoundError（调用方据此 abort NOT_FOUND）。与
         :meth:`read_bytes` 的差别：入参是裸区间而非句柄，便于流式切块。
+
+        S1（安全审查 2026-10-05）：对端文件读取经白名单校验——仅允许
+        base_dir 下的 ava_*.bin；校验失败抛 ValueError（调用方 abort）。
+        H6/H7：锁内拷贝 + 区间校验。
         """
         with self._lock:
             entry = self._regions.get(file_path)
-        if entry is not None:
-            _fd, mm, _created = entry
-            return bytes(mm[offset : offset + length])
-        return _read_range_from_file(file_path, offset, length)
+            if entry is not None:
+                _fd, mm, _created = entry
+                self._validate_range(offset, length, mm.size(), file_path)
+                return bytes(mm[offset : offset + length])
+        return _read_range_from_file(file_path, offset, length, base_dir=self._base_dir)
 
     # ---------- 回收 ----------
 
@@ -532,8 +614,21 @@ def _coerce_handle(handle) -> SharedMemoryHandle:
     raise TypeError(f"无法识别的句柄类型: {type(handle)!r}")
 
 
-def _read_range_from_file(file_path: str, offset: int, length: int) -> bytes:
-    """从未映射的对端文件中读取指定区间。"""
+def _read_range_from_file(file_path: str, offset: int, length: int, base_dir: Path | None = None) -> bytes:
+    """从未映射的对端文件中读取指定区间。
+
+    S1（安全审查 2026-10-05）：``base_dir`` 提供时执行白名单校验——
+    仅允许读取 base_dir 下、文件名匹配 ava_*.bin 的区域文件，防止
+    调用方（FetchRegion/read_* 系列经回环无鉴权 gRPC 暴露）把本函数
+    当作任意文件读取原语。校验失败抛 ValueError。
+    """
+    if base_dir is not None and not _shm_path_allowed(file_path, base_dir):
+        logger.warning(
+            "拒绝读取白名单外的共享内存路径: %s (base_dir=%s)", file_path, base_dir
+        )
+        raise ValueError(
+            f"共享内存路径不在允许目录内: {file_path}"
+        )
     with open(file_path, "rb") as f:
         if offset:
             f.seek(offset)

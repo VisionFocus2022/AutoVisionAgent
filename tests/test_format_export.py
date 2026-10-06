@@ -82,7 +82,10 @@ def fixture_dir(tmp_path):
 def test_yolo_rectangle_line_values(fixture_dir, tmp_path):
     img_dir, ann_dir = fixture_dir
     out = tmp_path / "yolo"
-    summary = labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out))
+    # P0-1：显式关闭划分——本测试锁定旧单目录布局的行值契约
+    summary = labelme_dir_to_yolo(
+        str(img_dir), str(ann_dir), str(out), val_ratio=0
+    )
 
     # 类别稳定排序：crack=0, scratch=1
     assert list(summary.classes) == ["crack", "scratch"]
@@ -106,7 +109,7 @@ def test_yolo_rectangle_line_values(fixture_dir, tmp_path):
 def test_yolo_polygon_segmentation_line(fixture_dir, tmp_path):
     img_dir, ann_dir = fixture_dir
     out = tmp_path / "yolo"
-    labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out))
+    labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out), val_ratio=0)
 
     parts = (out / "labels" / "b.txt").read_text().split()
     assert int(parts[0]) == 1  # scratch
@@ -122,7 +125,7 @@ def test_yolo_data_yaml(fixture_dir, tmp_path):
 
     img_dir, ann_dir = fixture_dir
     out = tmp_path / "yolo"
-    labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out))
+    labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out), val_ratio=0)
     data = yaml.safe_load((out / "data.yaml").read_text(encoding="utf-8"))
     assert data["names"] == {0: "crack", 1: "scratch"}
     assert data["nc"] == 2
@@ -133,7 +136,7 @@ def test_yolo_roundtrip_via_supervision(fixture_dir, tmp_path):
     """狗粮闭环：导出产物由 sv.DetectionDataset.from_yolo 回读。"""
     img_dir, ann_dir = fixture_dir
     out = tmp_path / "yolo"
-    labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out))
+    labelme_dir_to_yolo(str(img_dir), str(ann_dir), str(out), val_ratio=0)
 
     ds = sv.DetectionDataset.from_yolo(
         images_directory_path=str(out / "images"),
@@ -191,7 +194,11 @@ def test_coco_roundtrip_via_supervision(fixture_dir, tmp_path):
 # ----------------------------- GUI 接线（worker 线程） ----------------------------- #
 @pytest.mark.unit
 def test_data_manage_export_runs_in_worker(qapp, tmp_path, monkeypatch):
-    """导出经 threading.Thread 分发（W3 模式），完成后产物落地、按钮恢复。"""
+    """导出经 threading.Thread 分发（W3 模式），完成后产物落地、按钮恢复。
+
+    P0-1：默认 val_ratio>0 时产物为 images/{train,val} 子目录布局；
+    本测试锁定 worker 分发与产物落地契约（data.yaml + a.txt 存在即可）。
+    """
     import threading as _threading
 
     from PySide6.QtWidgets import QApplication
@@ -227,7 +234,10 @@ def test_data_manage_export_runs_in_worker(qapp, tmp_path, monkeypatch):
     QApplication.processEvents()
     assert page.btn_export.isEnabled()
     assert (out_root / "yolo" / "data.yaml").exists()
-    assert (out_root / "yolo" / "labels" / "a.txt").exists()
+    # P0-1：单样本 fixture → train/val 子目录布局（val 由兜底逻辑保证非空）
+    assert (out_root / "yolo" / "labels" / "train" / "a.txt").exists() or (
+        out_root / "yolo" / "labels" / "a.txt"
+    ).exists()
 
 
 def _make_fixture(tmp_path):

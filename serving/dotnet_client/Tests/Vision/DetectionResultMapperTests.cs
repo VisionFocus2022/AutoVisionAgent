@@ -164,12 +164,26 @@ namespace VisionAgent.Shared.Tests.Vision
         [InlineData("seg", DetectionTaskType.Seg)]
         [InlineData("pseg", DetectionTaskType.Seg)]          // YOLOv8-seg 归入实例分割
         [InlineData("pose", DetectionTaskType.Pose)]
+        [InlineData("sseg", DetectionTaskType.Seg)]          // ADR-0006：Python 值域对齐
+        [InlineData("sgan", DetectionTaskType.Det)]          // ADR-0006：缺陷生成检测
+        [InlineData("super", DetectionTaskType.Det)]         // ADR-0006：超分增强检测
         [InlineData("abdet", DetectionTaskType.Abnormality)]
-        [InlineData("unknown", DetectionTaskType.Det)]       // 未知回退 Det
-        [InlineData("", DetectionTaskType.Det)]              // 空串回退 Det
-        public void MapTaskType_Maps_KnownAndUnknown(string input, DetectionTaskType expected)
+        public void MapTaskType_Maps_Known(string input, DetectionTaskType expected)
         {
             Assert.Equal(expected, DetectionResultMapper.MapTaskType(input));
+        }
+
+        [Theory]
+        [InlineData("unknown")]
+        [InlineData("")]
+        [InlineData(null)]
+        [InlineData("vlm")]  // ADR-0006：Python 侧不存在的任务名（已删映射）
+        public void MapTaskType_Unknown_Throws_FailClosed(string input)
+        {
+            // ADR-0006（2026-10-06）：未知值不再静默回退 Det（fail-open
+            // 吞掉错误路由），改抛 ArgumentException——与服务端 fail-closed 同语义
+            Assert.Throws<ArgumentException>(
+                () => DetectionResultMapper.MapTaskType(input!));
         }
     }
 }

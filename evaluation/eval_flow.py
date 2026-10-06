@@ -89,6 +89,14 @@ def load_eval_engine(
         # W1: 假指标路径显式警告（GT 当预测，指标无意义）
         if on_warn is not None:
             on_warn(translate("评估引擎不可用，退化为 GT 自比较（指标仅供参考）"))
+    except Exception:
+        # E3 补充（2026-10-06 三轮审查）：UnsupportedTaskError（引擎未注册）
+        # 等 AppError 族此前逃出元组直接崩评估——统一按"引擎不可用"回退
+        # + 警告（与 W1 同语义）。
+        logger.exception("评估引擎初始化异常（未注册/配置问题），回退 GT 自比较")
+        engine = None
+        if on_warn is not None:
+            on_warn(translate("评估引擎不可用，退化为 GT 自比较（指标仅供参考）"))
     return engine
 
 
@@ -142,7 +150,10 @@ def build_prediction(
             }
         except (ImportError, RuntimeError, OSError, FileNotFoundError):
             logger.exception("推理失败: %s", img_path)
-    return _fallback_pred(boxes, labels)
+    # E2：单图回退路径带 _degraded 标记（调用方计数汇报，不静默混入）
+    fallback = _fallback_pred(boxes, labels)
+    fallback["_degraded"] = True
+    return fallback
 
 
 def report_progress(
@@ -187,12 +198,40 @@ def run_supervised_eval(
     engine = load_eval_engine(model, task_key, translate, on_warn, logger)
     preds_data, gts_data = [], []
     total = len(json_files)
+    degraded = 0  # E2：单图回退 GT 的计数（部分混入可视化）
+    skipped_json = 0  # E3：损坏 JSON 跳过计数
     for idx, jf in enumerate(json_files):
         report_progress(on_progress, idx, total)
-        ann = read_annotation(jf)
+        # E3（2026-10-06 三轮审查）：坏 JSON 逐文件容错——此前一张损坏
+        # 即 JSONDecodeError 打死整场评估。
+        try:
+            ann = read_annotation(jf)
+        except (json.JSONDecodeError, OSError, ValueError):
+            skipped_json += 1
+            logger.warning("跳过损坏标注 JSON: %s", jf, exc_info=True)
+            continue
         boxes, labels = extract_gt(ann)
         gts_data.append({"boxes": boxes, "labels": labels})
-        preds_data.append(build_prediction(engine, ann, gt_dir, boxes, labels, logger))
+        pred = build_prediction(engine, ann, gt_dir, boxes, labels, logger)
+        # E2：build_prediction 内部失败静默回退 GT——此处探测回退形态计数
+        if pred.get("_degraded"):
+            degraded += 1
+            pred = {k: v for k, v in pred.items() if k != "_degraded"}
+        preds_data.append(pred)
+
+    # E2/E3：部分回退与跳过的显式汇报（不再静默混入）
+    if degraded or skipped_json:
+        _warn = on_warn
+        if _warn is not None:
+            parts = []
+            if degraded:
+                parts.append(f"{degraded}/{total} " + translate("张回退 GT 自比较"))
+            if skipped_json:
+                parts.append(f"{skipped_json} " + translate("个损坏标注已跳过"))
+            _warn(translate("评估口径注意：") + "；".join(parts))
+
+    if not gts_data:
+        return [("-", "N/A", translate("无有效标注数据（全部损坏）"))]
 
     results = evaluate_supervised(task_key, preds_data, gts_data)
     return format_metric_rows(results, translate)

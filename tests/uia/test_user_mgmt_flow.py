@@ -67,7 +67,14 @@ pytestmark = pytest.mark.skipif(
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXE = REPO_ROOT / "dist" / "AutoVisionAgent" / "AutoVisionAgent.exe"
-EXE_CFG = REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs"
+# W68 起冻结态读 %APPDATA%/AutoVisionAgent/configs（首启凭据/用户库均在此）
+_APPDATA_CFG = (
+    Path(os.environ["APPDATA"]) / "AutoVisionAgent" / "configs"
+    if os.environ.get("APPDATA") else None
+)
+EXE_CFG = _APPDATA_CFG or (
+    REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs"
+)
 CRED_FILE = EXE_CFG / "initial_credentials.txt"
 USERS_FILE = EXE_CFG / "users.json"
 
@@ -75,8 +82,15 @@ _NEW_PWD = "UiaTestPwd#2026"  # ≥8 字符（对话框校验下限）
 
 
 def _reset_first_run_state() -> None:
-    """删两文件 → 下次启动走空库首启分支重建（最强还原）。"""
-    for f in (USERS_FILE, CRED_FILE):
+    """删两文件 → 下次启动走空库首启分支重建（最强还原）。
+
+    W68 迁移源也要清：启动时 migrate_legacy_configs 会把 _internal 的
+    陈旧 users.json/凭据搬回 APPDATA——不清则"全新首启"永不可能。
+    """
+    legacy = REPO_ROOT / "dist" / "AutoVisionAgent" / "_internal" / "configs"
+    targets = [USERS_FILE, CRED_FILE,
+               legacy / "users.json", legacy / "initial_credentials.txt"]
+    for f in targets:
         try:
             f.unlink(missing_ok=True)
         except OSError:
