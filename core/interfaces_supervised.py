@@ -94,6 +94,11 @@ class TrainConfig:
     # W1-6：小数据轮数自适应下限（N≤50 图时实际轮数=max(epochs, 该值)）。
     # 0 = 关闭自适应（测试冒烟/性能敏感场景）；默认 100（W71 实证锚定）
     small_data_epoch_floor: int = 100
+    # W2-3 数据增强预设开关（透传 ultralytics）：全 False=不传任何增强
+    # 参数（ultralytics 默认增强行为不变，零回归）；勾选才显式传预设值
+    aug_hsv: bool = False      # HSV 色彩抖动（hsv_h/s/v 预设）
+    aug_flip: bool = False     # 水平翻转（fliplr=0.5）
+    aug_mosaic: bool = False   # mosaic 拼接（mosaic=1.0）
 
 
 @dataclass

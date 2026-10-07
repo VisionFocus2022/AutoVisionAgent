@@ -32,6 +32,11 @@ from gui.core.i18n import tr
 from gui.core.tasks_ui import populate_task_combo
 from gui.core.thread_bridge import invoke_main
 from gui.pages.train.strategy import EngineTrainStrategy  # W1-1 拆分（规模守卫）
+from gui.pages.train.ui_fns import (  # W2-3 拆分（规模守卫）
+    _confirm_simulated_dialog,
+    _format_eta,
+    _format_final_metrics,
+)
 from gui.pages.train.worker import TrainWorker
 from gui.widgets.loss_chart import LossChartWidget
 
@@ -213,6 +218,19 @@ class TrainPage(QWidget):
         self.cmb_device.addItem("cuda")
         self.cmb_device.addItem("cpu")
         form.addRow(tr("设备"), self.cmb_device)
+
+        # W2-3：数据增强预设开关组——默认全关=不透传（零回归）；
+        # 文案字面量=避让并行批在途 i18n.py（收口后补键，同 W2-1/W2-2）
+        aug_row = QWidget(form_frame)
+        aug_h = QHBoxLayout(aug_row)
+        aug_h.setContentsMargins(0, 0, 0, 0)
+        self.chk_aug_hsv = QCheckBox("HSV 色彩抖动", aug_row)
+        self.chk_aug_flip = QCheckBox("水平翻转", aug_row)
+        self.chk_aug_mosaic = QCheckBox("Mosaic 拼接", aug_row)
+        for c in (self.chk_aug_hsv, self.chk_aug_flip, self.chk_aug_mosaic):
+            aug_h.addWidget(c)
+        aug_h.addStretch()
+        form.addRow("数据增强", aug_row)
 
     def _build_form_train_rows(
         self, form_frame: QWidget, form: QFormLayout
@@ -458,6 +476,9 @@ class TrainPage(QWidget):
             lr=self.spin_lr.value(),
             batch_size=self.spin_batch.value(),
             backbone=self.txt_backbone.text().strip() or "yolov8n",
+            aug_hsv=self.chk_aug_hsv.isChecked(),
+            aug_flip=self.chk_aug_flip.isChecked(),
+            aug_mosaic=self.chk_aug_mosaic.isChecked(),
             patience=self.spin_patience.value(),
             device=self.cmb_device.currentText(),
             # R5-4: 补全缺失字段
@@ -753,44 +774,6 @@ class TrainPage(QWidget):
     def retranslate(self) -> None:
         self.btn_start.setText(tr("开始训练"))
         self.btn_stop.setText(tr("强制结束"))
-
-
-def _format_eta(eta) -> str:
-    """ETA 秒 → " · 剩余 m:ss" 文案（W1-1）。"""
-    if isinstance(eta, (int, float)) and eta > 0:
-        mm, ss = divmod(int(eta), 60)
-        return f" · 剩余 {mm}:{ss:02d}"
-    return ""
-
-
-def _confirm_simulated_dialog(parent) -> bool:
-    """模拟训练显式确认框（W1-3 拆自页面方法）。自定义中文按钮不依赖 Qt 翻译。"""
-    from PySide6.QtWidgets import QMessageBox
-
-    msg = QMessageBox(parent)
-    msg.setIcon(QMessageBox.Warning)
-    msg.setWindowTitle(tr("模拟训练确认"))
-    msg.setText(tr("即将执行模拟训练：该任务未实装真训练或未选择数据集，训练过程为假 loss 模拟，不会产生可用的真实模型。"))
-    btn_go = msg.addButton(tr("继续模拟训练"), QMessageBox.YesRole)
-    msg.addButton(tr("取消"), QMessageBox.NoRole)
-    msg.setDefaultButton(btn_go)
-    msg.exec()
-    return msg.clickedButton() is btn_go
-
-
-def _format_final_metrics(metrics: dict | None) -> str:
-    """末轮 val 指标 → 完成状态文案（W1-6）。
-
-    三键齐全才格式化（部分指标显示半截比不显示更误导）；任何形态
-    异常返回空串——显示层不挡训练完成路径。
-    """
-    try:
-        return (
-            f"P={metrics['precision']:.2f} R={metrics['recall']:.2f}"
-            f" mAP50={metrics['map50']:.2f}"
-        )
-    except (KeyError, TypeError, ValueError):
-        return ""
 
 
 

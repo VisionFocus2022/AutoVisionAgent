@@ -64,6 +64,24 @@ def _count_train_labels(data_yaml: str) -> int:
     return 0
 
 
+def _aug_kwargs(cfg) -> dict:
+    """W2-3：增强预设开关 → ultralytics kwargs（全关=空 dict 零透传）。
+
+    勾选才显式传预设值并留痕（e2e 开/关对照的日志锚点）；ultralytics
+    自带默认增强在不透传时保持原行为——零回归语义的根基。
+    """
+    aug = {}
+    if getattr(cfg, "aug_hsv", False):
+        aug.update(hsv_h=0.015, hsv_s=0.7, hsv_v=0.4)
+    if getattr(cfg, "aug_flip", False):
+        aug["fliplr"] = 0.5
+    if getattr(cfg, "aug_mosaic", False):
+        aug["mosaic"] = 1.0
+    if aug:
+        logger.info("数据增强预设透传: %s", sorted(aug))
+    return aug
+
+
 def _install_epoch_callbacks(engine, model, epochs: int) -> None:
     """W1-1：注册逐轮进度/停止回调（on_fit_epoch_end，工作线程触发）。
 
@@ -283,6 +301,7 @@ class _YoloSegBase(AbstractTaskEngine):
             amp=cfg.amp,
             optimizer="SGD",
             lr0=_YOLO_LR0,
+            **_aug_kwargs(cfg),
         )
         # best-effort 末轮 loss 提取（ultralytics 各版本返回形态不一）
         loss = 0.0
