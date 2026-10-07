@@ -253,6 +253,10 @@ class PredictPage(VideoSuperActionsMixin, ExportActionsMixin, QWidget):
         if os.path.isdir(models):
             self._models_dir = models
 
+    def set_threshold(self, value: float) -> None:
+        """W2-2：外部写入推理阈值（评估页推荐阈值一键应用；UI 线程调用）。"""
+        self.spin_threshold.setValue(round(float(value), 2))
+
     def _load_model(self) -> None:
         """加载模型权重。
 

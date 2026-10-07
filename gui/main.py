@@ -271,6 +271,9 @@ def build_window(init_password: str | None = None) -> MainWindow:
     # W1-2：训练历史一键加载 → 推理页（先加载后切页，状态在推理页呈现）
     _wire_history_to_predict(history_page, predict_page, win)
 
+    # W2-2：评估页推荐阈值 → 推理页阈值（同窗不切页）
+    eval_page.threshold_apply.connect(predict_page.set_threshold)
+
     # ---- 项目打开 → 通知工作页 ----
     project_page.project_opened.connect(data_page.set_project_dir)
     project_page.project_opened.connect(predict_page.set_project_dir)

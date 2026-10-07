@@ -154,14 +154,16 @@ class DeployPage(QWidget):
                 from core.exceptions import ModelExportError
                 from exporter.supervised_exporter import SupervisedExporter
                 exporter = SupervisedExporter()
-                import torch
 
                 self._set_progress_slot(20)
 
-                # P3④：直调 torch.load(weights_only=True) 而不走 _safe_torch_load
-                # ——此处需要完整模型对象（而非 state_dict）供 ONNX 导出；
-                # weights_only=True 已阻断任意代码执行，安全等价。
-                model = torch.load(model_path, map_location="cpu", weights_only=True)
+                # P3④：完整模型对象（非 state_dict）供 ONNX 导出。
+                # W2-1 修复：换 safe_load_model——torch≥2.6 weights_only
+                # 拒载 ultralytics 检查点（真训练权重导出必失败的真缺陷），
+                # 白名单官方模型类后重载，安全姿态不变。
+                from exporter.onnx_consistency import safe_load_model
+
+                model = safe_load_model(model_path)
                 if isinstance(model, dict) and "model" in model:
                     model = model["model"]
                 if not hasattr(model, "eval"):
@@ -178,7 +180,20 @@ class DeployPage(QWidget):
                 exporter.export_onnx(model, task_value, onnx_path, precision=precision)
                 self._set_progress_slot(70)
 
-                results = {"onnx": onnx_path}
+                # W2-1：ONNX 一致性校验 + 模型卡随包（推理秒级——worker 内
+                # 执行守 W1-4 线程纪律；文案用字面量=避让并行批在途 i18n.py，
+                # 该批收口后补键）
+                from exporter.onnx_consistency import (
+                    onnx_consistency_check,
+                    write_model_card,
+                )
+
+                cons = onnx_consistency_check(model_path, onnx_path)
+                card_path = write_model_card(model_path, onnx_path, task_value)
+                self._set_progress_slot(85)
+
+                results = {"onnx": onnx_path, "card": card_path,
+                           "consistency": cons}
                 if do_trt:
                     trt_path = os.path.join(out_dir, f"{task_value}.engine")
                     try:
@@ -222,11 +237,28 @@ class DeployPage(QWidget):
 
     @Slot(dict)
     def _on_export_finished(self, results: dict) -> None:
-        """导出完成回调。"""
+        """导出完成回调（W2-1：一致性校验成败显式呈现，失败不静默）。"""
         self._export_btn.setEnabled(True)
-        files = ", ".join(os.path.basename(v) for v in results.values())
+        files = ", ".join(
+            os.path.basename(v) for k, v in results.items()
+            if k != "consistency" and isinstance(v, str)
+        )
         logger.info("模型导出完成: %s", files)
-        self.status_changed.emit(tr("导出完成"), files)
+        cons = results.get("consistency") or {}
+        if cons.get("ok"):
+            rate = cons.get("match_rate")
+            self.status_changed.emit(
+                "导出完成·一致性校验通过",
+                f"匹配率 {rate:.1%} ({cons.get('detail', '')}) · {files}",
+            )
+        elif cons:
+            why = cons.get("error") or (
+                f"匹配率 {cons.get('match_rate')}"
+            )
+            self.status_changed.emit("一致性校验失败", f"{why} · {files}")
+            logger.warning("ONNX 一致性校验失败: %s", cons)
+        else:
+            self.status_changed.emit(tr("导出完成"), files)
 
         # R4-6: 记录审计日志
         try:

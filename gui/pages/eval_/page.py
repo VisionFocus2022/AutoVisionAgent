@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from PySide6.QtCore import QRectF, Qt, Signal, Slot
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
@@ -26,6 +27,7 @@ from gui.core.i18n import tr
 from gui.core.jobs import run_job
 from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_directory, pick_open_file
+from gui.widgets.loss_chart import LossChartWidget
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +156,7 @@ class EvalPage(QWidget):
     """模型评估页。"""
 
     status_changed = Signal(str, str)
+    threshold_apply = Signal(float)  # W2-2：推荐阈值写入推理页
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -222,12 +225,34 @@ class EvalPage(QWidget):
         self._table.horizontalHeader().setStretchLastSection(True)
         root.addWidget(self._table)
 
-        # 混淆矩阵热力图
+        # 混淆矩阵热力图 + W2-2 PR/阈值推荐分析区
         bottom = QHBoxLayout()
         bottom.setSpacing(12)
         self._confusion = ConfusionMatrixWidget(self)
         self._confusion.set_title(tr("混淆矩阵"))
         bottom.addWidget(self._confusion, 1)
+
+        pr_box = QFrame()
+        pr_lay = QVBoxLayout(pr_box)
+        pr_lay.setContentsMargins(8, 8, 8, 8)
+        # 文案字面量=避让并行批在途 i18n.py（收口后补键，同 W2-1）
+        pr_title = QLabel("PR 曲线 / 阈值推荐")
+        pr_title.setStyleSheet("font-weight: bold;")
+        pr_lay.addWidget(pr_title)
+        self._pr_btn = QPushButton("阈值分析")
+        self._pr_btn.setEnabled(False)
+        self._pr_btn.clicked.connect(self._run_pr_analysis)
+        pr_lay.addWidget(self._pr_btn)
+        self._pr_chart = LossChartWidget(self)
+        self._pr_chart.set_title("P / R vs 阈值")
+        pr_lay.addWidget(self._pr_chart, 1)
+        self._pr_rec_label = QLabel("-")
+        pr_lay.addWidget(self._pr_rec_label)
+        self._pr_apply_btn = QPushButton("写入推理阈值")
+        self._pr_apply_btn.setEnabled(False)
+        self._pr_apply_btn.clicked.connect(self._apply_threshold)
+        pr_lay.addWidget(self._pr_apply_btn)
+        bottom.addWidget(pr_box, 1)
         root.addLayout(bottom, 1)
         root.addStretch()
 
@@ -339,6 +364,11 @@ class EvalPage(QWidget):
             self._confusion.clear_matrix()
 
         self.status_changed.emit(tr("评估完成"), f"{len(rows)} {tr('个指标')}")
+        # W2-2：det 任务出结果后开放阈值分析（其余任务诚实禁用）
+        self._last_rows = rows
+        self._pr_btn.setEnabled(
+            self._metric_combo.currentIndex() == 0  # mAP (Detection)
+        )
 
     @Slot(str)
     def _eval_failed_slot(self, msg: str) -> None:
@@ -346,6 +376,76 @@ class EvalPage(QWidget):
         self._eval_progress.setVisible(False)  # R5-8: 隐藏进度条
         self._run_btn.setEnabled(True)
         self.status_changed.emit(tr("评估失败"), msg[:60])
+
+    def _run_pr_analysis(self) -> None:
+        """W2-2：worker 内收集原始检出并扫 PR（推理秒级×N 图）。"""
+        model = self._model_edit.text().strip()
+        gt = self._gt_edit.text().strip()
+        if not model or not gt:
+            self.status_changed.emit("请先完成一次评估", "warn")
+            return
+        self._pr_btn.setEnabled(False)
+        self.status_changed.emit("阈值分析中...", "info")
+
+        def _work():
+            try:
+                from evaluation.pr_curve import (
+                    best_f1_point,
+                    collect_detections,
+                    pr_curve,
+                    save_eval_report,
+                )
+
+                collected = collect_detections(model, gt)
+                pr = pr_curve(collected)
+                best = best_f1_point(pr)
+                report = save_eval_report(
+                    getattr(self, "_last_rows", None), pr, best
+                )
+                invoke_main(self, "_on_pr_ready", pr, best, report)
+            except (ImportError, RuntimeError, OSError, ValueError) as exc:
+                invoke_main(self, "_on_pr_failed", str(exc))
+
+        run_job(_work, name="eval.pr_curve",
+                on_error=ui_on_error(self, "_on_pr_failed"))
+
+    @Slot(list, object, str)
+    def _on_pr_ready(self, pr: list, best, report: str) -> None:
+        """W2-2：PR 就绪——双线渲染 + 推荐标签 + 落盘回显。"""
+        self._pr_btn.setEnabled(True)
+        self._pr_chart.clear_all()
+        self._pr_chart.add_series("precision", "#38bdf8")
+        self._pr_chart.add_series("recall", "#f59e0b")
+        for i, pt in enumerate(pr):
+            self._pr_chart.append("precision", pt["precision"], epoch=i + 1)
+            self._pr_chart.append("recall", pt["recall"], epoch=i + 1)
+        if best.get("available"):
+            self._best_threshold = float(best["threshold"])
+            self._pr_rec_label.setText(
+                f"推荐阈值 {best['threshold']:.2f}"
+                f"（F1={best['f1']:.2f} P={best['precision']:.2f}"
+                f" R={best['recall']:.2f}）"
+            )
+            self._pr_apply_btn.setEnabled(True)
+        else:
+            self._best_threshold = None
+            self._pr_rec_label.setText("无评估数据（检查真值/模型）")
+            self._pr_apply_btn.setEnabled(False)
+        self.status_changed.emit("阈值分析完成", os.path.basename(report))
+
+    @Slot(str)
+    def _on_pr_failed(self, msg: str) -> None:
+        """W2-2：分析失败复位（按钮恢复，显式报错）。"""
+        self._pr_btn.setEnabled(True)
+        self.status_changed.emit("阈值分析失败", msg[:60])
+
+    def _apply_threshold(self) -> None:
+        """W2-2：推荐阈值写入推理页（信号经 main 接线）。"""
+        v = getattr(self, "_best_threshold", None)
+        if v is None:
+            return
+        self.threshold_apply.emit(float(v))
+        self.status_changed.emit("已写入推理阈值", f"{v:.2f}")
 
     def set_results(self, rows: list) -> None:
         """设置结果表行。rows: [(metric, value, note), ...]"""

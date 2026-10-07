@@ -56,6 +56,20 @@ def fake_exporter(monkeypatch):
     FakeExporter.calls = []
     FakeExporter.fail_trt = False
     monkeypatch.setattr(exp_mod, "SupervisedExporter", FakeExporter)
+    # W2-1：一致性校验/模型卡桩（页面经模块属性解析，monkeypatch 生效）；
+    # 真实校验链由 tests/test_w2_1_onnx_consistency.py 集成覆盖
+    import exporter.onnx_consistency as oc
+
+    monkeypatch.setattr(
+        oc, "onnx_consistency_check",
+        lambda pt, onnx, images=None, **k: {
+            "ok": True, "match_rate": 0.997, "n_images": 1, "detail": "n=1",
+        },
+    )
+    monkeypatch.setattr(
+        oc, "write_model_card",
+        lambda pt, onnx, task: onnx + ".card.json",
+    )
     return FakeExporter
 
 
@@ -130,7 +144,7 @@ def test_export_success_onnx_and_trt(
     assert os.path.exists(onnx_call[2])
 
     assert deploy_page._export_btn.isEnabled() is True
-    assert deploy_page._msgs[-1][0] == "导出完成"
+    assert "导出完成" in deploy_page._msgs[-1][0]  # W2-1 含一致性结果后缀
     assert "det.onnx" in deploy_page._msgs[-1][1]
     assert "det.engine" in deploy_page._msgs[-1][1]
     assert deploy_page._progress.value() == 100
@@ -149,7 +163,7 @@ def test_export_onnx_only_skips_trt(
     deploy_page._do_export()
     qapp.processEvents()
     assert [c[0] for c in fake_exporter.calls] == ["onnx"]
-    assert deploy_page._msgs[-1][0] == "导出完成"
+    assert "导出完成" in deploy_page._msgs[-1][0]  # W2-1 含一致性结果后缀
     assert "det.onnx" in deploy_page._msgs[-1][1]
 
 
@@ -164,7 +178,7 @@ def test_export_trt_failure_degrades_to_onnx(
     deploy_page._do_export()
     qapp.processEvents()
     # TRT 失败不中断导出：完成状态、只有 onnx 产物
-    assert deploy_page._msgs[-1][0] == "导出完成"
+    assert "导出完成" in deploy_page._msgs[-1][0]  # W2-1 含一致性结果后缀
     assert "det.onnx" in deploy_page._msgs[-1][1]
     assert "det.engine" not in deploy_page._msgs[-1][1]
 
@@ -240,7 +254,7 @@ def test_export_finished_audit_failure_warns_not_silent(
         qapp.processEvents()
 
     # 完成回调不崩：完成状态照常发出、按钮恢复可用
-    assert deploy_page._msgs[-1][0] == "导出完成"
+    assert "导出完成" in deploy_page._msgs[-1][0]  # W2-1 含一致性结果后缀
     assert deploy_page._export_btn.isEnabled() is True
     # 审计失败必须留下 warning 痕迹
     warns = [
