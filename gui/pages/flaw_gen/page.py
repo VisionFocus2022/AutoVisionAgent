@@ -34,6 +34,7 @@ class FlawGenPage(QWidget):
     """缺陷生成页：配置 OK 模板 + 缺陷特征 → 合成图像。"""
 
     status_changed = Signal(str, str)
+    annotate_requested = Signal(str)  # W2-4：生成完成→去标注（携带输出目录）
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -111,9 +112,19 @@ class FlawGenPage(QWidget):
 
         # 日志
         self._log_label = QLabel(tr("等待开始..."))
+
+        # W2-4：生成完成→回标注页（文案字面量=避让并行批在途 i18n.py）
+        self._annotate_btn = QPushButton("去标注")
+        self._annotate_btn.setEnabled(False)
+        self._annotate_btn.clicked.connect(self._goto_annotate)
         self._log_label.setStyleSheet("color: #94a3b8; font-size: 12px; padding: 4px;")
         self._log_label.setWordWrap(True)
-        root.addWidget(self._log_label)
+        # W2-4：日志与「去标注」同行（按钮此前为孤儿控件不上 UIA 树——
+        # 创建 vs 入布局是两回事，exe 探针实证）
+        tail_row = QHBoxLayout()
+        tail_row.addWidget(self._log_label, 1)
+        tail_row.addWidget(self._annotate_btn)
+        root.addLayout(tail_row)
 
         root.addStretch()
 
@@ -235,6 +246,7 @@ class FlawGenPage(QWidget):
         self._progress.setValue(100)
         self._log_label.setText(tr("生成完成") + f": {generated} " + tr("张"))
         self.status_changed.emit(tr("缺陷生成完成"), f"{generated} {tr('张')}")
+        self._annotate_btn.setEnabled(generated > 0)  # W2-4：有产物才可回标注
 
     @Slot(str)
     def _failed_slot(self, msg: str) -> None:
@@ -242,6 +254,13 @@ class FlawGenPage(QWidget):
         self._gen_btn.setEnabled(True)
         self._log_label.setText(tr("生成失败") + f": {msg}")
         self.status_changed.emit(tr("生成失败"), msg[:60])
+        self._annotate_btn.setEnabled(False)  # W2-4：失败不得回标注
+
+    def _goto_annotate(self) -> None:
+        """W2-4：携带输出目录请求切标注页（main 接线先载后切）。"""
+        out = self._out_edit.text().strip()
+        if out:
+            self.annotate_requested.emit(out)
 
     def retranslate(self) -> None:
         self._title.setText(tr("缺陷生成"))

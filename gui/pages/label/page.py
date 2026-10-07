@@ -394,6 +394,10 @@ class LabelPage(SamSessionMixin, QWidget):
         )
         if not folder:
             return
+        self.load_folder(folder)
+
+    def load_folder(self, folder: str) -> None:
+        """无对话框载入目录（W2-4：缺陷生成"去标注"缝；open_folder 复用）。"""
         self._folder = folder  # W62：向导交接上下文
 
         # 递归扫描所有图像文件

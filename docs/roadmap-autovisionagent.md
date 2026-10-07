@@ -54,7 +54,7 @@
 | W2-1 | ONNX 一致性校验 + 模型卡随包 | L2 | ✅ 完成（2026-10-07）：exporter/onnx_consistency（compare_boxes 贪心匹配/YOLO(onnx) 双端同源推理/模型卡复用 W1-2 历史字段随包）+deploy worker 内插桩（成/败显式）；**真链逼出两真缺陷均修**——torch2.6 weights_only 拒载 ultralytics 检查点（safe_load_model 收敛白名单）、AMP Half 权重导出类型炸（解包 float()）；集成测试真链 10 绿；PRD docs/prd-w2-1-onnx-consistency.md |
 | W2-2 | 评估增强：PR 曲线 + 阈值调优选荐 | L2 | ✅ 完成（2026-10-07）：evaluation/pr_curve.py（独立采集链：conf 0.01 地板+贪心 IoU 独占打标；阈值网格扫 P/R/F1；报告落 workspace/eval_reports/）+评估页 PR 分析区（P/R 双线图+F1 最优推荐+一键写入推理阈值经 main 接线）；det 任务外诚实禁用；单测 8 绿；PRD docs/prd-w2-2-pr-threshold.md |
 | W2-3 | 数据增强管线（一期：参数透传） | L2 | ✅ 完成（2026-10-07）：TrainConfig aug_hsv/flip/mosaic 三开关（默认全关=不透传，ultralytics 默认行为零回归——fake-YOLO 断言零增强键泄漏）+训练页开关组（ui_fns 拆分腾预算）+适配器 _aug_kwargs（勾选才传预设值+日志留痕）；单测 4 绿；train/page 779/800 |
-| W2-4 | 缺陷生成一期 | L2-L3 | 侦察 flaw_gen 现状后细化（粗：选中图跑生成引擎→产物落盘→可回标注页；UIA 最小链） |
+| W2-4 | 缺陷生成一期 | L2-L3 | ✅ 完成（2026-10-07）：侦察确认引擎+落盘已在（SganBlend seamlessClone 离线）——补回标注闭环：label.load_folder 无对话框缝+flaw_gen「去标注」按钮（有产物才启用）+main 先载后切接线；UIA 链 84s（生成→落盘→去标注→列表见 synthetic_）；单测 7 绿含引擎真融合冒烟；PRD docs/prd-w2-4-flawgen-loop.md |
 | （悬置） | cls 真训练 | — | **D-1 默认不提前**（用户裁决可插队） |
 
 排序理由（三原则）：无硬依赖拓扑下，部署可信（W2-1）直接服务北极星
@@ -104,7 +104,8 @@ W3-相机采集 depends D-2(硬件, 外部闸门)
 
 ## §7 状态快照（跨会话真相源）
 
-- 当前波：Wave 2（W2-1/W2-2/W2-3 ✅ 2026-10-07；下一步 W2-4 缺陷生成一期（侦察先行））
+- 当前波：Wave 2（**四行全部完成** W2-1/2/3/4 ✅ 2026-10-07；
+  波末 DoD 先验待用户实测认可；下一步 Wave 3 细化或波末小修）
 - Wave 1 波级复盘三问（2026-10-07）：①预测准——五行 L2+一行 L1 定档
   全命中，无升/降档返工；②DoD 设对——六行 DoD 全部一次达成且四行
   逼出真发现（骨干能力差/布局击穿/中断盲区/UIA 不可见控件+状态覆盖），

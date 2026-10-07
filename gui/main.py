@@ -274,6 +274,13 @@ def build_window(init_password: str | None = None) -> MainWindow:
     # W2-2：评估页推荐阈值 → 推理页阈值（同窗不切页）
     eval_page.threshold_apply.connect(predict_page.set_threshold)
 
+    # W2-4：缺陷生成完成 → 回标注页（先载目录后切页，W1-2 模式）
+    def _goto_annotate(out_dir: str) -> None:
+        label_page.load_folder(out_dir)
+        win.select("label")
+
+    flaw_gen_page.annotate_requested.connect(_goto_annotate)
+
     # ---- 项目打开 → 通知工作页 ----
     project_page.project_opened.connect(data_page.set_project_dir)
     project_page.project_opened.connect(predict_page.set_project_dir)
