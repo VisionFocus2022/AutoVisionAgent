@@ -36,7 +36,7 @@ def register_all_engines() -> None:
         try:
             __import__(f"models.supervised.engines.{_mod}")
         except ImportError:
-            _logger.warning("引擎模块 %s 不可用，已跳过", _mod)
+            _logger.warning("引擎模块 %s 不可用，已跳过", _mod, exc_info=True)  # R4-N14：留 traceback 防循环导入被吞
 
 
 __all__ = ["register_all_engines"]

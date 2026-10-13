@@ -314,6 +314,15 @@ _EN_US: dict[str, str] = {
     "单类": "per-class",
     "生成质量": "Generation Quality",
     "感知损失": "Perceptual Loss",
+    # E12/E17（2026-10-06 三轮审查）：生成式评估入口校验与独立性提示
+    "模型路径不存在": "Model path does not exist",
+    "评估目录不存在": "Evaluation folder does not exist",
+    "生成图目录为空": "Generated images folder is empty",
+    "评估图目录为空": "Evaluation images folder is empty",
+    "请确认评估集独立于训练集（同源数据会导致指标虚高）": (
+        "Ensure the evaluation set is independent of the training set "
+        "(shared data inflates metrics)"
+    ),
     "导出完成": "Export Complete",
     "导出失败": "Export Failed",
     "请先选择标注文件夹": "Please select annotation folder",

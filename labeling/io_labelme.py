@@ -60,6 +60,13 @@ def shape_to_labelme(shape: Shape) -> dict[str, Any]:
         # 自定义键：保留原始模式以支持精确往返（既有 loader 忽略）
         "mode": shape.mode.value,
         "flags": {k: v for k, v in shape.flags} if shape.flags else {},
+        # L13（2026-10-06 三轮审查）：LabelMe 标准可选键位补齐（官方
+        # 工具写出的 shape 均含这三键，缺失时部分第三方消费端告警）。
+        # color 本就不持久化（读回 DEFAULT_COLOR），此处补键位仅为
+        # 格式兼容，不改变往返语义。
+        "description": "",
+        "fill_color": None,
+        "line_color": None,
     }
 
 

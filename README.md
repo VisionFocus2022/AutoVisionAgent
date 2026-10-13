@@ -18,11 +18,20 @@ python -m venv .venv
 .venv/Scripts/python -m pytest
 ```
 
-注意：全量 `pytest` 自带覆盖率门禁（`--cov-fail-under=92`，配置见 `pytest.ini`，分母含 core/gui 等 12 个包），覆盖率不足时整体失败。只跑单个测试文件时可用 `-o addopts=` 清掉覆盖率参数快跑：
+注意：全量 `pytest` 自带覆盖率门禁（`--cov-fail-under=92`，配置见 `pytest.ini`，分母含 core/gui 等 12 个包），覆盖率不足时整体失败。快跑请统一走脚本入口（`--no-cov` 口径，保留 uia 排除与 strict-markers）：
 
 ```bash
-.venv/Scripts/python -m pytest tests/test_xxx.py -o addopts= -q
+bash scripts/test-fast.sh tests/test_xxx.py   # 指定文件快跑
+bash scripts/test-fast.sh                     # unit 子集
+bash scripts/test-changed.sh                  # 按最近改动包自动选择
 ```
+
+## 工程流程
+
+- 代码审查与质量门禁总览（四层门禁、自审清单、AI 辅助审查、mypy 三阶段）：[docs/quality-gates.md](docs/quality-gates.md)
+- 提交前自审清单：[docs/self-review.md](docs/self-review.md)
+- 本地钩子：`pip install pre-commit && pre-commit install`（配置 `.pre-commit-config.yaml`）
+- 推送前聚合门禁：`bash scripts/check-gate.sh`（命名 + ruff 棘轮 + marker 防回潮 + 全量 pytest）
 
 ## 桌面应用
 

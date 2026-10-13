@@ -102,12 +102,18 @@ def point_in_polygon(
 ) -> bool:
     """射线法判断点是否在多边形内部。
 
+    L7（2026-10-06 三轮审查）语义修正：实现为经典射线法（严格比较），
+    恰在多边形边界上的点结果依数值与边方向而定（**不保证** True）——
+    原 docstring"含边界"与实现不符，本处以文档对齐实现。水平边
+    （yi == yj）显式跳过：射线法本就不该与其求交，旧实现的
+    ``(yj - yi + 1e-12)`` 恒正偏置在近水平边上有系统性偏移。
+
     Args:
         pt: 待检测点 (x, y)。
         polygon: 多边形顶点列表。
 
     Returns:
-        True 如果点在多边形内（含边界）。
+        True 如果点在多边形内部（边界点不保证）。
     """
     x, y = pt
     n = len(polygon)
@@ -118,8 +124,11 @@ def point_in_polygon(
     for i in range(n):
         xi, yi = polygon[i]
         xj, yj = polygon[j]
+        if yi == yj:
+            j = i
+            continue  # L7：水平边跳过（射线法标准处理）
         if ((yi > y) != (yj > y)) and (
-            x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi
+            x < (xj - xi) * (y - yi) / (yj - yi) + xi
         ):
             inside = not inside
         j = i
@@ -175,10 +184,20 @@ def is_closed(points: list[Point]) -> bool:
     return math.hypot(x1 - x2, y1 - y2) < 1e-9
 
 
-def close_polygon(points: list[Point]) -> tuple[Point, ...]:
-    """返回首尾闭合的点序列（已闭合则原样返回）。"""
+def close_polygon(
+    points: list[Point], check_collinear: bool = False
+) -> tuple[Point, ...]:
+    """返回首尾闭合的点序列（已闭合则原样返回）。
+
+    L8/L15（2026-10-06 三轮审查）：check_collinear=True 时校验顶点
+    退化——三点以上全共线（Shoelace 面积≈0）抛 ValueError（落盘无效
+    几何前置拦截）。默认 False 保持旧行为（静默闭合，面积语义交由
+    下游决定）。
+    """
     pts = tuple(points)
     if len(pts) >= 3 and not is_closed(pts):
+        if check_collinear and polygon_area(list(pts)) < 1e-9:
+            raise ValueError("多边形顶点全部共线，无法构成有效闭合区域")
         return (*pts, pts[0])
     return pts
 

@@ -35,25 +35,25 @@ def add_recent(base_root: str, dirname: str) -> list[str]:
     lst.insert(0, dirname)
     # 截断
     lst = lst[:_MAX_RECENT]
-    # 持久化
-    path = _recent_path(base_root)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"recent": lst}, f, ensure_ascii=False, indent=2)
-    except OSError:
-        pass
+    # 持久化（R4-S4：原子写，防崩溃半截文件）
+    import contextlib
+
+    from project.counter import _atomic_write_json
+
+    with contextlib.suppress(OSError):
+        _atomic_write_json(_recent_path(base_root), {"recent": lst})
     return lst
 
 
 def remove_recent(base_root: str, dirname: str) -> list[str]:
     """从最近列表移除。"""
     lst = [d for d in recent_list(base_root) if d != dirname]
-    path = _recent_path(base_root)
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump({"recent": lst}, f, ensure_ascii=False, indent=2)
-    except OSError:
-        pass
+    import contextlib
+
+    from project.counter import _atomic_write_json
+
+    with contextlib.suppress(OSError):
+        _atomic_write_json(_recent_path(base_root), {"recent": lst})
     return lst
 
 

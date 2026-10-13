@@ -78,7 +78,12 @@ class AbdetAnomalibEngine(AbstractTaskEngine):
             score=score_f if score_f is not None else 0.0,
         )
         if anomaly_map is not None:
-            result = result.with_extra("anomaly_map", anomaly_map)
+            # R4-S7（2026-10-07 四轮审查）：detach().cpu()——此前带计算图
+            # 的 GPU tensor 直进 extra，长批量跑逐帧累积显存且阻止激活
+            # 回收（与其余引擎 masks 的 .cpu() 处理对齐）。
+            result = result.with_extra(
+                "anomaly_map", anomaly_map.detach().cpu()
+            )
         return result.with_extra(
             "is_defective", bool(score_f is not None and score_f >= threshold)
         )

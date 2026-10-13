@@ -9,6 +9,9 @@
 
 ### ⚠️ 行为变更（升级必读）
 
+- **LPIPS 配对语义改最近邻（E4）**：`perceptual_loss` 默认按"每张生成图对全部真实图取最小 LPIPS 再平均"（此前按下标任意配对——目录输入下 gen/real 文件顺序无配对关系，旧值无统计意义）。等长配对场景可显式传 `pairing="index"` 回退旧语义
+- **FID/LPIPS 样本帽 20 → 200（E5）**：小样本 FID 显著偏高（2048 维协方差欠定），**升级后 FID 数值普遍上升属修正而非退化**。样本充足时建议显式传更大 max_images
+- **生成式评估空集合显式反馈（E12）**：模型路径不存在/目录为空从此前静默返回空表改为 N/A 行 + 警告回调；进度回调（10/70/100）接通（此前分发处丢弃）
 - **Detect threshold 改 proto3 optional presence**：显式 `threshold=0.0`（工业低阈值/全召回）此前被 proto3 标量语义当"未设置"回退默认 0.5，现在正常生效。**C# 客户端**：`Detect*` 系列 threshold 参数升级 `float?`——传 `null` 表示不设置（服务端用引擎默认），显式值（含 0）正常传输；旧调用方零改动兼容
 - **未知任务名 fail-closed（ADR-0006）**：Detect/LoadModel 收到未知 task 此前静默回退目标检测（fail-open），现在返回 `INVALID_ARGUMENT`（C# `MapTaskType` 抛 `ArgumentException`）。"vlm" 等 Python 侧不存在的任务名已从 C# 映射移除，sseg/sgan/super 已补
 - **数据集导出默认 train/val 分层划分（8:2）**：`labelme_dir_to_yolo` 默认按类别分层划分到 `images/{train,val}` 子目录——**mAP 不再在训练集上计算**（此前 train=val 同目录，指标虚高）。`val_ratio=0` 保持旧单目录布局（兼容逃生门）。存量数据集重新导出后训练指标会**真实下降**，这是修正而非退化

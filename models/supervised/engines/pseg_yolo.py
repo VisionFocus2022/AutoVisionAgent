@@ -32,6 +32,11 @@ class PsegYoloEngine(AbstractTaskEngine):
         from ultralytics import YOLO
 
         self._model = YOLO(weights_path)
+        # R4-S1（2026-10-07 四轮审查）：load 的 device 承诺对 infer 生效
+        # ——ultralytics 默认自动选设备，用户显式选 CPU（训练占显存时）
+        # 此前被静默忽略。getattr 容错：无 overrides 的替身/兼容层跳过。
+        if isinstance(getattr(self._model, "overrides", None), dict):
+            self._model.overrides["device"] = device
         self._weights_path = weights_path
         self._device = device
 

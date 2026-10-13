@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 from core.interfaces_supervised import TaskType
-from project.counter import TaskCounter
+from project.counter import TaskCounter, _atomic_write_json
 from project.models import (
     ProjectId,
     ProjectLayout,
@@ -16,6 +17,10 @@ from project.models import (
 )
 
 _logger = logging.getLogger(__name__)
+
+# R4-S5（2026-10-07 四轮审查）：项目名合法字符——字母数字下划线连字符
+# 与中文；显式挡路径穿越（../..）与 Windows 保留字符（:*?"<>|）。
+_VALID_PROJECT_NAME = re.compile(r"^[\w\-\u4e00-\u9fff]{1,64}$")
 
 
 class FileSystemProjectStore:
@@ -37,12 +42,21 @@ class FileSystemProjectStore:
         """创建新项目目录。
 
         Args:
-            name: 项目名。
+            name: 项目名（R4-S5：校验合法字符——防路径穿越与 Windows
+                保留字符导致的模糊 OSError）。
             task: 任务类型。
 
         Returns:
             (ProjectId, ProjectLayout) 元组。
+
+        Raises:
+            ValueError: 项目名含非法字符或超长（R4-S5）。
         """
+        if not _VALID_PROJECT_NAME.match(name or ""):
+            raise ValueError(
+                f"项目名含非法字符或超长（允许字母/数字/下划线/连字符/"
+                f"中文，≤64 字）: {name!r}"
+            )
         seq = self._counter.next_id(task.value)
         pid = ProjectId(task=task, seq=seq, name=name)
         layout = ProjectLayout(pid, self._base_root)
@@ -51,24 +65,20 @@ class FileSystemProjectStore:
         for subdir in layout.all_dirs():
             os.makedirs(subdir, exist_ok=True)
 
-        # 写入项目元数据
+        # 写入项目元数据（R4-S4：原子写）
         meta_path = os.path.join(layout.root, "project_meta.json")
         try:
-            import json
-            with open(meta_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "task": task.value,
-                        "seq": seq,
-                        "name": name,
-                        "dirname": pid.to_dirname(),
-                    },
-                    f,
-                    ensure_ascii=False,
-                    indent=2,
-                )
+            _atomic_write_json(
+                meta_path,
+                {
+                    "task": task.value,
+                    "seq": seq,
+                    "name": name,
+                    "dirname": pid.to_dirname(),
+                },
+            )
         except OSError:
-            _logger.warning("项目元数据写入失败: %s", meta_path)
+            _logger.warning("项目元数据写入失败: %s", meta_path, exc_info=True)
 
         return pid, layout
 

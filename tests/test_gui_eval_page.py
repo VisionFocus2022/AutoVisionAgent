@@ -303,6 +303,8 @@ def test_run_eval_fid_and_lpips(
 def test_run_eval_fid_empty_real_images_no_rows(
     eval_page, fake_threads, monkeypatch, tmp_path, qapp
 ):
+    """E12（2026-10-06 三轮审查）后契约：空 real → N/A 行（1 行）而非
+    空表——用户在表格里直接看到"评估图目录为空"而非无反馈。"""
     import evaluation.generative_metrics as gm
 
     called = []
@@ -310,11 +312,14 @@ def test_run_eval_fid_empty_real_images_no_rows(
 
     gt = tmp_path / "gt"  # 空目录 → real_imgs 为空 → 不计算
     gt.mkdir()
+    # E12：gen 侧文件需真实存在（入口校验在前）
+    gen_png = tmp_path / "g.png"
+    gen_png.write_bytes(b"\x89PNG stub")
     eval_page._metric_combo.setCurrentIndex(3)
-    eval_page._model_edit.setText(str(tmp_path / "g.png"))
+    eval_page._model_edit.setText(str(gen_png))
     eval_page._gt_edit.setText(str(gt))
     eval_page._run_eval()
     qapp.processEvents()
     assert called == []
-    assert eval_page._table.rowCount() == 0
+    assert eval_page._table.rowCount() == 1  # N/A 行（非空表）
     assert any(t == "评估完成" for t, _ in eval_page._msgs)

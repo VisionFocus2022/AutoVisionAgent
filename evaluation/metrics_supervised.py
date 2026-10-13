@@ -144,6 +144,12 @@ def det_map(
 
     Returns:
         dict: ``{"mAP": float, "class_0": float, ...}``
+
+    E19（2026-10-06 三轮审查）语义注记：类别集合取 preds 与 gts labels
+    的**并集**——预测独有类别（GT 中未出现）n_gt=0 → AP=0，会拉低
+    mAP。这与"只评 GT 出现类别"的惯例不同：并集语义会惩罚幻觉类别
+    （对工业缺陷检测是期望行为），但跨工具对比 mAP 时需知晓此口径
+    差异。显式传 num_classes 可锁定类别域（仅评估 [0, num_classes)）。
     """
     # 收集所有类别
     all_labels = set()

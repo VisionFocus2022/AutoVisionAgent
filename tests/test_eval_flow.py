@@ -212,6 +212,8 @@ def test_run_generative_eval_fid_and_lpips(tmp_path, monkeypatch):
 
 @pytest.mark.unit
 def test_run_generative_eval_empty_real_no_rows(tmp_path, monkeypatch):
+    """E12（2026-10-06 三轮审查）后契约：空 real → on_warn + N/A 行
+    （此前静默返回空表，用户无从得知为何没有指标）。"""
     import evaluation.generative_metrics as gm
 
     called = []
@@ -219,8 +221,13 @@ def test_run_generative_eval_empty_real_no_rows(tmp_path, monkeypatch):
 
     gt = tmp_path / "gt"  # 空目录 → real_imgs 空 → 不计算
     gt.mkdir()
-    rows = run_generative_eval(str(tmp_path / "g.png"), str(gt), "fid")
-    assert rows == []
+    # gen 侧给单文件路径（存在性校验通过）
+    gen_png = tmp_path / "g.png"
+    gen_png.write_bytes(b"\x89PNG stub")
+    warns = []
+    rows = run_generative_eval(str(gen_png), str(gt), "fid", on_warn=warns.append)
+    assert rows == [("-", "N/A", "评估图目录为空")]
+    assert any("评估图目录为空" in w for w in warns)
     assert called == []
 
 
@@ -249,15 +256,16 @@ def test_run_generative_eval_max_images_caps_both_sides(tmp_path, monkeypatch):
 
 
 @pytest.mark.unit
-def test_run_generative_eval_default_cap_20(tmp_path, monkeypatch):
-    """默认帽 20：两侧各放 25 张 stub → fid 各收 20 张（页侧不传行为不变）。"""
+def test_run_generative_eval_default_cap_200(tmp_path, monkeypatch):
+    """E5（2026-10-06 三轮审查）：默认帽 20 → 200——FID 协方差 2048 维
+    欠定修正。两侧各放 205 张 stub → fid 各收 200 张。"""
     import evaluation.generative_metrics as gm
 
     gen = tmp_path / "gen"
     gt = tmp_path / "gt"
     gen.mkdir()
     gt.mkdir()
-    for i in range(25):
+    for i in range(205):
         _png_stub(gen / f"g{i}.png")
         _png_stub(gt / f"r{i}.png")
 
@@ -267,7 +275,29 @@ def test_run_generative_eval_default_cap_20(tmp_path, monkeypatch):
     run_generative_eval(str(gen), str(gt), "fid")
 
     g, r = seen["fid"]
-    assert len(g) == 20 and len(r) == 20
+    assert len(g) == 200 and len(r) == 200
+
+
+@pytest.mark.unit
+def test_run_generative_eval_cap_falls_back_to_available(tmp_path, monkeypatch):
+    """E5 防回归：帽是上限不是下限——只有 30 张时收 30 张（不虚报也不报错）。"""
+    import evaluation.generative_metrics as gm
+
+    gen = tmp_path / "gen"
+    gt = tmp_path / "gt"
+    gen.mkdir()
+    gt.mkdir()
+    for i in range(30):
+        _png_stub(gen / f"g{i}.png")
+        _png_stub(gt / f"r{i}.png")
+
+    seen = {}
+    monkeypatch.setattr(gm, "fid_score", lambda g, r: seen.update(fid=(g, r)) or 0.0)
+
+    run_generative_eval(str(gen), str(gt), "fid")
+
+    g, r = seen["fid"]
+    assert len(g) == 30 and len(r) == 30
 
 
 @pytest.mark.unit
@@ -423,9 +453,9 @@ def test_run_eval_task_dispatch_generative_vs_supervised(tmp_path, monkeypatch):
     rows = run_eval_task("m.pt", str(gt), "det")
     assert rows[0][0] == "class_0"
 
-    # fid：生成式分支（无真实图 → 空行，不触引擎）
+    # fid：生成式分支（E12：m.pt 不存在 → 路径校验先触发 N/A，不触引擎）
     rows = run_eval_task("m.pt", str(gt), "fid")
-    assert rows == []
+    assert rows == [("-", "N/A", "模型路径不存在")]
 
 
 # ====== W23（v4 P3-3）：score/boxes 裸取防御（契约违反引擎不炸整场） ======
@@ -496,3 +526,103 @@ def test_build_prediction_engine_without_boxes_attr_falls_back_gt(tmp_path):
     assert pred["boxes"] == [[4.0, 4.0, 20.0, 16.0]]  # GT 回退
     assert pred["scores"] == [0.9]                    # 全局 score 填充
     assert pred["labels"] == [0]
+
+
+# ============== E12/E17（2026-10-06 三轮审查）：入口校验与回调 ============== #
+
+
+@pytest.mark.unit
+def test_run_generative_eval_missing_model_warns_na(tmp_path):
+    """E12：模型路径不存在 → on_warn + N/A 行（不再在 PIL 打开时才崩）。"""
+    warns = []
+    rows = run_generative_eval(
+        str(tmp_path / "ghost.pt"), str(tmp_path), "fid", on_warn=warns.append,
+    )
+    assert rows == [("-", "N/A", "模型路径不存在")]
+    assert any("模型路径不存在" in w for w in warns)
+
+
+@pytest.mark.unit
+def test_run_generative_eval_empty_gen_warns(tmp_path):
+    """E12：生成图目录空 → N/A + on_warn。"""
+    gen = tmp_path / "gen"
+    gen.mkdir()
+    gt = tmp_path / "gt"
+    gt.mkdir()
+    _png_stub(gt / "r0.png")
+
+    warns = []
+    rows = run_generative_eval(str(gen), str(gt), "fid", on_warn=warns.append)
+    assert rows == [("-", "N/A", "生成图目录为空")]
+    assert any("生成图目录为空" in w for w in warns)
+
+
+@pytest.mark.unit
+def test_run_generative_eval_reports_progress(tmp_path, monkeypatch):
+    """E12：进度回调收到粗粒度 [10, 70, 100]。"""
+    import evaluation.generative_metrics as gm
+
+    gen = tmp_path / "gen"
+    gt = tmp_path / "gt"
+    gen.mkdir()
+    gt.mkdir()
+    for i in range(2):
+        _png_stub(gen / f"g{i}.png")
+        _png_stub(gt / f"r{i}.png")
+    monkeypatch.setattr(gm, "fid_score", lambda g, r: 0.0)
+
+    progress = []
+    run_generative_eval(str(gen), str(gt), "fid", on_progress=progress.append)
+    assert progress == [10, 70, 100]
+
+
+@pytest.mark.unit
+def test_run_eval_task_passes_callbacks_to_generative(tmp_path, monkeypatch):
+    """E12：run_eval_task 分发不再丢弃 on_progress/on_warn。"""
+    import evaluation.eval_flow as ef
+
+    seen = {}
+
+    def fake_gen_eval(model, gt_dir, task_key, translate=None,
+                      max_images=200, on_progress=None, on_warn=None):
+        seen["p"] = on_progress
+        seen["w"] = on_warn
+        return []
+
+    monkeypatch.setattr(ef, "run_generative_eval", fake_gen_eval)
+
+    run_eval_task("m", "gt", "fid", on_progress=lambda i: None,
+                  on_warn=lambda s: None)
+    assert seen["p"] is not None and seen["w"] is not None, "回调必须透传"
+
+
+@pytest.mark.unit
+def test_scan_images_deterministic_order(tmp_path):
+    """E12：扫描结果排序确定（与创建顺序无关，跨平台一致）。"""
+    import time
+
+    for name in ("c.png", "a.png", "b.png"):
+        _png_stub(tmp_path / name)
+        time.sleep(0.01)  # 拉开 mtime 差距防巧合
+
+    import os as _os
+
+    result = scan_images(str(tmp_path))
+    names = [_os.path.basename(p) for p in result]
+    assert names == ["a.png", "b.png", "c.png"]
+
+
+@pytest.mark.unit
+def test_run_eval_task_supervised_warns_dataset_independence(tmp_path, monkeypatch):
+    """E17：监督式分支入口提示评估集独立性（生成式分支不提示）。"""
+    import models.supervised.registry as reg_mod
+
+    monkeypatch.setattr(reg_mod, "get_engine", lambda enum_val: (_ for _ in ()).throw(RuntimeError()))
+
+    gt = tmp_path / "gt"
+    gt.mkdir()
+    _labelme(gt / "a.json", "a.png")
+
+    warns = []
+    run_eval_task("m.pt", str(gt), "det", on_warn=warns.append)
+    assert any("独立于训练集" in w for w in warns), "监督式评估必须提示独立性"

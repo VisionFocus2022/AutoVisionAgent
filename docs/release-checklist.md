@@ -3,6 +3,15 @@
 > 适用：打包发布 dist/ 前的人工验证流程（W4-T4 建立，P2-1 收尾）。
 > 常规开发验证不需要本单——`pytest`（门禁覆盖率见 pytest.ini fail-under + uia 默认排除）即可。
 
+## 0. 审查与钩子健康（W69 增补，工程保障团队方案）
+
+- [ ] AI 深审本版累计 diff：`bash scripts/ai-review.sh <上个tag>..HEAD`，问题清单归档
+- [ ] 自审清单（docs/self-review.md）档 A+B 复核一遍
+- [ ] `pre-commit run --all-files` 全绿（等价证明钩子安装且健康）
+- [ ] 本 W 波无 `--no-verify` 提交（git log 抽查 bypass 痕迹）
+- [ ] mypy 基线无恶化（若已进入 P2 阶段：CI mypy 绿 且 baseline ≤ 上次发版记录值）
+- [ ] 棘轮 L3 破线记债 issue 全部已回收或含明确回收 W 编号
+
 ## 1. 门禁全量（必须 rc=0）
 
 ```bash

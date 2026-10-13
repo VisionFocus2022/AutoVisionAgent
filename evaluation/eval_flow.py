@@ -24,23 +24,30 @@ def _identity(s: str) -> str:
 
 
 def scan_images(root: str, exts=GEN_IMG_EXTS) -> list[str]:
-    """递归收集 root 下指定后缀（大小写不敏感）的图像路径。"""
-    return [
+    """递归收集 root 下指定后缀（大小写不敏感）的图像路径。
+
+    E12（2026-10-06 三轮审查）：sorted()——os.walk 顺序平台相关且不可
+    复现，gen/real 两侧 [:max_images] 截取依赖顺序；排序后确定性。
+    """
+    return sorted(
         os.path.join(r, f)
         for r, _, fs in os.walk(root)
         for f in fs
         if f.lower().endswith(exts)
-    ]
+    )
 
 
 def scan_labelme_jsons(gt_dir: str) -> list[str]:
-    """收集 gt_dir 顶层 LabelMe JSON 标注路径（非目录返回空）。"""
+    """收集 gt_dir 顶层 LabelMe JSON 标注路径（非目录返回空）。
+
+    E12：sorted() 同 scan_images（os.listdir 顺序平台相关）。
+    """
     if not os.path.isdir(gt_dir):
         return []
-    return [
+    return sorted(
         os.path.join(gt_dir, f) for f in os.listdir(gt_dir)
         if f.endswith(".json")
-    ]
+    )
 
 
 def read_annotation(path: str) -> dict:
@@ -48,8 +55,15 @@ def read_annotation(path: str) -> dict:
         return json.load(fh)
 
 
-def extract_gt(ann: dict) -> tuple[list[list], list[int]]:
-    """从 LabelMe 标注提取矩形框与全零标签（单点矩形补齐为点框）。"""
+def extract_gt(ann: dict, label_map: dict[str, int] | None = None) -> tuple[list[list], list[int]]:
+    """从 LabelMe 标注提取矩形框与标签（单点矩形补齐为点框）。
+
+    E18（2026-10-06 三轮审查）：label_map 提供时按类别名映射真实标签 id
+    （此前恒全零——多缺陷类别被压成同一类，det mAP 失真）；None 保持
+    全零旧行为（兼容锚）。诚实边界：pred 侧类别对齐依赖引擎 labels
+    契约（defect_N 字符串映射），属 build_prediction 深改，另行排期
+    ——当前 map 语义为"GT 侧真实化 + pred 侧文档化"。
+    """
     shapes = ann.get("shapes", [])
     boxes = [
         [s["points"][0][0], s["points"][0][1],
@@ -57,7 +71,14 @@ def extract_gt(ann: dict) -> tuple[list[list], list[int]]:
          s["points"][1][1] if len(s["points"]) > 1 else s["points"][0][1]]
         for s in shapes if s.get("shape_type") == "rectangle"
     ]
-    return boxes, [0] * len(boxes)
+    if label_map is None:
+        labels = [0] * len(boxes)
+    else:
+        labels = [
+            label_map.get(str(s.get("label", "")), 0)
+            for s in shapes if s.get("shape_type") == "rectangle"
+        ]
+    return boxes, labels
 
 
 def load_eval_engine(
@@ -243,6 +264,8 @@ def run_generative_eval(
     task_key: str,
     translate: Translate = _identity,
     max_images: int = 200,
+    on_progress: Callable[[int], None] | None = None,
+    on_warn: Callable[[str], None] | None = None,
 ) -> Rows:
     """生成式评估（FID/LPIPS）：model 为目录则递归取图，否则视为单文件。
 
@@ -250,18 +273,51 @@ def run_generative_eval(
     E5（2026-10-06 三轮审查）：默认 20 → 200——FID 协方差 2048 维，
     20 张样本严重欠定（秩≤20），FID 恒有偏且噪声大；200 起步才有
     统计意义（仍非充分，样本充足时应显式传更大值）。
+    E12（2026-10-06 三轮审查）：入口校验（路径不存在/空集合 → on_warn
+    + N/A 行，不再静默返回空表）+ 粗粒度进度回调（10/70/100——特征
+    提取内部不逐图回调，注明局限）。
     """
     from evaluation.generative_metrics import fid_score, perceptual_loss
+
+    def _warn(msg: str) -> None:
+        if on_warn is not None:
+            on_warn(translate(msg))
+
+    # E12：路径存在性校验（此前不存在的文件路径在 PIL 打开才崩，串不友好）
+    if not os.path.isdir(model) and not os.path.isfile(model):
+        _warn("模型路径不存在")
+        return [("-", "N/A", translate("模型路径不存在"))]
+    if not os.path.isdir(gt_dir):
+        _warn("评估目录不存在")
+        return [("-", "N/A", translate("评估目录不存在"))]
 
     rows: Rows = []
     gen_imgs = scan_images(model) if os.path.isdir(model) else [model]
     real_imgs = scan_images(gt_dir)
-    if task_key == "fid" and gen_imgs and real_imgs:
+
+    if not gen_imgs:
+        _warn("生成图目录为空，无法计算指标")
+        return [("-", "N/A", translate("生成图目录为空"))]
+    if not real_imgs:
+        _warn("评估图目录为空，无法计算指标")
+        return [("-", "N/A", translate("评估图目录为空"))]
+
+    if on_progress is not None:
+        on_progress(10)  # E12：扫描完成
+
+    if task_key == "fid":
         val = fid_score(gen_imgs[:max_images], real_imgs[:max_images])
+        if on_progress is not None:
+            on_progress(70)
         rows.append(("FID", f"{val:.2f}", translate("生成质量")))
-    elif task_key == "lpips" and gen_imgs and real_imgs:
+    elif task_key == "lpips":
         val = perceptual_loss(gen_imgs[:max_images], real_imgs[:max_images])
+        if on_progress is not None:
+            on_progress(70)
         rows.append(("LPIPS", f"{val:.4f}", translate("感知损失")))
+
+    if on_progress is not None:
+        on_progress(100)
     return rows
 
 
@@ -282,7 +338,17 @@ def run_eval_task(
     run_generative_eval docstring）。
     """
     if task_key in ("fid", "lpips"):
-        return run_generative_eval(model, gt_dir, task_key, translate, max_images)
+        # E12（2026-10-06 三轮审查）：分发处补透传——此前签名有这两个
+        # 回调参数却被丢弃（GUI 侧一直在传，纯分发遗漏）。
+        return run_generative_eval(
+            model, gt_dir, task_key, translate, max_images,
+            on_progress=on_progress, on_warn=on_warn,
+        )
+    # E17（2026-10-06 三轮审查）：评估集独立性提示——LabelMe 目录若
+    # 直接来自训练导出（train/val 同源），mAP 虚高。放本层（而非
+    # run_supervised_eval 内）保证直调该函数的测试与调用方零干扰。
+    if on_warn is not None:
+        on_warn(translate("请确认评估集独立于训练集（同源数据会导致指标虚高）"))
     return run_supervised_eval(
         model, gt_dir, task_key, on_progress, translate, on_warn, logger
     )

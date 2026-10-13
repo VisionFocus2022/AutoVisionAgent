@@ -156,7 +156,12 @@ def create_snapshot(project_root: str, label: str) -> str:
         snap_dir = os.path.join(snap_root, f"{base}-{suffix}")
     os.makedirs(snap_dir)
 
-    manifest = build_manifest(project_root)
+    # R4-S6（2026-10-07 四轮审查）：单遍遍历 + 对快照侧文件哈希——此前
+    # build_manifest（第一遍，哈希源文件）与硬链（第二遍 walk）之间存在
+    # 一致性窗口：并发修改的文件会 manifest 记旧内容、硬链指新内容 →
+    # verify_snapshot 必报"哈希不符"→ 快照自毁（拒绝恢复且无自愈）。
+    # 单遍 + 哈希快照侧文件使 manifest 与快照内容天然自洽。
+    manifest: dict[str, dict[str, object]] = {}
     for dirpath, dirnames, filenames in os.walk(project_root):
         dirnames[:] = [d for d in dirnames if d != SNAPSHOT_DIRNAME]
         rel_dir = _rel_posix(project_root, dirpath)
@@ -165,9 +170,19 @@ def create_snapshot(project_root: str, label: str) -> str:
         )
         os.makedirs(mirror_dir, exist_ok=True)
         for name in filenames:
-            _link_or_copy(
-                os.path.join(dirpath, name), os.path.join(mirror_dir, name)
-            )
+            src = os.path.join(dirpath, name)
+            dst = os.path.join(mirror_dir, name)
+            try:
+                _link_or_copy(src, dst)
+                st = os.stat(dst)
+                manifest[_rel_posix(project_root, src)] = {
+                    "sha256": _sha256_file(dst),  # 哈希快照侧（自洽）
+                    "size": st.st_size,
+                }
+            except OSError as exc:
+                logger.warning(
+                    "create_snapshot 跳过不可处理文件 %s: %s", src, exc
+                )
 
     # W19 FR-4.1：manifest 原子写——temp + os.replace，中途崩溃不留半份清单
     payload = {

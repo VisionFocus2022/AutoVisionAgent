@@ -30,14 +30,15 @@ class ClsTorchvisionEngine(AbstractTaskEngine):
                 f"权重文件不存在: {weights_path}", task=self.task.value
             )
 
-        self._model = self._safe_torch_load(weights_path, map_location="cpu")
-        self._model.eval()
-        self._model.to(device)
-        self._weights_path = weights_path
-        self._device = device
+        # R4-S3（2026-10-07 四轮审查）：局部暂存，全链成功后一次性落位
+        # ——此前 _model 先赋值，后续 .to()/transform 构建失败停半初始
+        # 化态（info() 谎报 loaded=True，报错点远离根因）。
+        model = self._safe_torch_load(weights_path, map_location="cpu")
+        model.eval()
+        model.to(device)
         # 预处理流水线一次性构建（避免每次推理重建）
         from torchvision import transforms
-        self._transform = transforms.Compose([
+        transform = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize(256),
             transforms.CenterCrop(224),
@@ -46,6 +47,10 @@ class ClsTorchvisionEngine(AbstractTaskEngine):
                 mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
             ),
         ])
+        self._model = model  # 全链成功，落位
+        self._transform = transform
+        self._weights_path = weights_path
+        self._device = device
 
     def infer(
         self,

@@ -1,0 +1,77 @@
+# =============================================================================
+# .pre-commit-config.yaml — AutoVisionAgent 2.2.0（单人开发 · Windows 优先）
+# 来源：工程保障团队 2026-10-07 方案（Cody 草案，经主理人核定落地形态）
+#
+# 原则：
+#   ① 秒级本地检查（总耗时 ≤5s 硬约束）；慢检查（pytest/mypy 全量/proto 对账）
+#      留给 check-gate.sh 与 CI，绝不进提交路径
+#   ② 只拦本次改动，不翻历史旧账（历史债由既有棘轮治理）
+#   ③ 零网络运行；钩子不静默改写代码语义（ruff 仅 check 不 --fix）
+#   ④ 工具版本单一真源：ruff 走 .venv（requirements.lock.txt 锁装），不建独立
+#      hook 环境——规避 Windows Store python 重定向陷阱与版本漂移
+#
+# 安装（一次性）：
+#   .venv/Scripts/python.exe -m pip install pre-commit
+#   .venv/Scripts/python.exe -m precommit install    # 或 pre-commit install
+# 首次验证（关键）：pre-commit run --all-files 应全绿且 "0 files were modified"
+#
+# 逃生门约定：WIP 提交可 --no-verify，但 push 前必须补跑 bash scripts/check-gate.sh
+# =============================================================================
+
+minimum_pre_commit_version: "3.5.0"
+
+repos:
+  # ---------- 1. Python 静态检查（与 CI lint job 同口径，仅 check） ----------
+  # local 形态理由：项目 ruff 0.16.5 在 .venv 由 lock 锁装；托管 hook 环境版本
+  # 与 lock 脱钩会双漂移。entry 用 .venv 解释器绝对调用，绕开 PATH 干扰。
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check（仅暂存 py 文件，同 CI lint 口径，不 autofix）
+        entry: .venv/Scripts/python.exe -m ruff check --force-exclude
+        language: system
+        types: [python]
+        exclude: ^(_旧副本抢救|unused|dataset[^/]*|weights|deliverables|build|dist)/
+
+  # ---------- 2. 基本卫生（纯本地正则/解析，毫秒级） ----------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # md 排除：防误删两空格硬换行；其余为运行痕迹/资产目录
+        exclude: (?x)^(docs/|outputs/|logs/|.*\.md$|.*\.log$|@AutomationLog\.txt$|_旧副本抢救/|unused/|dataset[^/]*/|weights/|deliverables/)
+      - id: end-of-file-fixer
+        exclude: (?x)^(outputs/|logs/|.*\.log$|@AutomationLog\.txt$|_旧副本抢救/|unused/|dataset[^/]*/|weights/|deliverables/)
+      - id: check-yaml            # CI 工作流/serving 配置的语法兜底
+      - id: check-json
+        exclude: (?x)^(outputs/|_旧副本抢救/|unused/)
+      - id: check-toml            # pyproject.toml
+      - id: check-merge-conflict  # 单人 rebase/回滚/cherry-pick 时的冲突标记残留
+      - id: detect-private-key    # 密钥模式拦截：AI 生成代码时代的最后一道保险
+      - id: check-added-large-files
+        args: [--maxkb=2048]      # 2MB：放行正常文档截图，拦截误入库的数据/二进制
+        exclude: (?x)\.(pt|pth|onnx|engine|trt|bin)$|^weights/   # 权重走 spec datas 约定，显式豁免
+
+      # mixed-line-ending：暂缓启用（.gitattributes 尚未建立；待
+      # "* text=auto" + "*.sh eol=lf" 就绪并全仓 renormalize 后再开，避免
+      # 钩子与行尾策略冲突产生无谓 diff。启用时 args: [--fix=lf]）
+
+  # ---------- 3. 本项目自有规约（复用既有脚本，零新依赖） ----------
+  - repo: local
+    hooks:
+      - id: check-naming
+        name: .qoder 命名规约（R00，与 CI lint job 同口径）
+        entry: bash scripts/check-naming.sh
+        language: system          # Git Bash 直接跑既有脚本，不建独立环境
+        pass_filenames: false    # 脚本自带全仓扫描逻辑
+        always_run: true
+
+      # mypy：永不进自动 pre-commit 阶段（存量错误未清偿 + 需全量依赖做类型
+      # 解析）。阶段 3（文件清单棘轮）落地后，以下 manual 钩子取消注释启用：
+      # - id: mypy-changed
+      #   name: mypy（改动文件，.venv 解释器，手动触发）
+      #   entry: .venv/Scripts/python.exe -m mypy
+      #   language: system
+      #   types: [python]
+      #   exclude: ^(_旧副本抢救|unused|dataset[^/]*|weights|build|dist)/
+      #   stages: [manual]       # 触发：pre-commit run --hook-stage manual mypy-changed

@@ -87,6 +87,35 @@ def _get_inception_model(device: str = "cpu"):
     return model
 
 
+def _extract_features(
+    images: np.ndarray,
+    device: str = "cpu",
+) -> np.ndarray:
+    """InceptionV3 池化特征 [N, 2048]（E13：模型经 _get_inception_model 复用）。"""
+    import torch
+    from torchvision import transforms
+
+    model = _get_inception_model(device)
+
+    tfm = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize(299),
+        transforms.CenterCrop(299),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+        ),
+    ])
+
+    feats = []
+    with torch.no_grad():
+        for arr in images:
+            tensor = tfm(arr).unsqueeze(0).to(device)
+            feat = model(tensor)
+            feats.append(feat.cpu().numpy().squeeze(0))
+    return np.stack(feats)
+
+
 def fid_score(
     generated: Sequence,
     real: Sequence,
@@ -157,6 +186,9 @@ def _sqrtm(mat: np.ndarray, eps: float = 1e-6) -> tuple[np.ndarray, bool]:
 
 # E13 同批：LPIPS 网络缓存（此前每次 perceptual_loss 重建 net="alex"）
 _LPIPS_CACHE: dict[str, object] = {}
+# nearest 模式目标栈分片宽度：单次 LPIPS 批量前向的目标图数上限
+# （防真实集大时全量堆叠 OOM；32 张 256² AlexNet 前向约数百 MB 显存）
+_LPIPS_TARGET_SLICE = 32
 
 
 def _get_lpips_model(device: str = "cpu"):
@@ -169,6 +201,46 @@ def _get_lpips_model(device: str = "cpu"):
     model.eval()
     _LPIPS_CACHE[device] = model
     return model
+
+
+def _lpips_pair_losses(model, gen_arr, tgt_arr, device, pairing):
+    """R4-F4/W24 拆分：LPIPS 配对循环。
+
+    index：旧按下标配对逐对前向；nearest：tgt 堆叠一次、每 gen 单次
+    批量前向取 min（此前逐对共 n_gen×n_real 次前向，200×200=4 万次
+    batch=1；批量化后 n_gen 次，快约两个数量级）。
+    """
+    import torch
+
+    losses = []
+    with torch.no_grad():
+        if pairing == "index":
+            n = min(len(gen_arr), len(tgt_arr))
+            for i in range(n):
+                gen_t = _to_tensor_lpips(gen_arr[i], device)
+                tgt_t = _to_tensor_lpips(tgt_arr[i], device)
+                losses.append(float(model(gen_t, tgt_t).item()))
+        else:
+            tgt_tensors = [_to_tensor_lpips(t, device) for t in tgt_arr]
+            tgt_stack = torch.cat(tgt_tensors, dim=0) if tgt_tensors else None
+            n_tgt = tgt_stack.shape[0] if tgt_stack is not None else 0
+            for g in gen_arr:
+                gen_t = _to_tensor_lpips(g, device)
+                if tgt_stack is None:
+                    losses.append(0.0)
+                    continue
+                # 分片前向：目标全量堆叠在真实集大时（如 200 张）单次
+                # batch 前向易 OOM；固定片宽滚动，跨片取 min 与全量
+                # 一次前向数学等价
+                gmin = None
+                for s in range(0, n_tgt, _LPIPS_TARGET_SLICE):
+                    chunk = tgt_stack[s:s + _LPIPS_TARGET_SLICE]
+                    batch = gen_t.expand(chunk.shape[0], -1, -1, -1)
+                    vals = model(batch, chunk).flatten()
+                    m = float(vals.min().item())
+                    gmin = m if gmin is None else min(gmin, m)
+                losses.append(gmin)
+    return losses
 
 
 def perceptual_loss(
@@ -199,43 +271,49 @@ def perceptual_loss(
         raise ValueError(f"未知配对模式: {pairing!r}（支持 nearest/index）")
 
     try:
-        import lpips  # noqa: F401
-        import torch
+        import lpips  # noqa: F401  # 可用性探针（回退 L2 的判定依据）
+        import torch  # noqa: F401  # 同上（lpips 依赖 torch，显式探针）
     except ImportError:
         # 回退：L2 像素损失（E6 尺寸对齐后异尺寸不崩）
         gen_arr = _to_numpy(generated)
         tgt_arr = _to_numpy(target)
+        # E6 补充：gen/tgt 各自内部对齐到各自首图后，跨序列基准仍可能
+        # 不同（6×8 vs 4×4）——L2 需逐元素运算，tgt 以 gen 首图为基准
+        # 二次对齐（保 gen 不动，target 是参照分布）。
+        if gen_arr.size and tgt_arr.size and gen_arr.shape[1:] != tgt_arr.shape[1:]:
+            from PIL import Image
+
+            base_hw = gen_arr.shape[1:3]
+            aligned = []
+            for t in tgt_arr:
+                if t.shape[:2] != base_hw:
+                    pil = Image.fromarray(
+                        (np.clip(t, 0.0, 1.0) * 255.0).astype(np.uint8)
+                    ).resize((base_hw[1], base_hw[0]), Image.BILINEAR)
+                    t = np.asarray(pil, dtype=np.float32) / 255.0
+                aligned.append(t)
+            tgt_arr = np.stack(aligned)
+        # R4-F1（2026-10-07 四轮审查）：nearest 分支此前直接逐元素相减
+        # ——gen≠real 张数（常态）广播 ValueError，生产默认路径（未装
+        # lpips）必崩。改逐 gen 最近邻 MSE，与主路径 nearest 语义一致。
         if pairing == "index":
             n = min(len(gen_arr), len(tgt_arr))
             gen_arr, tgt_arr = gen_arr[:n], tgt_arr[:n]
-        return float(np.mean((gen_arr - tgt_arr) ** 2))
+            return float(np.mean((gen_arr - tgt_arr) ** 2))
+        if len(gen_arr) == 0 or len(tgt_arr) == 0:
+            return 0.0
+        per_gen = [
+            float(np.min(np.mean((tgt_arr - g) ** 2, axis=(1, 2, 3))))
+            for g in gen_arr
+        ]
+        return float(np.mean(per_gen))
 
     model = _get_lpips_model(device)
 
     gen_arr = _to_numpy(generated)
     tgt_arr = _to_numpy(target)
 
-    losses = []
-    with torch.no_grad():
-        if pairing == "index":
-            # E4 兼容路径：旧按下标配对
-            n = min(len(gen_arr), len(tgt_arr))
-            for i in range(n):
-                gen_t = _to_tensor_lpips(gen_arr[i], device)
-                tgt_t = _to_tensor_lpips(tgt_arr[i], device)
-                loss = model(gen_t, tgt_t)
-                losses.append(float(loss.item()))
-        else:
-            # E4 默认：最近邻——每 gen 对全部 target 取 min
-            tgt_tensors = [
-                _to_tensor_lpips(t, device) for t in tgt_arr
-            ]
-            for g in gen_arr:
-                gen_t = _to_tensor_lpips(g, device)
-                pair_vals = [
-                    float(model(gen_t, t_t).item()) for t_t in tgt_tensors
-                ]
-                losses.append(min(pair_vals) if pair_vals else 0.0)
+    losses = _lpips_pair_losses(model, gen_arr, tgt_arr, device, pairing)
     return float(np.mean(losses)) if losses else 0.0
 
 

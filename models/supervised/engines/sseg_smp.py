@@ -8,6 +8,7 @@ Option A 轻量库：弃 mmseg/mmengine，改用 segmentation_models_pytorch（A
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
@@ -15,6 +16,8 @@ from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
 from models.supervised import AbstractTaskEngine, register_engine
 from models.supervised.device import resolve_device
+
+logger = logging.getLogger(__name__)  # R4-S2：权重不匹配告警通道
 
 
 @register_engine(TaskType.SSEG)
@@ -61,18 +64,24 @@ class SsegSmpEngine(AbstractTaskEngine):
             self._arch = raw.get("arch", self._arch)
             self._encoder_name = raw.get("encoder_name", self._encoder_name)
             self._num_classes = raw.get("num_classes", self._num_classes)
-            state = raw.get("state_dict") or raw.get("model") or raw
+            # R4-S2（2026-10-07 四轮审查）：空 state_dict（{} falsy）此前
+            # 错拿整个 checkpoint dict 当权重——显式三分支。
+            state = raw.get("state_dict") or raw.get("model")
+            if not state:
+                state = raw
         else:
             state = raw
 
-        # 构造 smp 模型
+        # 构造 smp 模型（R4-S3：局部暂存，全部成功后才落 self._model——
+        # 此前中途失败停半初始化态，info() 谎报 loaded=True 且报错点
+        # 远离根因）
         try:
             model_cls = getattr(smp, self._arch)
         except AttributeError:
             model_cls = smp.DeepLabV3Plus
             self._arch = "DeepLabV3Plus"
 
-        self._model = model_cls(
+        model = model_cls(
             encoder_name=self._encoder_name,
             encoder_weights=None,  # 不下载预训练权重，从 checkpoint 加载
             in_channels=3,
@@ -81,14 +90,25 @@ class SsegSmpEngine(AbstractTaskEngine):
 
         # 加载 state_dict
         try:
-            self._model.load_state_dict(state, strict=False)
+            result = model.load_state_dict(state, strict=False)
+            # R4-S2：部分不匹配留痕——工业场景"权重与架构不匹配"输出
+            # 全错 mask 而无告警，比崩溃危险。（返回值 None 的兼容层/
+            # 替身按无告警处理）
+            if isinstance(result, tuple) and len(result) == 2:
+                missing, unexpected = result
+                if missing or unexpected:
+                    logger.warning(
+                        "smp 权重部分不匹配（missing=%d unexpected=%d）: %s",
+                        len(missing), len(unexpected), weights_path,
+                    )
         except Exception as exc:
             raise SupervisedEngineError(
                 f"加载 smp 权重失败: {exc}", task=self.task.value
             ) from exc
 
-        self._model.eval()
-        self._model.to(device)
+        model.eval()
+        model.to(device)
+        self._model = model  # R4-S3：全链成功后一次性落位
         self._weights_path = weights_path
         self._device = device
 

@@ -47,11 +47,28 @@ class SamAdapter:
         self._cached_image_ref: np.ndarray | None = None
 
     def load(self, checkpoint: str, device: str = "cuda") -> None:
-        """加载 SAM 权重。"""
+        """加载 SAM 权重。
+
+        L10（2026-10-06 三轮审查）：底层异常（model_type 未注册 KeyError /
+        权重文件不存在 FileNotFoundError / 设备错误）包装为 RuntimeError
+        并附 model_type 与 checkpoint 上下文——此前裸 KeyError 逃逸，
+        调用方只能弹原始异常串，无法区分"未加载"与"加载失败"。
+        """
         from segment_anything import SamPredictor, sam_model_registry
 
-        sam = sam_model_registry[self._model_type](checkpoint=checkpoint)
-        sam.to(device=device)
+        try:
+            sam = sam_model_registry[self._model_type](checkpoint=checkpoint)
+            sam.to(device=device)
+        except KeyError as exc:
+            raise RuntimeError(
+                f"SAM 权重加载失败：未知 model_type={self._model_type!r}"
+                f"（可选: {sorted(sam_model_registry)}）"
+            ) from exc
+        except (FileNotFoundError, RuntimeError, OSError) as exc:
+            raise RuntimeError(
+                f"SAM 权重加载失败: {checkpoint}（model_type={self._model_type}）"
+                f" —— {exc}"
+            ) from exc
         self._predictor = SamPredictor(sam)
 
     def unload(self) -> None:
@@ -80,9 +97,20 @@ class SamAdapter:
 
         W21 快路径：同对象（is）直接命中；等值新对象经一次哈希命中后
         更新引用，后续同对象不再哈希。换图正常重算 embedding。
+        L9（2026-10-06 三轮审查）：入参形状防御——BGR HWC uint8 [H,W,3]
+        为通道序契约（错色进文本塔会静默劣化分割精度），2 维灰度/4 维
+        批量等形态在此显式拒绝而非让底层抛模糊异常。
         """
         if not self.loaded:
             raise RuntimeError("SAM 未加载权重")
+        if not isinstance(image, np.ndarray) or image.ndim != 3 or image.shape[2] != 3:
+            # R4-N1（2026-10-07 四轮审查）：< 3 → != 3——RGBA/BGRA（4 通道，
+            # OpenCV IMREAD_UNCHANGED 的典型产物）此前穿透到 predictor
+            # 通道序错乱（实测复现）；契约恒为 3 通道 HWC。
+            raise ValueError(
+                f"set_image 期望 HWC 3 通道 ndarray，收到 shape="
+                f"{getattr(image, 'shape', type(image).__name__)}"
+            )
         if image is self._cached_image_ref:
             return
         h = hash(image.tobytes())

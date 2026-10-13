@@ -187,6 +187,22 @@ def _resolve_backbone(backbone: str, seg: bool = True) -> str:
     return backbone
 
 
+
+def _extract_final_loss(model) -> float:
+    """W24/R4 拆分：ultralytics 末轮 loss best-effort 提取（各版本
+    返回形态不一：float/tensor/loss_items）。"""
+    loss = 0.0
+    trainer = getattr(model, "trainer", None)
+    for attr in ("loss", "loss_items", "final_epoch_loss"):
+        val = getattr(trainer, attr, None) if trainer is not None else None
+        if val is not None:
+            try:
+                loss = float(val[-1] if isinstance(val, (list, tuple)) else val)
+                break
+            except (TypeError, ValueError):
+                continue
+    return loss
+
 class _YoloSegBase(AbstractTaskEngine):
     """YOLOv8-Seg 实例分割共享基类。
 
@@ -202,6 +218,9 @@ class _YoloSegBase(AbstractTaskEngine):
         # W1-1：逐轮进度钩子 + 协作停止（回调线程=训练工作线程）
         self._progress_cb: Any = None
         self._stop_requested: bool = False
+        # R4-B1（2026-10-07 四轮审查）：训练指纹——registry 实例缓存使
+        # 引擎跨训练复用，同指纹才允许命中一次性缓存（见 train_epoch）
+        self._train_sig: tuple | None = None
 
     def set_progress_callback(self, cb) -> None:
         """W1-1：注册逐轮进度回调（工作线程调用，UI 侧需自行 marshal）。
@@ -225,10 +244,28 @@ class _YoloSegBase(AbstractTaskEngine):
         from ultralytics import YOLO
 
         self._model = YOLO(weights_path)
+        # R4-S1（2026-10-07 四轮审查）：load 的 device 承诺对 infer 生效
+        # ——ultralytics 默认自动选设备，用户显式选 CPU（训练占显存时）
+        # 此前被静默忽略。getattr 容错：无 overrides 的替身/兼容层跳过。
+        if isinstance(getattr(self._model, "overrides", None), dict):
+            self._model.overrides["device"] = device
         self._weights_path = weights_path
         self._device = device
 
     # ============================== 真训练通道（W58 · PRD FR-1） ============================== #
+
+    @staticmethod
+    def _train_signature(cfg) -> tuple:
+        """R4-B1（2026-10-07 四轮审查）：训练指纹——数据/骨干/轮数/分辨率
+        四元组（registry 实例缓存使引擎跨训练复用，同指纹才允许命中
+        一次性训练缓存；换任何一项都须真实重训）。"""
+        return (
+            str(getattr(cfg, "data_yaml", "") or ""),
+            str(getattr(cfg, "backbone", None) or ""),
+            int(getattr(cfg, "epochs", 0)),
+            int(getattr(cfg, "img_size", 0)),
+        )
+
     def train_epoch(self, epoch: int, cfg) -> dict:
         """ultralytics 一次性训练适配器（GUI 真训练通道）。
 
@@ -251,7 +288,15 @@ class _YoloSegBase(AbstractTaskEngine):
             ValueError: 未选择数据集（data_yaml 为空）——由训练页在选择
                 面拦截回退模拟，此为纵深防御第二道。
         """
-        if self._train_model is not None:
+        # R4-B2（2026-10-07 四轮审查）：上一轮训练的停止请求不带入本次
+        # ——_stop_requested 此前永不复位，停止过的引擎第二次训练首轮
+        # 即被回调置 trainer.stop（1-epoch 假完成）。停止请求只在当次
+        # 训练生命周期内有效（ultralytics train() 一次性整跑，训练中的
+        # request_stop 发生在本入口返回之后，不受影响）。
+        self._stop_requested = False
+        sig = self._train_signature(cfg)
+        # R4-B1：同指纹（幂等重训语义）命中缓存；换指纹真实重训
+        if self._train_model is not None and sig == self._train_sig:
             return dict(self._train_metrics)
         data_yaml = getattr(cfg, "data_yaml", "") or ""
         if not data_yaml:
@@ -303,21 +348,13 @@ class _YoloSegBase(AbstractTaskEngine):
             lr0=_YOLO_LR0,
             **_aug_kwargs(cfg),
         )
-        # best-effort 末轮 loss 提取（ultralytics 各版本返回形态不一）
-        loss = 0.0
-        trainer = getattr(model, "trainer", None)
-        for attr in ("loss", "loss_items", "final_epoch_loss"):
-            val = getattr(trainer, attr, None) if trainer is not None else None
-            if val is not None:
-                try:
-                    loss = float(val[-1] if isinstance(val, (list, tuple)) else val)
-                    break
-                except (TypeError, ValueError):
-                    continue
+        loss = _extract_final_loss(model)
         self._train_model = model
+        self._train_sig = sig  # R4-B1：指纹随成功训练落位
         # W58 落盘口径修正：ultralytics 实际写到 {runs_dir}/{task}/{project}/
         # {name}/（探针实证 runs/segment/outputs/train/weights/best.pt），
         # 与 cfg.output_dir 直连直觉不符——以 trainer.save_dir 为准
+        trainer = getattr(model, "trainer", None)  # W24 拆分后在此取用
         save_dir = str(getattr(trainer, "save_dir", "") or "")
         self._train_output_dir = save_dir or os.path.join(cfg.output_dir, "train")
         self._train_metrics = {"loss": round(loss, 6)}

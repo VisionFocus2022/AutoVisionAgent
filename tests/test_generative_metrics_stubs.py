@@ -201,10 +201,11 @@ def test_perceptual_loss_fake_lpips_module(monkeypatch):
 
     loss = gm.perceptual_loss(gen, tgt)
     assert ctor_kw == {"net": "alex"}
-    # E4 nearest：每张 gen 对全部 3 张 tgt → 2×3 = 6 次前向
-    assert len(seen_tensors) == 6
+    # R4-F4（2026-10-07 批量化）：每 gen 一次批量前向 → 2 次调用
+    # （此前逐对 6 次）；批形状 gen expand (3,3,6,8) vs tgt 堆叠 (3,3,6,8)
+    assert len(seen_tensors) == 2
     for a, b in seen_tensors:
-        assert a.shape == (1, 3, 6, 8) and b.shape == (1, 3, 6, 8)  # NCHW
+        assert a.shape == (3, 3, 6, 8) and b.shape == (3, 3, 6, 8)  # 批量 NCHW
         assert a.dtype == torch.float32
         assert float(a.min()) >= -1.0 and float(a.max()) <= 1.0     # [-1,1]
     assert loss == pytest.approx(0.25)
@@ -241,7 +242,7 @@ def test_perceptual_loss_index_pairing_backward_compat(monkeypatch):
 @pytest.mark.unit
 def test_perceptual_loss_nearest_takes_min_per_gen(monkeypatch):
     """E4 核心：nearest 模式每 gen 取对全部 tgt 的最小值（可区分返回值验证）。"""
-    # 假模型返回 |a_mean - b_mean|——可构造每 gen 与某张 tgt 最接近
+    # 假模型返回 per-pair |a_mean - b_mean|（R4-F4 批量：按样本维展开）
     class _Model:
         def to(self, device):
             return self
@@ -250,11 +251,14 @@ def test_perceptual_loss_nearest_takes_min_per_gen(monkeypatch):
             return self
 
         def __call__(self, a, b):
-            return torch.tensor(abs(float(a.mean()) - float(b.mean())))
+            am = a.mean(dim=(1, 2, 3)) if a.ndim == 4 else a.mean()
+            bm = b.mean(dim=(1, 2, 3)) if b.ndim == 4 else b.mean()
+            return (am - bm).abs()
 
     fake_mod = types.ModuleType("lpips")
     fake_mod.LPIPS = lambda net="alex": _Model()
     monkeypatch.setitem(sys.modules, "lpips", fake_mod)
+    gm._LPIPS_CACHE.clear()  # 假网络不落缓存（Model 可变状态防跨用例）
 
     # gen[0] 均值 0.2 → 最近 tgt（0.25）距离 0.05
     # gen[1] 均值 0.8 → 最近 tgt（0.75）距离 0.05
@@ -269,7 +273,8 @@ def test_perceptual_loss_nearest_takes_min_per_gen(monkeypatch):
     ]
 
     loss = gm.perceptual_loss(gen, tgt)
-    assert loss == pytest.approx(0.05, abs=1e-4), "nearest 必须取每 gen 的最小距离"
+    # _to_tensor_lpips 的 [0,1]→[-1,1]（×2-1）使均值距离翻倍：0.05 → 0.1
+    assert loss == pytest.approx(0.1, abs=1e-4), "nearest 必须取每 gen 的最小距离"
 
 
 @pytest.mark.unit
@@ -391,9 +396,20 @@ def test_to_numpy_strict_mode_raises_on_mixed():
 
 @pytest.mark.unit
 def test_perceptual_loss_l2_fallback_mixed_sizes_no_crash(monkeypatch):
-    """E6：lpips 缺失回退 L2 + 异尺寸输入 → 对齐后不崩（此前直接崩）。"""
-    monkeypatch.setitem(sys.modules, "lpips", None)  # import 失败路径
-    gen = [np.ones((6, 8, 3), dtype=np.float32)]
-    tgt = [np.zeros((4, 4, 3), dtype=np.float32)]
-    val = gm.perceptual_loss(gen, tgt)
-    assert isinstance(val, float) and val >= 0.0
+    """E6：lpips 缺失回退 L2 + 异尺寸输入 → 对齐后不崩（此前直接崩）。
+
+    以 sys.modules 摘除 lpips 且缓存置空——若本环境本就没装 lpips，
+    生产代码自然走回退（fixture 已清缓存，无真模型残留）。
+    """
+    monkeypatch.setattr(
+        gm, "_LPIPS_CACHE", {}
+    )
+    saved = sys.modules.pop("lpips", None)
+    try:
+        gen = [np.ones((6, 8, 3), dtype=np.float32)]
+        tgt = [np.zeros((4, 4, 3), dtype=np.float32)]
+        val = gm.perceptual_loss(gen, tgt)
+        assert isinstance(val, float) and val >= 0.0
+    finally:
+        if saved is not None:
+            sys.modules["lpips"] = saved

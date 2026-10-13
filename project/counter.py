@@ -6,11 +6,36 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import tempfile
 
 from project.paths import resolve_base_root
 
 _COUNTER_FILENAME = "task_counter.json"
+
+_logger = logging.getLogger(__name__)
+
+
+def _atomic_write_json(path: str, doc: dict) -> None:
+    """R4-S4（2026-10-07 四轮审查）：原子写 JSON——与 versioning/_common
+    惯例对齐。此前直接 open("w") 覆写：崩溃半截文件 → _load 静默清零
+    → seq 重置 → 同名项目目录静默合并（数据混淆无告警）。
+    """
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    fd, tmp = tempfile.mkstemp(
+        dir=os.path.dirname(path) or ".", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(doc, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except BaseException:
+        import contextlib
+
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
 
 
 class TaskCounter:
@@ -50,17 +75,18 @@ class TaskCounter:
                         if isinstance(v, (int, float))
                     }
         except (json.JSONDecodeError, OSError):
+            # R4-S4：损坏告警（此前静默清零——排障无从下手）
+            _logger.warning(
+                "计数器文件损坏，从空重新开始: %s", path, exc_info=True
+            )
             self._counts = {}
 
     def _save(self) -> None:
-        """保存计数器到磁盘。"""
-        os.makedirs(self._base_root, exist_ok=True)
-        path = self._counter_path
+        """保存计数器到磁盘（R4-S4：原子写）。"""
         try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(self._counts, f, ensure_ascii=False, indent=2)
+            _atomic_write_json(self._counter_path, self._counts)
         except OSError:
-            pass
+            _logger.warning("计数器保存失败: %s", self._counter_path, exc_info=True)
 
     # ============================== API ============================== #
     def next_id(self, task: str = "") -> int:
