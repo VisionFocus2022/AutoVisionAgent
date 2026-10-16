@@ -6,6 +6,10 @@ Option A 轻量库：弃 mmedit SR，改用 cv2.dnn_superres（OpenCV 自带）�
 
 诚实回退：无权重 → raise SupervisedEngineError（不返 INTER_NEAREST 放大的假数据）。
 W2 适配：_to_numpy 走 imread_unicode（本树根路径含中文）。
+
+注册关系（v2.3）：TaskType.SUPER 的注册点收敛至 super_router（按权重后缀
+路由 .pth→Real-ESRGAN / .pb→本引擎）；本模块不再自注册，类保留供路由
+委托与直连测试使用。
 """
 from __future__ import annotations
 
@@ -15,10 +19,9 @@ from typing import Any
 from core.exceptions import SupervisedEngineError
 from core.interfaces_supervised import DetectionResult, TaskType
 from core.path_io import ascii_path_copy
-from models.supervised import AbstractTaskEngine, register_engine
+from models.supervised import AbstractTaskEngine
 
 
-@register_engine(TaskType.SUPER)
 class SuperCv2Engine(AbstractTaskEngine):
     """cv2.dnn_superres 超分辨率引擎（EDSR/ESPCN/FSRCNN/LapSRN）。
 

@@ -276,7 +276,7 @@ class PredictPage(VideoSuperActionsMixin, ExportActionsMixin, QWidget):
             return
         path = pick_open_file(
             self, "选择模型权重",
-            "Weights (*.pt *.pth *.onnx *.ckpt)"
+            "Weights (*.pt *.pth *.onnx *.ckpt *.pb)"
         )
         if not path:
             return

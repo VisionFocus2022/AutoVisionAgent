@@ -28,7 +28,7 @@ _EXPECTED_ENGINE_NAMES = {
     TaskType.SSEG: "SsegSmpEngine",
     TaskType.ABDET: "AbdetAnomalibEngine",
     TaskType.SGAN: "SganBlendEngine",
-    TaskType.SUPER: "SuperCv2Engine",
+    TaskType.SUPER: "SuperRouterEngine",  # v2.3：路由 .pth→realesrgan / .pb→cv2
     TaskType.OCR: "OcrEasyocrEngine",  # W32 可选任务
 }
 

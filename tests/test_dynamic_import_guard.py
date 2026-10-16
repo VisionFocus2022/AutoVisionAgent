@@ -192,11 +192,23 @@ def test_spec_project_hiddenimports_files_exist():
     assert missing == [], f"spec hiddenimports 指向不存在的模块: {missing}"
 
 
+# v2.3 路由架构：SUPER 槽位由 super_router 唯一注册，super_cv2 /
+# super_realesrgan 为委托后端（经路由 hiddenimport 进 exe，不自带装饰器）
+_DELEGATE_BACKENDS = {"super_cv2", "super_realesrgan"}
+
+
 @pytest.mark.unit
 def test_engine_modules_all_register_decorator():
-    """目录内每个引擎模块必须包含 @register_engine（自注册契约）。"""
+    """目录内每个引擎模块必须包含 @register_engine（自注册契约）。
+
+    例外：_DELEGATE_BACKENDS 委托后端经 super_router 注册（架构见
+    engines/super_router.py），不自带装饰器；新增模块仍须显式注册
+    或进入本豁免清单（守卫防"静默跳过"的初衷不变）。
+    """
     for py in sorted(ENGINES_INIT.parent.glob("*.py")):
         if py.stem.startswith("_") or py.stem == "__init__":
+            continue
+        if py.stem in _DELEGATE_BACKENDS:
             continue
         src = py.read_text(encoding="utf-8")
         assert "register_engine" in src, (

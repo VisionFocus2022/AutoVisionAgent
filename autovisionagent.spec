@@ -45,6 +45,9 @@ a = Analysis(
         "models.supervised.engines.sgan_blend",
         "models.supervised.engines.sseg_smp",
         "models.supervised.engines.super_cv2",
+        # v2.3：Real-ESRGAN 后端 + SUPER 路由（.pth→realesrgan / .pb→cv2）
+        "models.supervised.engines.super_realesrgan",
+        "models.supervised.engines.super_router",
         # W32：OCR 可选任务引擎 + easyocr 本体（引擎方法内惰性导入，
         # 静态分析不可见——与引擎模块一并显式列出；lite 派生时剪除）
         "models.supervised.engines.ocr_easyocr",
