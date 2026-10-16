@@ -9,7 +9,9 @@
   BSD-3-Clause，版权见本文件头）+ 官方 .pth 权重加载 + 分块推理。
   零新增 pip 依赖（torch / numpy / opencv 均为既有依赖）。
 
-权重来源（scripts/download_realesrgan.py 可预取，离线拷贝）：
+权重来源（提醒：weights/ 目录被 .gitignore 排除、不入仓——换机器 /
+新克隆后须先运行 scripts/download_realesrgan.py 重新拉取，或从离线供给
+目录拷贝，再加载引擎）：
 - RealESRGAN_x4plus.pth          RRDBNet x4 23 块（通用真实场景）
 - RealESRGAN_x2plus.pth          RRDBNet x2 23 块
 - RealESRGAN_x4plus_anime_6B.pth RRDBNet x4 6 块（轻量）
@@ -236,7 +238,9 @@ class RealEsrganEngine(AbstractTaskEngine):
         """
         if not os.path.exists(weights_path):
             raise SupervisedEngineError(
-                f"权重文件不存在: {weights_path}", task=self.task.value
+                f"权重文件不存在: {weights_path}（weights/ 不入仓；换机器请先"
+                f"运行 scripts/download_realesrgan.py 拉取，或从离线供给目录拷贝）",
+                task=self.task.value,
             )
         try:
             import torch  # noqa: F401

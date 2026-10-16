@@ -1,6 +1,8 @@
 """Real-ESRGAN 离线权重供给脚本（对齐 fetch_ocr_weights.py 供给模式）。
 
 官方发布权重较大（RRDBNet x4plus 约 64MB），离线优先平台须显式预取。
+提醒：weights/ 已被 .gitignore 排除、不入仓——换机器 / 新克隆后用本
+脚本重新拉取，或从离线供给目录拷贝。
 本脚本把权重下载到指定目录并写 sha256 manifest；离线机器将该目录拷到
 目标平台后，在推理页以「该目录下的 .pth」为模型路径加载 SUPER 引擎
 （super_router 按后缀路由到 RealEsrganEngine）。
