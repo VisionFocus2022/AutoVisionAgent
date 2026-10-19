@@ -320,9 +320,24 @@ def test_build_window_assembles_and_wires(qapp, tmp_path, home_env, monkeypatch)
     _png(proj_dir / "img.png")
     (proj_dir / "model.pt").write_bytes(b"w")
     proj.project_opened.emit(str(proj_dir))
-    qapp.processEvents()
-    assert home._card_images._value_label.text() == "1"
-    assert home._card_models._value_label.text() == "1"
+    # W2-4 审查修复（2026-10-07）：满载时段单次 processEvents 偶发不够
+    # （_refresh_home_stats 首次 import torch 慢，排队渲染竞态）——改有界
+    # 等待（≤5s 事件泵轮询）；超时附实际标签文本自诊断（下次复现即留根因）
+    import time as _time
+
+    _deadline = _time.time() + 5.0
+    while _time.time() < _deadline:
+        qapp.processEvents()
+        if (home._card_images._value_label.text() == "1"
+                and home._card_models._value_label.text() == "1"):
+            break
+        _time.sleep(0.05)
+    else:
+        pytest.fail(
+            "仪表盘计数未在 5s 内刷新（flaky 复现）——实际 "
+            f"images={home._card_images._value_label.text()!r} "
+            f"models={home._card_models._value_label.text()!r}"
+        )
 
     win.select("train")  # 导航切换 no-crash
     win.select("home")

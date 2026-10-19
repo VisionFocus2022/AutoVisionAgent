@@ -248,14 +248,14 @@ class DeployPage(QWidget):
         if cons.get("ok"):
             rate = cons.get("match_rate")
             self.status_changed.emit(
-                "导出完成·一致性校验通过",
+                tr("导出完成·一致性校验通过"),
                 f"匹配率 {rate:.1%} ({cons.get('detail', '')}) · {files}",
             )
         elif cons:
             why = cons.get("error") or (
                 f"匹配率 {cons.get('match_rate')}"
             )
-            self.status_changed.emit("一致性校验失败", f"{why} · {files}")
+            self.status_changed.emit(tr("一致性校验失败"), f"{why} · {files}")
             logger.warning("ONNX 一致性校验失败: %s", cons)
         else:
             self.status_changed.emit(tr("导出完成"), files)

@@ -224,13 +224,13 @@ class TrainPage(QWidget):
         aug_row = QWidget(form_frame)
         aug_h = QHBoxLayout(aug_row)
         aug_h.setContentsMargins(0, 0, 0, 0)
-        self.chk_aug_hsv = QCheckBox("HSV 色彩抖动", aug_row)
-        self.chk_aug_flip = QCheckBox("水平翻转", aug_row)
-        self.chk_aug_mosaic = QCheckBox("Mosaic 拼接", aug_row)
+        self.chk_aug_hsv = QCheckBox(tr("HSV 色彩抖动"), aug_row)
+        self.chk_aug_flip = QCheckBox(tr("水平翻转"), aug_row)
+        self.chk_aug_mosaic = QCheckBox(tr("Mosaic 拼接"), aug_row)
         for c in (self.chk_aug_hsv, self.chk_aug_flip, self.chk_aug_mosaic):
             aug_h.addWidget(c)
         aug_h.addStretch()
-        form.addRow("数据增强", aug_row)
+        form.addRow(tr("数据增强"), aug_row)
 
     def _build_form_train_rows(
         self, form_frame: QWidget, form: QFormLayout

@@ -114,7 +114,7 @@ class FlawGenPage(QWidget):
         self._log_label = QLabel(tr("等待开始..."))
 
         # W2-4：生成完成→回标注页（文案字面量=避让并行批在途 i18n.py）
-        self._annotate_btn = QPushButton("去标注")
+        self._annotate_btn = QPushButton(tr("去标注"))
         self._annotate_btn.setEnabled(False)
         self._annotate_btn.clicked.connect(self._goto_annotate)
         self._log_label.setStyleSheet("color: #94a3b8; font-size: 12px; padding: 4px;")

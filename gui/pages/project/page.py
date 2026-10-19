@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
 
 from core.interfaces_supervised import TaskType
 from gui.core.i18n import tr
+from gui.core.jobs import run_job
+from gui.core.thread_bridge import invoke_main, ui_on_error
 from gui.widgets.file_dialog import pick_directory
 from project.counter import TaskCounter
 from project.models import ProjectId, ProjectLayout, parse_project_dirname
@@ -39,6 +41,16 @@ _TASKS = [
     (TaskType.SSEG, "语义分割 (sseg)"),
     (TaskType.ABDET, "异常检测 (abdet)"),
 ]
+
+
+def _build_pack_row(page, parent_lay) -> None:
+    """W3-2：项目包导出/导入按钮行（W24 规模拆分自 _build_ui）。"""
+    pack_lay = QHBoxLayout()
+    page.btn_pack_export = QPushButton(tr("导出项目包"), page)
+    pack_lay.addWidget(page.btn_pack_export)
+    page.btn_pack_import = QPushButton(tr("导入项目包"), page)
+    pack_lay.addWidget(page.btn_pack_import)
+    parent_lay.addLayout(pack_lay)
 
 
 class ProjectPage(QWidget):
@@ -127,6 +139,9 @@ class ProjectPage(QWidget):
         self.btn_delete = QPushButton(tr("删除"), self)
         btn_lay.addWidget(self.btn_delete)
         left.addLayout(btn_lay)
+
+        # W3-2：项目包导出/导入（资产迁移）——构建抽 _build_pack_row
+        _build_pack_row(self, left)
         body.addLayout(left, 1)
 
         # 右：计数器面板
@@ -167,9 +182,13 @@ class ProjectPage(QWidget):
     def _wire(self) -> None:
         self.btn_create.clicked.connect(self._create_project)
         self.btn_browse.clicked.connect(self._browse_root)
-        self.btn_reload.clicked.connect(self._refresh)
+        # W3-2：刷新=重读根目录输入框并重建 store（此前只 _refresh 列表
+        # ——手改根路径后刷新无效的死角，UIA 切根实证）
+        self.btn_reload.clicked.connect(self._init_store)
         self.btn_open.clicked.connect(self._open_project)
         self.btn_delete.clicked.connect(self._delete_project)
+        self.btn_pack_export.clicked.connect(self._export_pack)
+        self.btn_pack_import.clicked.connect(self._import_pack)
         self.project_list.itemDoubleClicked.connect(
             lambda _: self._open_project()
         )
@@ -303,6 +322,78 @@ class ProjectPage(QWidget):
             self.status_changed.emit(tr("已删除"), pid.to_dirname())
         except (OSError, PermissionError) as exc:
             self.status_changed.emit(tr("删除失败"), str(exc)[:40])
+
+    # ============================== 项目包（W3-2） ============================== #
+    def _export_pack(self) -> None:
+        """导出选中项目为 zip（worker，大包秒级）。"""
+        item = self.project_list.currentItem()
+        if not item:
+            self.status_changed.emit(tr("请先选择项目"), "!")
+            return
+        pid: ProjectId = item.data(Qt.UserRole)
+        from gui.widgets.file_dialog import pick_save_file
+
+        zip_path = pick_save_file(
+            self, "保存项目包", "AVPack (*.zip);;All (*)"
+        )
+        if not zip_path:
+            return
+        project_root = ProjectLayout.for_id(pid, self._base_root).root
+        self.btn_pack_export.setEnabled(False)
+        self.status_changed.emit(tr("项目包导出中..."), "info")
+
+        def _work():
+            try:
+                from project.pack import export_pack
+
+                m = export_pack(project_root, zip_path)
+                invoke_main(self, "_pack_done_slot", str(m["file_count"]))
+            except (OSError, ValueError) as exc:
+                invoke_main(self, "_pack_failed_slot", str(exc))
+
+        run_job(_work, name="project.pack_export",
+                on_error=ui_on_error(self, "_pack_failed_slot"))
+
+    def _import_pack(self) -> None:
+        """导入项目包 zip 到当前存储根（worker）。"""
+        from gui.widgets.file_dialog import pick_open_file
+
+        zip_path = pick_open_file(
+            self, "选择项目包", "AVPack (*.zip)"
+        )
+        if not zip_path:
+            self.status_changed.emit(tr("已取消"), tr("未选择项目包"))
+            return
+        base_root = self._base_root
+        self.btn_pack_import.setEnabled(False)
+        self.status_changed.emit(tr("项目包导入中..."), "info")
+
+        def _work():
+            try:
+                from project.pack import import_pack
+
+                r = import_pack(zip_path, base_root)
+                invoke_main(self, "_pack_done_slot", str(r["file_count"]))
+            except (OSError, ValueError) as exc:
+                invoke_main(self, "_pack_failed_slot", str(exc))
+
+        run_job(_work, name="project.pack_import",
+                on_error=ui_on_error(self, "_pack_failed_slot"))
+
+    @Slot(str)
+    def _pack_done_slot(self, count: str) -> None:
+        """W3-2：包操作完成（导出/导入共用计数回显）。"""
+        self.btn_pack_export.setEnabled(True)
+        self.btn_pack_import.setEnabled(True)
+        self._refresh()
+        self.status_changed.emit(tr("项目包完成"), f"{count} {tr('个文件')}")
+
+    @Slot(str)
+    def _pack_failed_slot(self, msg: str) -> None:
+        """W3-2：包操作失败（PackError 等）显式复位。"""
+        self.btn_pack_export.setEnabled(True)
+        self.btn_pack_import.setEnabled(True)
+        self.status_changed.emit(tr("项目包失败"), msg[:80])
 
     def retranslate(self) -> None:
         self.btn_create.setText(tr("创建"))

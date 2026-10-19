@@ -2,8 +2,6 @@
 
 对接 models/supervised/ 引擎注册表，支持 det/seg/abdet 推理。
 """
-from __future__ import annotations
-
 import contextlib
 import logging
 import os
@@ -179,6 +177,9 @@ class PredictPage(VideoSuperActionsMixin, ExportActionsMixin, QWidget):
         h.addWidget(self.btn_export_json)
         self.btn_export_excel = QPushButton(tr("导出Excel"), bar)
         h.addWidget(self.btn_export_excel)
+        # W3-1：检测报告 PDF（文案字面量=避让并行批在途 i18n.py）
+        self.btn_export_report = QPushButton(tr("导出报告"), bar)
+        h.addWidget(self.btn_export_report)
 
         sep3 = QFrame(bar)
         sep3.setFixedWidth(1)
@@ -242,6 +243,7 @@ class PredictPage(VideoSuperActionsMixin, ExportActionsMixin, QWidget):
         self._btn_cancel_batch.clicked.connect(self._batch_cancel_infer)
         self.btn_export_csv.clicked.connect(self._export_csv)
         self.btn_export_json.clicked.connect(self._export_json)
+        self.btn_export_report.clicked.connect(self._export_report)
         self.btn_export_excel.clicked.connect(self._export_excel)
         self.btn_stats.clicked.connect(self._show_stats)
 
@@ -252,6 +254,49 @@ class PredictPage(VideoSuperActionsMixin, ExportActionsMixin, QWidget):
         models = os.path.join(path, "models")
         if os.path.isdir(models):
             self._models_dir = models
+
+    def _export_report(self) -> None:
+        """W3-1：批量结果 → 检测报告 PDF（worker 渲染，W1-4 线程纪律）。"""
+        if not self._results:
+            self.status_changed.emit(tr("无数据可导出"), "!")
+            return
+        path = pick_save_file(self, tr("导出报告"), "PDF (*.pdf)")
+        if not path:
+            return
+        results = list(self._results)
+        params = {
+            "task": (self.cmb_task.currentData().value
+                     if self.cmb_task.currentData() else "det"),
+            "model": self._model_path,
+            "threshold": self._threshold(),
+            "device": getattr(self._engine, "_device", "-"),
+        }
+        self.btn_export_report.setEnabled(False)
+        self.status_changed.emit(tr("报告生成中..."), "info")
+
+        def _work():
+            try:
+                from exporter.report_pdf import build_detection_report
+
+                out = build_detection_report(results, path, params)
+                invoke_main(self, "_report_done_slot", out)
+            except (ImportError, RuntimeError, OSError, ValueError) as exc:
+                invoke_main(self, "_report_failed_slot", str(exc))
+
+        run_job(_work, name="predict.export_report",
+                on_error=ui_on_error(self, "_report_failed_slot"))
+
+    @Slot(str)
+    def _report_done_slot(self, path: str) -> None:
+        """W3-1：报告完成（主线程）。"""
+        self.btn_export_report.setEnabled(True)
+        self.status_changed.emit(tr("报告已导出"), os.path.basename(path))
+
+    @Slot(str)
+    def _report_failed_slot(self, msg: str) -> None:
+        """W3-1：报告失败复位（主线程）。"""
+        self.btn_export_report.setEnabled(True)
+        self.status_changed.emit(tr("导出失败"), msg[:60])
 
     def set_threshold(self, value: float) -> None:
         """W2-2：外部写入推理阈值（评估页推荐阈值一键应用；UI 线程调用）。"""

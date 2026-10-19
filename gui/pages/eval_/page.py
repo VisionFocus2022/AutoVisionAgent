@@ -236,19 +236,19 @@ class EvalPage(QWidget):
         pr_lay = QVBoxLayout(pr_box)
         pr_lay.setContentsMargins(8, 8, 8, 8)
         # 文案字面量=避让并行批在途 i18n.py（收口后补键，同 W2-1）
-        pr_title = QLabel("PR 曲线 / 阈值推荐")
+        pr_title = QLabel(tr("PR 曲线 / 阈值推荐"))
         pr_title.setStyleSheet("font-weight: bold;")
         pr_lay.addWidget(pr_title)
-        self._pr_btn = QPushButton("阈值分析")
+        self._pr_btn = QPushButton(tr("阈值分析"))
         self._pr_btn.setEnabled(False)
         self._pr_btn.clicked.connect(self._run_pr_analysis)
         pr_lay.addWidget(self._pr_btn)
         self._pr_chart = LossChartWidget(self)
-        self._pr_chart.set_title("P / R vs 阈值")
+        self._pr_chart.set_title(tr("P / R vs 阈值"))
         pr_lay.addWidget(self._pr_chart, 1)
         self._pr_rec_label = QLabel("-")
         pr_lay.addWidget(self._pr_rec_label)
-        self._pr_apply_btn = QPushButton("写入推理阈值")
+        self._pr_apply_btn = QPushButton(tr("写入推理阈值"))
         self._pr_apply_btn.setEnabled(False)
         self._pr_apply_btn.clicked.connect(self._apply_threshold)
         pr_lay.addWidget(self._pr_apply_btn)
@@ -382,10 +382,10 @@ class EvalPage(QWidget):
         model = self._model_edit.text().strip()
         gt = self._gt_edit.text().strip()
         if not model or not gt:
-            self.status_changed.emit("请先完成一次评估", "warn")
+            self.status_changed.emit(tr("请先完成一次评估"), "warn")
             return
         self._pr_btn.setEnabled(False)
-        self.status_changed.emit("阈值分析中...", "info")
+        self.status_changed.emit(tr("阈值分析中..."), "info")
 
         def _work():
             try:
@@ -429,15 +429,15 @@ class EvalPage(QWidget):
             self._pr_apply_btn.setEnabled(True)
         else:
             self._best_threshold = None
-            self._pr_rec_label.setText("无评估数据（检查真值/模型）")
+            self._pr_rec_label.setText(tr("无评估数据（检查真值/模型）"))
             self._pr_apply_btn.setEnabled(False)
-        self.status_changed.emit("阈值分析完成", os.path.basename(report))
+        self.status_changed.emit(tr("阈值分析完成"), os.path.basename(report))
 
     @Slot(str)
     def _on_pr_failed(self, msg: str) -> None:
         """W2-2：分析失败复位（按钮恢复，显式报错）。"""
         self._pr_btn.setEnabled(True)
-        self.status_changed.emit("阈值分析失败", msg[:60])
+        self.status_changed.emit(tr("阈值分析失败"), msg[:60])
 
     def _apply_threshold(self) -> None:
         """W2-2：推荐阈值写入推理页（信号经 main 接线）。"""
@@ -445,7 +445,7 @@ class EvalPage(QWidget):
         if v is None:
             return
         self.threshold_apply.emit(float(v))
-        self.status_changed.emit("已写入推理阈值", f"{v:.2f}")
+        self.status_changed.emit(tr("已写入推理阈值"), f"{v:.2f}")
 
     def set_results(self, rows: list) -> None:
         """设置结果表行。rows: [(metric, value, note), ...]"""
