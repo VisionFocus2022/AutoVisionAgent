@@ -74,7 +74,7 @@
 |---|---|---|---|
 | W3-1 | 检测报告 PDF | L2 | ✅ 完成（2026-10-07）：exporter/report_pdf.py（PdfPages 首页参数+统计表/样本页原图+检测框叠加；CJK 系统字体回退英文不产豆腐块；metadata title 机读锚点；中文路径直写）+推理页「导出报告」（worker 渲染 W1-4 纪律）；单测 6 绿（pypdf 锚点）；PRD docs/prd-w3-1-report-pdf.md |
 | W3-2 | 项目包 2.0（资产迁移） | L2-L3 | ✅ 完成（2026-10-15）：project/pack.py（export：SHA256 清单 zip/import：三段式——读 manifest→先验校验（失配列名零落盘）→碰撞拒绝覆盖）+项目页双按钮（worker）+「刷新列表」重读根目录真缺陷连带修；单测 7 绿；UIA 导出链绿（导入段远程会话阻断→单测覆盖+attended 复跑债务登记）；PRD docs/prd-w3-2-project-pack.md |
-| W3-3 | gRPC serving 产品化 | L3（并发必答） | 侦察 serving/ 现状后细化为 3a/3b：3a=服务启停 UI+健康检查；3b=客户端往返（含 .NET client 一例）；UIA 最小链 |
+| W3-3 | gRPC serving 产品化 | L3（并发必答） | ✅ 完成（2026-10-20）：3a 服务页（启停 worker 化+健康检查真线上 Ping 往返回显；invoke_main 重对象载荷→暂存属性+原语唤起模式）+3b 真线上往返（ephemeral 端口 Ping/ListTasks+RpcError 不可达）+.NET 一例（dotnet 9 实跑 Ping 1/1）；单测 6 绿；UIA 链因本时段会话级 window-find 全局失效（对照 pole 同败定性）→债务登记交互会话复跑；PRD docs/prd-w3-3-serving.md |
 | （悬置） | 相机采集 | — | **D-2 外部硬件闸门**，硬件就绪再排 |
 | （悬置） | 无监督异常检测 | — | 立项前需用户验证（roadmap 原注） |
 
@@ -119,7 +119,8 @@ W3-相机采集 depends D-2(硬件, 外部闸门)
 
 ## §7 状态快照（跨会话真相源）
 
-- 当前波：Wave 3（W3-1/W3-2 ✅；下一步 W3-3 gRPC 产品化（侦察先行））
+- 当前波：Wave 3（**三行全部完成** W3-1/2/3 ✅；波末 DoD 先验待
+  用户实测认可；相机与无监督维持悬置）
 - Wave 2 波末复盘三问（2026-10-07）：①预测准——四行 L2 定档全命中；
   W2-4 侦察先行省掉重造（引擎/落盘已在）验证"细化前侦察"条款；
   ②DoD 设对——四行 DoD 均一次达成，且 W2-1 真链再证"真产物验收"

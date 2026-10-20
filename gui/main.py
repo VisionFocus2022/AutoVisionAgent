@@ -32,6 +32,7 @@ from gui.pages import (
     LoginPage,
     PredictPage,
     ProjectPage,
+    ServingPage,
     SettingsPage,
     TrainHistoryPage,
     TrainPage,
@@ -250,6 +251,7 @@ def build_window(init_password: str | None = None) -> MainWindow:
     predict_page = PredictPage()
     eval_page = EvalPage()
     deploy_page = DeployPage()
+    serving_page = ServingPage()
     flaw_gen_page = FlawGenPage()
     project_page = ProjectPage()
     settings_page = SettingsPage()
@@ -263,6 +265,7 @@ def build_window(init_password: str | None = None) -> MainWindow:
     all_pages = [
         login_page, home_page, label_page, data_page,
         train_page, history_page, predict_page, eval_page, deploy_page,
+        serving_page,
         flaw_gen_page, project_page, settings_page,
     ]
     for page in all_pages:
@@ -314,6 +317,7 @@ def build_window(init_password: str | None = None) -> MainWindow:
     win.add_page("predict", "predict", tr("推理"), predict_page)
     win.add_page("eval", "eval", tr("评估"), eval_page)
     win.add_page("deploy", "deploy", tr("发布"), deploy_page)
+    win.add_page("serving", "serving", tr("服务"), serving_page)
     win.add_page("flaw_gen", "flaw_gen", tr("缺陷生成"), flaw_gen_page)
     win.add_page("project", "project", tr("项目管理"), project_page)
     win.add_page("settings", "settings", tr("设置"), settings_page)

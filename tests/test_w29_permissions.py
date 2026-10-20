@@ -26,8 +26,8 @@ PERMISSIONS = REPO_ROOT / "gui" / "core" / "permissions.py"
 
 _ALL_11_PAGES = {
     "home", "label", "data_manage", "train", "history", "predict",
-    "eval", "deploy", "flaw_gen", "project", "settings",
-}  # login 页不计入矩阵（恒允许）；W1-2 增 history
+    "eval", "deploy", "serving", "flaw_gen", "project", "settings",
+}  # login 页不计入矩阵（恒允许）；W1-2 增 history；W3-3 增 serving
 
 
 # ============================== 1. 纯函数矩阵（FR-1/3/4） ============================== #

@@ -14,6 +14,7 @@ from gui.pages.label.page import LabelPage
 from gui.pages.login import LoginPage
 from gui.pages.predict import PredictPage
 from gui.pages.project import ProjectPage
+from gui.pages.serving import ServingPage
 from gui.pages.settings import SettingsPage
 from gui.pages.train import TrainPage
 from gui.pages.train_history import TrainHistoryPage
@@ -31,4 +32,5 @@ __all__ = [
     "DeployPage",
     "FlawGenPage",
     "SettingsPage",
+    "ServingPage",
 ]

@@ -31,7 +31,7 @@ LOGIN_PAGE = "login"
 # 全部受门控页面（与 gui.main build_window 注册的 11 页一致）
 ALL_PAGES: frozenset[str] = frozenset({
     "home", "label", "data_manage", "train", "history", "predict",
-    "eval", "deploy", "flaw_gen", "project", "settings",
+    "eval", "deploy", "serving", "flaw_gen", "project", "settings",
 }) | {LOGIN_PAGE}
 
 # ---- 页面矩阵（W29 最小面；operator=现场操作页最小特权） ----

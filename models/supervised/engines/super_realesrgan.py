@@ -67,19 +67,13 @@ def arch_config_from_name(fname: str) -> list[dict]:
     return [_RRDB_X4, _RRDB_X4_ANIME, _RRDB_X2]
 
 
-def _build_torch_modules():
-    """惰性构建 torch 网络定义（模块级保持零 torch 依赖，R4 同款策略）。
+def _build_rrdb_blocks(nn):
+    """Real-ESRGAN 基础块（W24 规模拆分自 _build_torch_modules，零行为变更）。
 
-    结构逐行对齐 xinntao/Real-ESRGAN realesrgan_arch.py（BSD-3-Clause）：
-    - ResidualDenseBlock：5 层稠密卷积 + 0.2 残差缩放；
-    - RRDB：3 × RDB 串联 + 0.2 残差缩放；
-    - RRDBNet：x4 恒为"双 ×2 最近邻上采样卷积"，x2/x1 用 pixel_unshuffle
-      预压缩空间换通道补偿（上游设计：骨干权重在多倍率间可迁移）；
-    - SRVGGNetCompact：紧凑 VGG 式 + PixelShuffle（realesr-general-x4v3）。
+    ResidualDenseBlock：5 层稠密卷积 + 0.2 残差缩放；RRDB：3×RDB 串联
+    + 0.2 残差缩放（结构对齐 xinntao 上游 BSD-3-Clause 实现）。
     """
     import torch
-    import torch.nn as nn
-    import torch.nn.functional as F
 
     class ResidualDenseBlock(nn.Module):
         def __init__(self, num_feat: int = 64, num_grow_ch: int = 32):
@@ -111,6 +105,24 @@ def _build_torch_modules():
             out = self.rdb2(out)
             out = self.rdb3(out)
             return out * 0.2 + x
+
+    return ResidualDenseBlock, RRDB
+
+
+def _build_torch_modules():
+    """惰性构建 torch 网络定义（模块级保持零 torch 依赖，R4 同款策略）。
+
+    结构逐行对齐 xinntao/Real-ESRGAN realesrgan_arch.py（BSD-3-Clause）：
+    - ResidualDenseBlock：5 层稠密卷积 + 0.2 残差缩放；
+    - RRDB：3 × RDB 串联 + 0.2 残差缩放；
+    - RRDBNet：x4 恒为"双 ×2 最近邻上采样卷积"，x2/x1 用 pixel_unshuffle
+      预压缩空间换通道补偿（上游设计：骨干权重在多倍率间可迁移）；
+    - SRVGGNetCompact：紧凑 VGG 式 + PixelShuffle（realesr-general-x4v3）。
+    """
+    import torch.nn as nn
+    import torch.nn.functional as F
+
+    ResidualDenseBlock, RRDB = _build_rrdb_blocks(nn)
 
     class RRDBNet(nn.Module):
         def __init__(self, num_in_ch=3, num_out_ch=3, scale=4,
